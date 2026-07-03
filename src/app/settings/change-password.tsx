@@ -1,0 +1,59 @@
+import { router } from "expo-router";
+import { useState } from "react";
+import { Alert, Text, View } from "react-native";
+import { AppButton } from "@/components/AppButton";
+import { AppInput } from "@/components/AppInput";
+import { Screen } from "@/components/Screen";
+import { SectionCard } from "@/components/SectionCard";
+import { colors } from "@/constants/colors";
+import { useAuth } from "@/lib/auth";
+
+export default function ChangePasswordScreen() {
+  const { updatePassword } = useAuth();
+  const [password, setPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
+  const [loading, setLoading] = useState(false);
+
+  async function submit() {
+    if (password.length < 6) {
+      Alert.alert("Weak password", "Password must be at least 6 characters.");
+      return;
+    }
+
+    if (password !== confirmPassword) {
+      Alert.alert("Password mismatch", "Enter the same password twice.");
+      return;
+    }
+
+    setLoading(true);
+    try {
+      await updatePassword(password);
+      Alert.alert("Password changed", "Your DMS password was updated.", [
+        { text: "Done", onPress: () => router.back() },
+      ]);
+    } catch (error) {
+      Alert.alert("Password change failed", error instanceof Error ? error.message : "Please try again.");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  return (
+    <Screen>
+      <View style={{ gap: 6 }}>
+        <Text style={{ color: colors.text, fontSize: 30, fontWeight: "900" }}>
+          Change Password
+        </Text>
+        <Text style={{ color: colors.muted, fontSize: 15, lineHeight: 21 }}>
+          Update the password for the currently logged-in account.
+        </Text>
+      </View>
+
+      <SectionCard title="New Password">
+        <AppInput label="New password" value={password} onChangeText={setPassword} secureTextEntry />
+        <AppInput label="Confirm password" value={confirmPassword} onChangeText={setConfirmPassword} secureTextEntry />
+        <AppButton title="Save Password" icon="key-outline" onPress={submit} loading={loading} />
+      </SectionCard>
+    </Screen>
+  );
+}

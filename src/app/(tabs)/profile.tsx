@@ -1,0 +1,43 @@
+import { router } from "expo-router";
+import { Alert, ScrollView, Text } from "react-native";
+import { AppButton } from "@/components/AppButton";
+import { SectionCard } from "@/components/SectionCard";
+import { colors } from "@/constants/colors";
+import { useAuth } from "@/lib/auth";
+
+export default function ProfileScreen() {
+  const { profile, signOut } = useAuth();
+
+  return (
+    <ScrollView contentInsetAdjustmentBehavior="automatic" contentContainerStyle={{ padding: 16, gap: 16 }}>
+      <SectionCard title="Clinic Profile">
+        <Text selectable style={{ color: colors.text, fontSize: 18, fontWeight: "800" }}>{profile?.name ?? "Clinic user"}</Text>
+        <Text selectable style={{ color: colors.muted }}>{profile?.email}</Text>
+        <Text selectable style={{ color: colors.muted }}>Role: {profile?.role}</Text>
+        <Text selectable style={{ color: colors.muted }}>Clinic: {profile?.clinic_id}</Text>
+      </SectionCard>
+
+      {profile?.role === "owner" ? (
+        <AppButton title="Staff Management" onPress={() => router.push("/staff")} />
+      ) : null}
+
+      <AppButton
+        title="Subscription"
+        variant="secondary"
+        onPress={() => router.push("/settings/subscription")}
+      />
+
+      <AppButton
+        title="Change Password"
+        variant="secondary"
+        onPress={() => router.push("/settings/change-password")}
+      />
+
+      <AppButton
+        title="Sign out"
+        variant="danger"
+        onPress={() => signOut().catch((error) => Alert.alert("Sign out failed", error.message))}
+      />
+    </ScrollView>
+  );
+}

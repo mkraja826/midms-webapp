@@ -1,0 +1,90 @@
+import { useFocusEffect } from "expo-router";
+import { useCallback, useState } from "react";
+import { ActivityIndicator, Alert, ScrollView, Text, View } from "react-native";
+import { AppButton } from "@/components/AppButton";
+import { EmptyState } from "@/components/EmptyState";
+import { AppInput } from "@/components/AppInput";
+import { QuickAction } from "@/components/QuickAction";
+import { SectionCard } from "@/components/SectionCard";
+import { StatusChip } from "@/components/StatusChip";
+import { colors } from "@/constants/colors";
+import { Appointment, createAppointment, getPatients, getTodayAppointments, Patient, updateAppointmentStatus } from "@/lib/supabase";
+import { appointmentReminderMessage, openWhatsApp } from "@/lib/whatsapp";
+
+export default function AppointmentsScreen() {
+  const [appointments, setAppointments] = useState<Appointment[]>([]);
+  const [patients, setPatients] = useState<Patient[]>([]);
+  const [patientPhone, setPatientPhone] = useState("");
+  const [dateTime, setDateTime] = useState(new Date().toISOString().slice(0, 16));
+  const [notes, setNotes] = useState("");
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+
+  const load = useCallback(async () => {
+    try {
+      const [nextAppointments, nextPatients] = await Promise.all([getTodayAppointments(), getPatients()]);
+      setAppointments(nextAppointments);
+      setPatients(nextPatients);
+    } catch (error) {
+      Alert.alert("Appointments error", error instanceof Error ? error.message : "Unable to load appointments.");
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useFocusEffect(useCallback(() => { load(); }, [load]));
+
+  async function save() {
+    const patient = patients.find((item) => item.phone === patientPhone.trim() || item.name.toLowerCase() === patientPhone.trim().toLowerCase());
+    if (!patient) {
+      Alert.alert("Patient not found", "Enter an exact patient phone number or name.");
+      return;
+    }
+    setSaving(true);
+    try {
+      await createAppointment({ patient_id: patient.id, appointment_time: new Date(dateTime).toISOString(), notes });
+      setPatientPhone("");
+      setNotes("");
+      await load();
+    } catch (error) {
+      Alert.alert("Save failed", error instanceof Error ? error.message : "Unable to create appointment.");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <ScrollView contentInsetAdjustmentBehavior="automatic" contentContainerStyle={{ padding: 16, gap: 16 }}>
+      <SectionCard title="Create Appointment">
+        <AppInput label="Patient phone or exact name" value={patientPhone} onChangeText={setPatientPhone} />
+        <AppInput label="Date and time" value={dateTime} onChangeText={setDateTime} placeholder="YYYY-MM-DDTHH:mm" />
+        <AppInput label="Notes" value={notes} onChangeText={setNotes} multiline />
+        <AppButton title="Schedule" onPress={save} loading={saving} />
+      </SectionCard>
+      <SectionCard title="Today's Appointments">
+        {loading ? <ActivityIndicator color={colors.primary} /> : null}
+        {!loading && !appointments.length ? <EmptyState title="No appointments today" body="Schedule a patient visit from the form above." icon="calendar-clear-outline" /> : null}
+        {appointments.map((item) => (
+          <View key={item.id} style={{ borderBottomColor: colors.border, borderBottomWidth: 1, paddingVertical: 10, gap: 8 }}>
+            <View style={{ flexDirection: "row", justifyContent: "space-between", gap: 12 }}>
+              <View style={{ flex: 1, gap: 4 }}>
+                <Text style={{ color: colors.text, fontWeight: "900", fontSize: 16 }}>{item.patients?.name ?? "Patient"}</Text>
+                <Text selectable style={{ color: colors.muted }}>{new Date(item.appointment_time).toLocaleString()}</Text>
+              </View>
+              <StatusChip label={item.status} tone={item.status === "completed" ? "success" : item.status === "scheduled" ? "primary" : "warning"} />
+            </View>
+            <View style={{ flexDirection: "row", gap: 8 }}>
+              <AppButton title="Done" variant="secondary" style={{ flex: 1, minHeight: 42 }} onPress={() => updateAppointmentStatus(item.id, "completed").then(load)} />
+              <AppButton title="No show" variant="secondary" style={{ flex: 1, minHeight: 42 }} onPress={() => updateAppointmentStatus(item.id, "no_show").then(load)} />
+            </View>
+            <QuickAction
+              icon="logo-whatsapp"
+              label="WhatsApp reminder"
+              onPress={() => openWhatsApp(item.patients?.phone, appointmentReminderMessage({ patientName: item.patients?.name ?? "Patient", appointmentTime: item.appointment_time }))}
+            />
+          </View>
+        ))}
+      </SectionCard>
+    </ScrollView>
+  );
+}
