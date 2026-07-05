@@ -259,7 +259,7 @@ export default function PatientProfileScreen() {
         </View>
       </View>
 
-      <SectionCard title="Patient Actions">
+      <SectionCard title="Patient Actions" subtitle="Quick actions for today's treatment, uploads, follow-up, and payment reminders.">
         <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 10 }}>
           <QuickAction
             title="Add visit"
@@ -427,7 +427,7 @@ export default function PatientProfileScreen() {
         ) : null}
       </SectionCard>
 
-      <SectionCard title="Medical History Summary">
+      <SectionCard title="Medical History Summary" subtitle="Check risk conditions before treatment. Keep this updated when patient reveals new information.">
         <AppButton
           title={history ? "Edit Medical History" : "Add Medical History"}
           icon="medkit-outline"
@@ -468,7 +468,7 @@ export default function PatientProfileScreen() {
         )}
       </SectionCard>
 
-      <SectionCard title="Patient Edit Audit">
+      <SectionCard title="Patient Edit Audit" subtitle="Shows important patient detail changes for owner and staff accountability.">
         {auditLogs.length ? (
           <View style={{ gap: 10 }}>
             {auditLogs.slice(0, 8).map((log) => (
@@ -505,7 +505,7 @@ export default function PatientProfileScreen() {
         )}
       </SectionCard>
 
-      <SectionCard title="Visits">
+      <SectionCard title="Visits" subtitle="Past consultation history for this patient.">
         {visits.length ? (
           <View style={{ gap: 12 }}>
             {visits.map((visit) => (
@@ -550,7 +550,7 @@ export default function PatientProfileScreen() {
         )}
       </SectionCard>
 
-      <SectionCard title="Treatments & Billing">
+      <SectionCard title="Treatments & Billing" subtitle="Treatment charges, paid amount, due amount, and payment status.">
         {treatments.length || invoices.length ? (
           <View style={{ gap: 12 }}>
             {treatments.map((item) => (
