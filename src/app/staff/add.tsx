@@ -91,11 +91,11 @@ export default function AddStaffScreen() {
           Invite Staff
         </Text>
         <Text style={{ color: colors.muted, fontSize: 15, lineHeight: 21 }}>
-          Create an invite code for working doctor or receptionist.
+          Create a staff invite code with the correct clinic role. Share it only with trusted staff.
         </Text>
       </View>
 
-      <SectionCard title="Staff Details">
+      <SectionCard title="Staff Details" subtitle="Enter staff name, optional email, and choose the exact role before creating code.">
         <AppInput
           label="Staff Name"
           value={name}
@@ -139,7 +139,7 @@ export default function AddStaffScreen() {
       </SectionCard>
 
       {inviteCode ? (
-        <SectionCard title="Invite Code Created">
+        <SectionCard title="Invite Code Created" subtitle="This code gives staff access after onboarding, so share carefully.">
           <Text
             selectable
             style={{
@@ -154,7 +154,7 @@ export default function AddStaffScreen() {
           </Text>
 
           <Text style={{ color: colors.muted, textAlign: "center", lineHeight: 21 }}>
-            Ask staff to sign up/login, open onboarding, and enter this invite code.
+            Ask staff to sign up or login, open onboarding, and enter this invite code. Do not share this code publicly.
           </Text>
 
           <AppButton
