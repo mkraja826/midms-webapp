@@ -28,13 +28,6 @@ export default function ProfileScreen() {
       />
 
       <AppButton
-        title="Privacy Help"
-        variant="secondary"
-        icon="shield-checkmark-outline"
-        onPress={() => router.push("/settings/privacy")}
-      />
-
-      <AppButton
         title="Change Password"
         variant="secondary"
         onPress={() => router.push("/settings/change-password")}
