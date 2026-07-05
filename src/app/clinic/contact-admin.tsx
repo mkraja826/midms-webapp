@@ -16,18 +16,18 @@ export default function ContactAdminScreen() {
           Clinic Access Needed
         </Text>
         <Text style={{ color: colors.muted, fontSize: 15, lineHeight: 21 }}>
-          This staff account is not connected to a clinic workspace yet.
+          This staff account is active, but not connected to any clinic workspace yet.
         </Text>
       </View>
 
-      <SectionCard title="Contact Owner">
+      <SectionCard title="Contact Owner" subtitle="Ask clinic owner or head doctor for the correct invite code.">
         <Text selectable style={{ color: colors.muted, lineHeight: 21 }}>
-          Ask the clinic owner or head doctor to invite this account again, then login and enter the invite code.
+          Ask the clinic owner or head doctor to create/share a fresh staff invite code. Then enter that code from onboarding.
         </Text>
         <Text selectable style={{ color: colors.muted, lineHeight: 21 }}>
           Account: {profile?.email || "current user"}
         </Text>
-        <AppButton title="Enter Invite Code" icon="key-outline" onPress={() => router.replace("/onboarding" as never)} />
+        <AppButton title="Enter Staff Invite Code" icon="key-outline" onPress={() => router.replace("/onboarding" as never)} />
       </SectionCard>
 
       <AppButton title="Logout" icon="log-out-outline" variant="ghost" onPress={signOut} />
