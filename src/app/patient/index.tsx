@@ -126,7 +126,7 @@ export default function PatientSearchScreen() {
   }
 
   return (
-    <Screen>
+    <Screen refreshing={loading || searching} onRefresh={() => runSearch()}>
       <View style={{ gap: 6 }}>
         <Text style={{ color: colors.text, fontSize: 30, fontWeight: "900" }}>
           Patients
@@ -136,7 +136,7 @@ export default function PatientSearchScreen() {
         </Text>
       </View>
 
-      <SectionCard>
+      <SectionCard title="Find Patient" subtitle="Search by name, phone, patient ID, or filter by clinic activity date.">
         <View
           style={{
             minHeight: 54,
@@ -158,6 +158,7 @@ export default function PatientSearchScreen() {
             placeholder="Search patient name, phone, or ID"
             placeholderTextColor={colors.muted}
             autoCapitalize="none"
+            returnKeyType="search"
             style={{
               flex: 1,
               color: colors.text,
@@ -251,7 +252,7 @@ export default function PatientSearchScreen() {
         ) : null}
 
         <View style={{ flexDirection: "row", gap: 10 }}>
-          <AppButton title="Search" icon="search-outline" onPress={() => runSearch()} style={{ flex: 1 }} />
+          <AppButton title="Search" icon="search-outline" onPress={() => runSearch()} loading={searching} style={{ flex: 1 }} />
           <AppButton title="Clear" icon="close-circle-outline" variant="secondary" onPress={clearFilters} style={{ flex: 1 }} />
         </View>
 
@@ -272,7 +273,7 @@ export default function PatientSearchScreen() {
         </View>
       </SectionCard>
 
-      <SectionCard title={title}>
+      <SectionCard title={title} subtitle="Tap a patient to open history. Use the call button for quick contact.">
         {loading || searching ? (
           <Text style={{ color: colors.muted }}>
             {loading ? "Loading patients..." : "Searching..."}
@@ -368,3 +369,5 @@ export default function PatientSearchScreen() {
     </Screen>
   );
 }
+
+
