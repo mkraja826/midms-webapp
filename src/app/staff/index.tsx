@@ -59,17 +59,17 @@ export default function StaffManagementScreen() {
   const pendingInvites = invites.filter((invite) => !invite.accepted_at);
 
   return (
-    <Screen>
+    <Screen refreshing={loading} onRefresh={load}>
       <View style={{ gap: 6 }}>
         <Text style={{ color: colors.text, fontSize: 30, fontWeight: "900" }}>
           Staff
         </Text>
         <Text style={{ color: colors.muted, fontSize: 15, lineHeight: 21 }}>
-          Manage working doctors and receptionists for this clinic.
+          Manage clinic staff access, active roles, and pending invite codes.
         </Text>
       </View>
 
-      <SectionCard title="Quick Action">
+      <SectionCard title="Quick Action" subtitle="Invite working doctors or receptionists with the correct role.">
         <ActionCard
           title="Invite Staff"
           subtitle="Add a working doctor or receptionist"
@@ -79,7 +79,7 @@ export default function StaffManagementScreen() {
       </SectionCard>
 
       {staffError || inviteError ? (
-        <SectionCard title="Setup Warning">
+        <SectionCard title="Setup Warning" subtitle="Staff access needs attention before owner can fully manage team.">
           <Text style={{ color: colors.warning, fontWeight: "900" }}>
             Staff page opened, but one database query failed.
           </Text>
@@ -97,12 +97,12 @@ export default function StaffManagementScreen() {
           ) : null}
 
           <Text style={{ color: colors.muted, lineHeight: 20 }}>
-            Run the small staff SQL patch, then press Refresh.
+            Ask the developer to verify staff setup, then press Refresh.
           </Text>
         </SectionCard>
       ) : null}
 
-      <SectionCard title="Active Staff">
+      <SectionCard title="Active Staff" subtitle="People who currently have clinic access. Check role and active status.">
         {loading ? (
           <Text style={{ color: colors.muted }}>Loading staff...</Text>
         ) : staff.length ? (
@@ -157,7 +157,7 @@ export default function StaffManagementScreen() {
         )}
       </SectionCard>
 
-      <SectionCard title="Pending Invites">
+      <SectionCard title="Pending Invites" subtitle="Share invite code only with trusted clinic staff.">
         {loading ? (
           <Text style={{ color: colors.muted }}>Loading invites...</Text>
         ) : pendingInvites.length ? (
@@ -193,7 +193,7 @@ export default function StaffManagementScreen() {
         )}
       </SectionCard>
 
-      <AppButton title="Refresh" icon="refresh-outline" variant="secondary" onPress={load} />
+      <AppButton title="Refresh" icon="refresh-outline" variant="secondary" onPress={load} loading={loading} />
     </Screen>
   );
 }
