@@ -37,32 +37,39 @@ export function StatCard({
         flex: 1,
         minWidth: "47%",
         backgroundColor: colors.surface,
-        borderRadius: 22,
+        borderRadius: 24,
         padding: 14,
         borderWidth: 1,
         borderColor: colors.border,
         gap: 10,
+        shadowColor: colors.shadow,
+        shadowOpacity: 0.045,
+        shadowRadius: 12,
+        shadowOffset: { width: 0, height: 7 },
+        elevation: 1,
       }}
     >
-      {icon ? (
-        <View
-          style={{
-            width: 38,
-            height: 38,
-            borderRadius: 14,
-            backgroundColor: bg,
-            alignItems: "center",
-            justifyContent: "center",
-          }}
-        >
-          <Ionicons name={icon} size={20} color={fg} />
-        </View>
-      ) : null}
-      <Text style={{ color: colors.text, fontSize: 24, fontWeight: "900" }}>
+      <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
+        <Text numberOfLines={1} style={{ flex: 1, color: colors.muted, fontSize: 12, fontWeight: "800", textTransform: "uppercase", letterSpacing: 0.4 }}>
+          {label}
+        </Text>
+        {icon ? (
+          <View
+            style={{
+              width: 36,
+              height: 36,
+              borderRadius: 14,
+              backgroundColor: bg,
+              alignItems: "center",
+              justifyContent: "center",
+            }}
+          >
+            <Ionicons name={icon} size={19} color={fg} />
+          </View>
+        ) : null}
+      </View>
+      <Text numberOfLines={1} adjustsFontSizeToFit style={{ color: colors.text, fontSize: 24, fontWeight: "900", letterSpacing: -0.4 }}>
         {value}
-      </Text>
-      <Text style={{ color: colors.muted, fontSize: 13, fontWeight: "700" }}>
-        {label}
       </Text>
     </View>
   );
