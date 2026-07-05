@@ -130,8 +130,8 @@ export default function SubscriptionScreen() {
 
   function requestActivation() {
     Alert.alert(
-      "Subscription request ready",
-      `${summary.title} selected for ${profile?.name ?? "this clinic"}.\n\nConnect a payment gateway to collect ${summary.amount}.`
+      "Plan activation request ready",
+      `${summary.title} selected for ${profile?.name ?? "this clinic"}.\n\nPayment gateway is not connected yet. Developer/admin must confirm collection for ${summary.amount}.`
     );
   }
 
@@ -142,11 +142,11 @@ export default function SubscriptionScreen() {
           Subscription
         </Text>
         <Text style={{ color: colors.muted, fontSize: 15, lineHeight: 21 }}>
-          Keep DMS active for clinic operations, patient records, gallery uploads, reminders and billing tools.
+          Review clinic plan, included features, and activation request before enabling live billing.
         </Text>
       </View>
 
-      <SectionCard>
+      <SectionCard title="Current Plan" subtitle="Shows the plan currently selected for this clinic workspace.">
         <View
           style={{
             borderRadius: 26,
@@ -181,7 +181,7 @@ export default function SubscriptionScreen() {
         </View>
       </SectionCard>
 
-      <SectionCard title="Choose Billing">
+      <SectionCard title="Choose Billing" subtitle="Select monthly or yearly billing before requesting activation.">
         <PlanOption
           active={plan === "monthly"}
           title="Monthly"
@@ -200,7 +200,7 @@ export default function SubscriptionScreen() {
         />
       </SectionCard>
 
-      <SectionCard title="Included">
+      <SectionCard title="Included" subtitle="Core clinic tools covered under the selected DMS plan.">
         <FeatureRow icon="people-outline" label="Unlimited patient search and clinical history" />
         <FeatureRow icon="cloud-upload-outline" label="Photo, prescription, report and X-ray uploads" />
         <FeatureRow icon="cash-outline" label="OP, X-ray, medication and pending payment tracking" />
@@ -208,7 +208,7 @@ export default function SubscriptionScreen() {
         <FeatureRow icon="lock-closed-outline" label="Role-based access for owner, doctor and reception" />
       </SectionCard>
 
-      <SectionCard title="Billing Summary">
+      <SectionCard title="Billing Summary" subtitle="Review selected billing cycle and amount before request.">
         <View style={{ flexDirection: "row", alignItems: "center", gap: 12 }}>
           <View style={{ flex: 1 }}>
             <Text style={{ color: colors.text, fontSize: 17, fontWeight: "900" }}>
@@ -233,7 +233,7 @@ export default function SubscriptionScreen() {
           style={{ flex: 1 }}
         />
         <AppButton
-          title="Request Activation"
+          title="Request Plan Activation"
           icon="card-outline"
           onPress={requestActivation}
           style={{ flex: 1 }}
