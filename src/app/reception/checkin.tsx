@@ -185,7 +185,7 @@ export default function ReceptionCheckinScreen() {
   }
 
   return (
-    <Screen>
+    <Screen refreshing={loadingPatients} onRefresh={loadPatients}>
       <View style={{ gap: 6 }}>
         <Text style={{ color: colors.text, fontSize: 30, fontWeight: "900" }}>
           Quick Check-in
@@ -195,7 +195,7 @@ export default function ReceptionCheckinScreen() {
         </Text>
       </View>
 
-      <SectionCard title="Patient Type">
+      <SectionCard title="Patient Type" subtitle="Choose existing patient for repeat visit or quickly register a new patient.">
         <View style={{ flexDirection: "row", gap: 10 }}>
           <ModeButton title="Existing" icon="search-outline" selected={mode === "existing"} onPress={() => resetPatientSelection("existing")} />
           <ModeButton title="New Patient" icon="person-add-outline" selected={mode === "new"} onPress={() => resetPatientSelection("new")} />
@@ -203,7 +203,7 @@ export default function ReceptionCheckinScreen() {
       </SectionCard>
 
       {mode === "existing" ? (
-        <SectionCard title="Select Patient">
+        <SectionCard title="Select Patient" subtitle="Search existing patients by name, phone, or patient ID.">
           {selectedPatient ? (
             <View style={{ padding: 14, borderRadius: 18, borderWidth: 1, borderColor: colors.primary, backgroundColor: colors.primarySoft, gap: 8 }}>
               <View style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
@@ -266,7 +266,7 @@ export default function ReceptionCheckinScreen() {
           )}
         </SectionCard>
       ) : (
-        <SectionCard title="Register New Patient">
+        <SectionCard title="Register New Patient" subtitle="Enter only the minimum details needed for quick clinic entry.">
           <AppInput label="Patient Name" value={name} onChangeText={setName} placeholder="Patient name" />
           <AppInput label="Phone" value={phone} onChangeText={setPhone} placeholder="Phone number" keyboardType="phone-pad" />
           <AppInput label="Age" value={age} onChangeText={setAge} placeholder="Age" keyboardType="numeric" />
@@ -275,7 +275,7 @@ export default function ReceptionCheckinScreen() {
         </SectionCard>
       )}
 
-      <SectionCard title="OP Fee">
+      <SectionCard title="OP Fee" subtitle="Collect, mark pending, or waive the consultation fee before sending to doctor queue.">
         <View style={{ padding: 16, borderRadius: 24, backgroundColor: opStatus === "waived" ? colors.warningSoft : colors.successSoft, borderWidth: 1, borderColor: colors.border, alignItems: "center", gap: 6 }}>
           <Text style={{ color: colors.muted, fontWeight: "800" }}>OP Fee</Text>
           <Text style={{ color: colors.text, fontSize: 42, fontWeight: "900" }}>
@@ -421,3 +421,4 @@ function ModeButton({
     </Pressable>
   );
 }
+
