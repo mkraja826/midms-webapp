@@ -281,17 +281,17 @@ export default function BookAppointmentScreen() {
   }
 
   return (
-    <Screen>
+    <Screen refreshing={loadingPatients} onRefresh={loadPatients}>
       <View style={{ gap: 6 }}>
         <Text style={{ color: colors.text, fontSize: 30, fontWeight: "900" }}>
           Book Appointment
         </Text>
         <Text style={{ color: colors.muted, fontSize: 15, lineHeight: 21 }}>
-          For patients who contact through WhatsApp, phone call, or online enquiry.
+          Book appointments from WhatsApp, phone calls, website, Instagram, or online enquiries.
         </Text>
       </View>
 
-      <SectionCard title="Patient">
+      <SectionCard title="Patient" subtitle="Search existing patient first. If not found, register the new enquiry patient below.">
         {selectedPatient ? (
           <View
             style={{
@@ -437,7 +437,7 @@ export default function BookAppointmentScreen() {
         )}
       </SectionCard>
 
-      <SectionCard title="Appointment Reason">
+      <SectionCard title="Appointment Reason" subtitle="Pick the main complaint and source so staff understand why the patient is visiting.">
         <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 9 }}>
           {REASONS.map((reason) => {
             const selected = selectedReason === reason;
@@ -627,7 +627,7 @@ export default function BookAppointmentScreen() {
       </SectionCard>
 
       <AppButton
-        title="Book Appointment"
+        title="Confirm Appointment"
         icon="calendar-number-outline"
         onPress={saveAppointment}
         loading={saving}
