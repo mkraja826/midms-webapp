@@ -1,4 +1,4 @@
-import { useState } from "react";
+﻿import { useState } from "react";
 import { Ionicons } from "@expo/vector-icons";
 import { router } from "expo-router";
 import {
@@ -14,6 +14,7 @@ import { AppButton } from "@/components/AppButton";
 import { AppInput } from "@/components/AppInput";
 import { colors } from "@/constants/colors";
 import { useAuth } from "@/lib/auth";
+import { supabase } from "@/lib/supabase";
 
 export default function LoginScreen() {
   const { signIn, signUpOwner } = useAuth();
@@ -176,9 +177,10 @@ export default function LoginScreen() {
         </View>
 
         <Text style={{ color: colors.muted, fontSize: 12, textAlign: "center", lineHeight: 18 }}>
-          MVP 3-level access: Head Doctor → Working Doctor → Receptionist
+          MVP 3-level access: Head Doctor â†’ Working Doctor â†’ Receptionist
         </Text>
       </ScrollView>
     </KeyboardAvoidingView>
   );
 }
+
