@@ -5,6 +5,7 @@ import {
   Alert,
   Image,
   Linking,
+  Platform,
   Pressable,
   Text,
   View,
@@ -17,6 +18,7 @@ import { SectionCard } from "@/components/SectionCard";
 import { StatusBadge } from "@/components/StatusBadge";
 import { colors } from "@/constants/colors";
 import {
+  deletePatientFileRecord,
   FileType,
   getPatientAuditLogs,
   getPatientById,
@@ -88,13 +90,14 @@ export default function PatientProfileScreen() {
   const [details, setDetails] = useState<PatientDetails | null>(null);
   const [auditLogs, setAuditLogs] = useState<PatientAuditLog[]>([]);
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
   const [deletingFileId, setDeletingFileId] = useState<string | null>(null);
 
-  async function load() {
+  async function load(showLoading = true) {
     if (!patientId) return;
 
     try {
-      setLoading(true);
+      if (showLoading) setLoading(true);
       const data = await getPatientById(patientId);
       setDetails(data as PatientDetails);
       const logs = await getPatientAuditLogs(patientId);
@@ -105,7 +108,16 @@ export default function PatientProfileScreen() {
         error instanceof Error ? error.message : "Please try again."
       );
     } finally {
-      setLoading(false);
+      if (showLoading) setLoading(false);
+    }
+  }
+
+  async function refreshProfile() {
+    try {
+      setRefreshing(true);
+      await load(false);
+    } finally {
+      setRefreshing(false);
     }
   }
 
@@ -152,38 +164,38 @@ export default function PatientProfileScreen() {
   }, [details?.files]);
 
   async function deleteFile(file: PatientFile) {
+    const performDelete = async () => {
+      try {
+        setDeletingFileId(file.id);
+
+        await tryDeleteFromStorage(file);
+        await deletePatientFileRecord(file.id);
+
+        await load();
+      } catch (error) {
+        Alert.alert(
+          "Delete failed",
+          error instanceof Error ? error.message : "Please try again."
+        );
+      } finally {
+        setDeletingFileId(null);
+      }
+    };
+
+    if (Platform.OS === "web") {
+      const confirmed = globalThis.confirm?.(
+        "Delete file?\n\nThis removes the file from this patient profile."
+      );
+      if (confirmed) await performDelete();
+      return;
+    }
+
     Alert.alert(
       "Delete file?",
       "This removes the file from this patient profile. Use this only if the doctor decides this photo/file should not stay.",
       [
         { text: "Cancel", style: "cancel" },
-        {
-          text: "Delete",
-          style: "destructive",
-          onPress: async () => {
-            try {
-              setDeletingFileId(file.id);
-
-              await tryDeleteFromStorage(file);
-
-              const { error } = await supabase
-                .from("files")
-                .delete()
-                .eq("id", file.id);
-
-              if (error) throw error;
-
-              await load();
-            } catch (error) {
-              Alert.alert(
-                "Delete failed",
-                error instanceof Error ? error.message : "Please try again."
-              );
-            } finally {
-              setDeletingFileId(null);
-            }
-          },
-        },
+        { text: "Delete", style: "destructive", onPress: performDelete },
       ]
     );
   }
@@ -229,7 +241,7 @@ export default function PatientProfileScreen() {
   const { patient, history, visits, treatments, invoices } = details;
 
   return (
-    <Screen>
+    <Screen refreshing={refreshing} onRefresh={refreshProfile}>
       <View style={{ gap: 8 }}>
         <Text style={{ color: colors.text, fontSize: 30, fontWeight: "900" }}>
           {patient.name}
@@ -594,7 +606,6 @@ export default function PatientProfileScreen() {
         )}
       </SectionCard>
 
-      <AppButton title="Refresh profile" icon="refresh-outline" variant="secondary" onPress={load} />
     </Screen>
   );
 }

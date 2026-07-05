@@ -12,7 +12,7 @@ import { StatCard } from "@/components/StatCard";
 import { StatusBadge } from "@/components/StatusBadge";
 import { colors } from "@/constants/colors";
 import { useAuth } from "@/lib/auth";
-import { DashboardStats, getDashboardStats, getRoleLabel, supabase } from "@/lib/supabase";
+import { DashboardStats, getDashboardStats, getRoleLabel, getWorkflowDashboardSummary } from "@/lib/supabase";
 
 type AppointmentRow = any;
 
@@ -37,8 +37,7 @@ export default function DoctorDashboard() {
       const data = await getDashboardStats();
       setStats(data);
 
-      const { data: rows } = await supabase.rpc("get_workflow_dashboard_summary");
-      const row = Array.isArray(rows) ? rows[0] : rows;
+      const row = await getWorkflowDashboardSummary();
       if (row) setSummary(row);
     } catch (error) {
       Alert.alert("Dashboard load failed", error instanceof Error ? error.message : "Please try again.");

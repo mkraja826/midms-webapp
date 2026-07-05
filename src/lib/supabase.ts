@@ -7,6 +7,7 @@ const supabaseUrl = process.env.EXPO_PUBLIC_SUPABASE_URL ?? "";
 const supabaseAnonKey = process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY ?? "";
 const uploadProvider = (process.env.EXPO_PUBLIC_UPLOAD_PROVIDER ?? "supabase").toLowerCase();
 const shouldUseR2Storage = uploadProvider === "r2";
+const shouldRequireR2Storage = process.env.EXPO_PUBLIC_UPLOAD_STRICT_R2 === "true";
 
 const hasRealSupabaseUrl =
   /^https:\/\/[a-zA-Z0-9-]+\.supabase\.co$/.test(supabaseUrl) &&
@@ -217,6 +218,20 @@ export type DashboardStats = {
   todayAppointmentList: Appointment[];
 };
 
+export type WorkflowDashboardSummary = {
+  today_revenue?: number | null;
+  pending_payments?: number | null;
+  op_fee_revenue_today?: number | null;
+  xray_revenue_today?: number | null;
+  medication_revenue_today?: number | null;
+  treatment_revenue_today?: number | null;
+  pending_collected_today?: number | null;
+  other_revenue_today?: number | null;
+  today_patient_count?: number | null;
+  waiting_count?: number | null;
+  completed_count?: number | null;
+};
+
 export type StaffInvite = {
   id: string;
   clinic_id: string;
@@ -308,6 +323,30 @@ function isoDateBoundary(value: string, endOfDay = false) {
   return Number.isNaN(date.getTime()) ? null : date.toISOString();
 }
 
+function dashboardWarn(label: string, error: unknown) {
+  if (!error) return;
+
+  const message =
+    error instanceof Error
+      ? error.message
+      : typeof error === "object" && "message" in error
+        ? String((error as { message?: unknown }).message)
+        : String(error);
+
+  console.warn(`${label}:`, message);
+}
+
+async function safeDashboardQuery(label: string, query: PromiseLike<any>) {
+  try {
+    const result = await query;
+    if (result?.error) dashboardWarn(label, result.error);
+    return result ?? { data: [], error: null, count: 0 };
+  } catch (error) {
+    dashboardWarn(label, error);
+    return { data: [], error, count: 0 };
+  }
+}
+
 function base64ToUint8Array(base64: string) {
   const chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
   const clean = base64.replace(/=+$/, "");
@@ -359,6 +398,38 @@ function storageUploadError(status: number, body: string) {
   } catch {
     return body || `Storage upload failed with status ${status}`;
   }
+}
+
+function unknownErrorMessage(error: unknown) {
+  if (error instanceof Error) return error.message;
+  if (typeof error === "string") return error;
+  if (typeof error === "object" && error && "message" in error) {
+    return String((error as { message?: unknown }).message);
+  }
+  return "Unknown error";
+}
+
+function isResponseLike(value: unknown): value is { status: number; text: () => Promise<string> } {
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    "status" in value &&
+    "text" in value &&
+    typeof (value as { text?: unknown }).text === "function"
+  );
+}
+
+async function edgeFunctionErrorMessage(error: unknown) {
+  const context = typeof error === "object" && error && "context" in error
+    ? (error as { context?: unknown }).context
+    : null;
+
+  if (isResponseLike(context)) {
+    const body = await context.text().catch(() => "");
+    return storageUploadError(context.status, body);
+  }
+
+  return unknownErrorMessage(error);
 }
 
 async function readFileBlob(uri: string) {
@@ -535,7 +606,17 @@ async function uploadR2StorageObjectWithProgress(input: {
     message: "Requesting R2 upload link",
   });
 
+  const { data: sessionData, error: sessionError } = await supabase.auth.getSession();
+  const accessToken = sessionData.session?.access_token;
+
+  if (sessionError || !accessToken) {
+    throw new Error("Login session expired. Please sign out and sign in again before uploading.");
+  }
+
   const { data, error } = await supabase.functions.invoke<R2SignedUpload>("create-r2-upload-url", {
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+    },
     body: {
       patient_id: input.patient_id,
       file_type: input.file_type,
@@ -544,7 +625,7 @@ async function uploadR2StorageObjectWithProgress(input: {
     },
   });
 
-  if (error) throw error;
+  if (error) throw new Error(await edgeFunctionErrorMessage(error));
   if (!data?.uploadUrl || !data.publicUrl || !data.objectKey) {
     throw new Error("R2 upload link was not returned.");
   }
@@ -638,77 +719,94 @@ export async function getDashboardStats(): Promise<DashboardStats> {
     pendingCharges,
     paidChargesToday,
   ] = await Promise.all([
-    supabase
-      .from("patients")
-      .select("*", { count: "exact" })
-      .order("created_at", { ascending: false })
-      .limit(5),
+    safeDashboardQuery(
+      "Dashboard patients query failed",
+      supabase
+        .from("patients")
+        .select("*", { count: "exact" })
+        .order("created_at", { ascending: false })
+        .limit(5)
+    ),
 
-    supabase
-      .from("appointments")
-      .select("*, patients(id,name,phone), profiles(id,name)")
-      .gte("appointment_time", todayStart)
-      .lte("appointment_time", todayEnd)
-      .order("appointment_time", { ascending: true }),
+    safeDashboardQuery(
+      "Dashboard appointments query failed",
+      supabase
+        .from("appointments")
+        .select("*, patients(id,name,phone), profiles(id,name)")
+        .gte("appointment_time", todayStart)
+        .lte("appointment_time", todayEnd)
+        .order("appointment_time", { ascending: true })
+    ),
 
-    supabase
-      .from("invoices")
-      .select("total_amount, paid_amount, due_amount, status"),
+    safeDashboardQuery(
+      "Dashboard invoices query failed",
+      supabase
+        .from("invoices")
+        .select("total_amount, paid_amount, due_amount, status")
+    ),
 
-    supabase
-      .from("payments")
-      .select("amount, created_at")
-      .gte("created_at", todayStart)
-      .lte("created_at", todayEnd),
+    safeDashboardQuery(
+      "Dashboard payments query failed",
+      supabase
+        .from("payments")
+        .select("amount, created_at")
+        .gte("created_at", todayStart)
+        .lte("created_at", todayEnd)
+    ),
 
-    supabase
-      .from("invoices")
-      .select("paid_amount, created_at")
-      .gte("created_at", todayStart)
-      .lte("created_at", todayEnd),
+    safeDashboardQuery(
+      "Dashboard today invoices query failed",
+      supabase
+        .from("invoices")
+        .select("paid_amount, created_at")
+        .gte("created_at", todayStart)
+        .lte("created_at", todayEnd)
+    ),
 
-    supabase
-      .from("charges")
-      .select("amount, payment_status")
-      .in("payment_status", ["pending", "partial"]),
+    safeDashboardQuery(
+      "Dashboard pending charges query failed",
+      supabase
+        .from("charges")
+        .select("amount, payment_status")
+        .in("payment_status", ["pending", "partial"])
+    ),
 
-    supabase
-      .from("charges")
-      .select("amount, payment_status, created_at")
-      .eq("payment_status", "paid")
-      .gte("created_at", todayStart)
-      .lte("created_at", todayEnd),
+    safeDashboardQuery(
+      "Dashboard paid charges query failed",
+      supabase
+        .from("charges")
+        .select("amount, payment_status, created_at")
+        .eq("payment_status", "paid")
+        .gte("created_at", todayStart)
+        .lte("created_at", todayEnd)
+    ),
   ]);
 
-  if (patients.error) throw patients.error;
-  if (appointments.error) throw appointments.error;
-
-  // These tables may be empty or old installs may not fully use all of them.
-  // We do not throw dashboard-blocking errors for billing fallback tables.
-  if (invoices.error) console.warn("Dashboard invoices error:", invoices.error.message);
-  if (todayPayments.error) console.warn("Dashboard payments error:", todayPayments.error.message);
-  if (todayInvoices.error) console.warn("Dashboard today invoices error:", todayInvoices.error.message);
-  if (pendingCharges.error) console.warn("Dashboard pending charges error:", pendingCharges.error.message);
-  if (paidChargesToday.error) console.warn("Dashboard paid charges error:", paidChargesToday.error.message);
-
-  const invoiceRows = invoices.error ? [] : invoices.data ?? [];
-  const todayPaymentRows = todayPayments.error ? [] : todayPayments.data ?? [];
-  const todayInvoiceRows = todayInvoices.error ? [] : todayInvoices.data ?? [];
-  const pendingChargeRows = pendingCharges.error ? [] : pendingCharges.data ?? [];
-  const paidChargeRows = paidChargesToday.error ? [] : paidChargesToday.data ?? [];
+  const patientRows = patients.error || !Array.isArray(patients.data) ? [] : patients.data;
+  const appointmentRows =
+    appointments.error || !Array.isArray(appointments.data) ? [] : appointments.data;
+  const invoiceRows = invoices.error || !Array.isArray(invoices.data) ? [] : invoices.data;
+  const todayPaymentRows =
+    todayPayments.error || !Array.isArray(todayPayments.data) ? [] : todayPayments.data;
+  const todayInvoiceRows =
+    todayInvoices.error || !Array.isArray(todayInvoices.data) ? [] : todayInvoices.data;
+  const pendingChargeRows =
+    pendingCharges.error || !Array.isArray(pendingCharges.data) ? [] : pendingCharges.data;
+  const paidChargeRows =
+    paidChargesToday.error || !Array.isArray(paidChargesToday.data) ? [] : paidChargesToday.data;
 
   const paymentRevenue = todayPaymentRows.reduce(
-    (sum, row) => sum + Number(row.amount || 0),
+    (sum: number, row: { amount?: number | string | null }) => sum + Number(row.amount || 0),
     0
   );
 
   const invoicePaidToday = todayInvoiceRows.reduce(
-    (sum, row) => sum + Number(row.paid_amount || 0),
+    (sum: number, row: { paid_amount?: number | string | null }) => sum + Number(row.paid_amount || 0),
     0
   );
 
   const paidChargesRevenue = paidChargeRows.reduce(
-    (sum, row) => sum + Number(row.amount || 0),
+    (sum: number, row: { amount?: number | string | null }) => sum + Number(row.amount || 0),
     0
   );
 
@@ -717,23 +815,35 @@ export async function getDashboardStats(): Promise<DashboardStats> {
     paymentRevenue > 0 ? paymentRevenue : invoicePaidToday + paidChargesRevenue;
 
   const invoicePending = invoiceRows.reduce(
-    (sum, row) => sum + Number(row.due_amount || 0),
+    (sum: number, row: { due_amount?: number | string | null }) => sum + Number(row.due_amount || 0),
     0
   );
 
   const chargePending = pendingChargeRows.reduce(
-    (sum, row) => sum + Number(row.amount || 0),
+    (sum: number, row: { amount?: number | string | null }) => sum + Number(row.amount || 0),
     0
   );
 
   return {
     totalPatients: patients.count ?? 0,
-    recentPatients: (patients.data ?? []) as Patient[],
-    todayAppointments: appointments.data?.length ?? 0,
-    todayAppointmentList: (appointments.data ?? []) as Appointment[],
+    recentPatients: patientRows as Patient[],
+    todayAppointments: appointmentRows.length,
+    todayAppointmentList: appointmentRows as Appointment[],
     pendingPayments: invoicePending + chargePending,
     todayRevenue,
   };
+}
+
+export async function getWorkflowDashboardSummary(): Promise<WorkflowDashboardSummary | null> {
+  const result = await safeDashboardQuery(
+    "Dashboard workflow summary query failed",
+    supabase.rpc("get_workflow_dashboard_summary")
+  );
+
+  if (result.error) return null;
+
+  const row = Array.isArray(result.data) ? result.data[0] : result.data;
+  return (row ?? null) as WorkflowDashboardSummary | null;
 }
 
 
@@ -1262,10 +1372,16 @@ export async function uploadPatientFile(input: {
         onProgress: input.onProgress,
       });
     } catch (r2UploadError) {
+      const r2Message = r2UploadError instanceof Error ? r2UploadError.message : "Unknown R2 upload error";
+
+      if (shouldRequireR2Storage) {
+        throw new Error(`Cloudflare R2 upload failed: ${r2Message}`);
+      }
+
       emitUploadProgress(input.onProgress, {
         phase: "uploading",
         percent: 20,
-        message: "R2 unavailable, retrying Supabase Storage",
+        message: `R2 unavailable, retrying Supabase Storage: ${r2Message}`,
       });
 
       storageResult = await uploadSupabaseStorageObjectWithProgress({
@@ -1301,7 +1417,7 @@ export async function uploadPatientFile(input: {
     file_name: input.file_name,
     uploaded_by: profile.id,
     file_note: input.file_note ?? null,
-    xray_amount: input.file_type === "xray" ? Number(input.xray_amount ?? 0) : null,
+    xray_amount: input.file_type === "xray" ? Number(input.xray_amount ?? 0) : 0,
     xray_fee_status:
       input.file_type === "xray" ? input.xray_fee_status ?? "not_applicable" : "not_applicable",
   };
@@ -1362,6 +1478,47 @@ export async function getPatientFiles(patientId: string) {
   return data as PatientFile[];
 }
 
+async function deletePatientFileDirect(fileId: string) {
+  const { data, error } = await supabase
+    .from("files")
+    .delete()
+    .eq("id", fileId)
+    .select("id");
+
+  if (error) throw error;
+
+  if (!data?.length) {
+    throw new Error("File was not deleted. Run supabase/dms-upload-fix.sql in Supabase SQL Editor, then try again.");
+  }
+}
+
+export async function deletePatientFileRecord(fileId: string) {
+  const { data, error } = await supabase.rpc("delete_patient_file", {
+    p_file_id: fileId,
+  });
+
+  if (error) {
+    const message = error.message || "";
+    const functionMissing =
+      error.code === "PGRST202" ||
+      message.includes("delete_patient_file") ||
+      message.includes("Could not find the function");
+
+    if (functionMissing) {
+      await deletePatientFileDirect(fileId);
+      return true;
+    }
+
+    throw error;
+  }
+
+  if (data === false) {
+    throw new Error("File not found or you do not have permission to delete it.");
+  }
+
+  return true;
+}
+
 export async function createInvoice(input: {
   patient_id: string;
   visit_id?: string | null;
@@ -1409,6 +1566,37 @@ export async function createInvoice(input: {
   }
 
   if (response.error) throw response.error;
+
+  if (paid > 0) {
+    let paymentResponse = await supabase
+      .from("payments")
+      .insert({
+        clinic_id: profile.clinic_id,
+        invoice_id: response.data.id,
+        patient_id: input.patient_id,
+        amount: paid,
+        payment_method: "Cash",
+        notes: input.notes ?? "Invoice paid at creation",
+        payment_category: input.payment_category ?? "treatment_fee",
+        collected_by: profile.id,
+      });
+
+    if (paymentResponse.error && paymentResponse.error.code === "PGRST204") {
+      paymentResponse = await supabase
+        .from("payments")
+        .insert({
+          clinic_id: profile.clinic_id,
+          invoice_id: response.data.id,
+          patient_id: input.patient_id,
+          amount: paid,
+          payment_method: "Cash",
+          notes: input.notes ?? "Invoice paid at creation",
+        });
+    }
+
+    if (paymentResponse.error) throw paymentResponse.error;
+  }
+
   return response.data;
 }
 

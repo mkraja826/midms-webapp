@@ -1,7 +1,7 @@
 import { Ionicons } from "@expo/vector-icons";
 import { router } from "expo-router";
 import { useEffect, useMemo, useState } from "react";
-import { Alert, Pressable, Text, TextInput, View } from "react-native";
+import { Alert, Linking, Pressable, Text, TextInput, View } from "react-native";
 import { AppButton } from "@/components/AppButton";
 import { AppInput } from "@/components/AppInput";
 import { EmptyState } from "@/components/EmptyState";
@@ -30,6 +30,11 @@ const DATE_FIELDS: { key: DateField; label: string; icon: keyof typeof Ionicons.
   { key: "followup", label: "Follow-up", icon: "notifications-outline" },
   { key: "payment", label: "Payment", icon: "cash-outline" },
 ];
+
+function phoneDialUrl(phone?: string | null) {
+  const digits = String(phone || "").replace(/[^0-9]/g, "");
+  return digits ? `tel:${digits}` : "";
+}
 
 export default function PatientSearchScreen() {
   const [patients, setPatients] = useState<Patient[]>([]);
@@ -103,6 +108,21 @@ export default function PatientSearchScreen() {
     setStartDate("");
     setEndDate("");
     runSearch({ query: "", datePreset: "all", dateField: "registered" });
+  }
+
+  async function callPatient(phone?: string | null) {
+    const url = phoneDialUrl(phone);
+
+    if (!url) {
+      Alert.alert("No phone number", "This patient does not have a phone number.");
+      return;
+    }
+
+    try {
+      await Linking.openURL(url);
+    } catch {
+      Alert.alert("Call unavailable", "This device or browser cannot open phone calls.");
+    }
   }
 
   return (
@@ -305,7 +325,30 @@ export default function PatientSearchScreen() {
 
                 <View style={{ alignItems: "flex-end", gap: 8 }}>
                   <StatusBadge label={patient.gender || "Patient"} />
-                  <Ionicons name="chevron-forward" size={18} color={colors.muted} />
+                  <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+                    <Pressable
+                      accessibilityRole="button"
+                      accessibilityLabel={`Call ${patient.name}`}
+                      hitSlop={8}
+                      onPress={(event) => {
+                        event.stopPropagation();
+                        callPatient(patient.phone);
+                      }}
+                      style={({ pressed }) => ({
+                        width: 38,
+                        height: 38,
+                        borderRadius: 14,
+                        alignItems: "center",
+                        justifyContent: "center",
+                        backgroundColor: pressed ? colors.success : colors.successSoft,
+                        borderWidth: 1,
+                        borderColor: colors.border,
+                      })}
+                    >
+                      <Ionicons name="call-outline" size={19} color={colors.success} />
+                    </Pressable>
+                    <Ionicons name="chevron-forward" size={18} color={colors.muted} />
+                  </View>
                 </View>
               </Pressable>
             ))}

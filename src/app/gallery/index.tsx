@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import {
   Alert,
   Image,
+  Platform,
   Pressable,
   Text,
   TextInput,
@@ -15,7 +16,7 @@ import { Screen } from "@/components/Screen";
 import { SectionCard } from "@/components/SectionCard";
 import { StatusBadge } from "@/components/StatusBadge";
 import { colors } from "@/constants/colors";
-import { supabase } from "@/lib/supabase";
+import { deletePatientFileRecord, supabase } from "@/lib/supabase";
 
 type FileType =
   | "all"
@@ -203,29 +204,30 @@ export default function GalleryScreen() {
   }
 
   async function deleteFile(file: GalleryFile) {
+    const performDelete = async () => {
+      try {
+        await deletePatientFileRecord(file.id);
+
+        await load();
+      } catch (error) {
+        Alert.alert("Delete failed", getErrorMessage(error));
+      }
+    };
+
+    if (Platform.OS === "web") {
+      const confirmed = globalThis.confirm?.(
+        "Delete file?\n\nThis removes this file from patient gallery."
+      );
+      if (confirmed) await performDelete();
+      return;
+    }
+
     Alert.alert(
       "Delete file?",
       "This removes this file from patient gallery. Use only for wrong or duplicate uploads.",
       [
         { text: "Cancel", style: "cancel" },
-        {
-          text: "Delete",
-          style: "destructive",
-          onPress: async () => {
-            try {
-              const { error } = await supabase
-                .from("files")
-                .delete()
-                .eq("id", file.id);
-
-              if (error) throw error;
-
-              await load();
-            } catch (error) {
-              Alert.alert("Delete failed", getErrorMessage(error));
-            }
-          },
-        },
+        { text: "Delete", style: "destructive", onPress: performDelete },
       ]
     );
   }

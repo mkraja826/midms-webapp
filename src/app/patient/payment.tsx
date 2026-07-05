@@ -79,6 +79,21 @@ function invoiceTypeLabel(type?: string | null) {
   }
 }
 
+function normalizePaymentCategory(type?: string | null): PaymentCategory {
+  if (
+    type === "op_fee" ||
+    type === "xray_fee" ||
+    type === "medication_fee" ||
+    type === "treatment_fee" ||
+    type === "pending_collection" ||
+    type === "other"
+  ) {
+    return type;
+  }
+
+  return "pending_collection";
+}
+
 function formatDate(value?: string | null) {
   if (!value) return "";
   return new Date(value).toLocaleDateString([], {
@@ -288,6 +303,8 @@ export default function CollectPendingPaymentScreen() {
   function selectInvoice(invoice: PendingInvoice) {
     setSelectedInvoiceId(invoice.invoice_id);
     setAmount(String(Math.round(Number(invoice.due_amount || 0))));
+    setPaymentCategory(normalizePaymentCategory(invoice.invoice_type));
+    setNotes(`${invoiceTypeLabel(invoice.invoice_type)} collected`);
   }
 
   async function collectPayment() {

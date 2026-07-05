@@ -12,7 +12,7 @@ import { StatCard } from "@/components/StatCard";
 import { StatusBadge } from "@/components/StatusBadge";
 import { colors } from "@/constants/colors";
 import { useAuth } from "@/lib/auth";
-import { DashboardStats, getDashboardStats, getRoleLabel, supabase } from "@/lib/supabase";
+import { DashboardStats, getDashboardStats, getRoleLabel, getWorkflowDashboardSummary } from "@/lib/supabase";
 
 type AppointmentRow = any;
 
@@ -42,8 +42,7 @@ export default function HeadDashboard() {
       const data = await getDashboardStats();
       setStats(data);
 
-      const { data: rows } = await supabase.rpc("get_workflow_dashboard_summary");
-      const row = Array.isArray(rows) ? rows[0] : rows;
+      const row = await getWorkflowDashboardSummary();
       if (row) setSummary(row);
     } catch (error) {
       Alert.alert("Dashboard load failed", error instanceof Error ? error.message : "Please try again.");
@@ -85,6 +84,9 @@ export default function HeadDashboard() {
         <StatCard label="OP Fees" value={loading ? "..." : money(summary?.op_fee_revenue_today)} icon="receipt-outline" tone="success" />
         <StatCard label="X-ray" value={loading ? "..." : money(summary?.xray_revenue_today)} icon="scan-outline" />
         <StatCard label="Medication" value={loading ? "..." : money(summary?.medication_revenue_today)} icon="medical-outline" />
+        <StatCard label="Treatment" value={loading ? "..." : money(summary?.treatment_revenue_today)} icon="hammer-outline" tone="success" />
+        <StatCard label="Pending Paid" value={loading ? "..." : money(summary?.pending_collected_today)} icon="checkmark-circle-outline" tone="success" />
+        <StatCard label="Other" value={loading ? "..." : money(summary?.other_revenue_today)} icon="wallet-outline" />
         <StatCard label="Patients Today" value={loading ? "..." : summary?.today_patient_count ?? 0} icon="people-outline" />
         <StatCard label="Total Patients" value={loading ? "..." : stats?.totalPatients ?? 0} icon="person-outline" />
       </View>

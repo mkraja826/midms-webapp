@@ -40,7 +40,8 @@
       "buildNumber": "2",
       "infoPlist": {
         "NSCameraUsageDescription": "DMS needs camera access to take patient photos, prescription photos, and X-ray images.",
-        "NSPhotoLibraryUsageDescription": "DMS needs photo library access to upload patient photos, prescriptions, X-rays, and reports."
+        "NSPhotoLibraryUsageDescription": "DMS needs photo library access to upload patient photos, prescriptions, X-rays, and reports.",
+        "ITSAppUsesNonExemptEncryption": false
       }
     },
     "experiments": {
@@ -51,7 +52,7 @@
         "origin": false
       },
       "eas": {
-        "projectId": "b6836a9e-7e64-4025-b537-ced9ab643fe5"
+        "projectId": "666248db-ff00-4a45-bbbf-65455c109dad"
       }
     },
     "owner": "mk261098s-team"

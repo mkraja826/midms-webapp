@@ -202,6 +202,20 @@ export default function ClinicalUploadScreen() {
     [patients, selectedPatientId]
   );
 
+  function goBack() {
+    if (router.canGoBack()) {
+      router.back();
+      return;
+    }
+
+    if (selectedPatientId) {
+      router.replace(`/patient/${selectedPatientId}` as never);
+      return;
+    }
+
+    router.replace("/gallery" as never);
+  }
+
   const filteredPatients = useMemo(() => {
     const term = patientSearch.trim().toLowerCase();
 
@@ -320,15 +334,17 @@ export default function ClinicalUploadScreen() {
         },
       ]);
     } catch (error) {
+      const message = getErrorMessage(error);
+
       setUploadProgress((current) =>
         current
           ? {
               ...current,
-              message: "Upload failed",
+              message: `Upload failed: ${message.slice(0, 120)}`,
             }
           : null
       );
-      Alert.alert("Upload failed", getErrorMessage(error));
+      Alert.alert("Upload failed", message);
     } finally {
       setUploading(false);
     }
@@ -659,7 +675,7 @@ export default function ClinicalUploadScreen() {
         title="Back"
         icon="arrow-back-outline"
         variant="ghost"
-        onPress={() => router.back()}
+        onPress={goBack}
       />
     </Screen>
   );

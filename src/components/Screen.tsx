@@ -1,13 +1,17 @@
 import { ReactNode } from "react";
-import { ScrollView, View } from "react-native";
+import { RefreshControl, ScrollView, View } from "react-native";
 import { colors } from "@/constants/colors";
 
 export function Screen({
   children,
   scroll = true,
+  refreshing = false,
+  onRefresh,
 }: {
   children: ReactNode;
   scroll?: boolean;
+  refreshing?: boolean;
+  onRefresh?: () => void;
 }) {
   if (!scroll) {
     return (
@@ -20,6 +24,16 @@ export function Screen({
   return (
     <ScrollView
       showsVerticalScrollIndicator={false}
+      refreshControl={
+        onRefresh ? (
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={onRefresh}
+            tintColor={colors.primary}
+            colors={[colors.primary]}
+          />
+        ) : undefined
+      }
       contentContainerStyle={{
         padding: 16,
         paddingBottom: 36,
