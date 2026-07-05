@@ -235,18 +235,18 @@ export default function GalleryScreen() {
   const title = patientId ? "Patient Gallery" : "Clinic Gallery";
 
   return (
-    <Screen>
+    <Screen refreshing={loading} onRefresh={load}>
       <View style={{ gap: 6 }}>
         <Text style={{ color: colors.text, fontSize: 30, fontWeight: "900" }}>
           {title}
         </Text>
 
         <Text style={{ color: colors.muted, fontSize: 15, lineHeight: 21 }}>
-          Quickly view X-rays, prescriptions, before/after photos, reports and other files.
+          Review clinical files across patients. Filter X-rays, prescriptions, reports, and before/after photos quickly.
         </Text>
       </View>
 
-      <SectionCard>
+      <SectionCard title="Search & Filter" subtitle="Search by patient, phone, or file name. Use filters to narrow clinical records.">
         <View
           style={{
             minHeight: 54,
@@ -320,7 +320,7 @@ export default function GalleryScreen() {
         </View>
       </SectionCard>
 
-      <SectionCard title="Files">
+      <SectionCard title="Files" subtitle="Tap any file to view. Open patient profile to continue treatment or review history.">
         {loading ? (
           <Text style={{ color: colors.muted }}>Loading gallery...</Text>
         ) : visibleFiles.length ? (
@@ -349,6 +349,7 @@ export default function GalleryScreen() {
           icon="refresh-outline"
           variant="secondary"
           onPress={load}
+          loading={loading}
           style={{ flex: 1 }}
         />
 
