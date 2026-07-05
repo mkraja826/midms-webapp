@@ -316,17 +316,17 @@ export default function AddVisitScreen() {
   }
 
   return (
-    <Screen>
+    <Screen refreshing={loadingPatients} onRefresh={loadPatients}>
       <View style={{ gap: 6 }}>
         <Text style={{ color: colors.text, fontSize: 30, fontWeight: "900" }}>
           Add Visit
         </Text>
         <Text style={{ color: colors.muted, fontSize: 15, lineHeight: 21 }}>
-          Doctor adds visit. After save, patient moves out of waiting queue.
+          Select complaint, add treatment/payment if needed, and complete the patient from waiting queue.
         </Text>
       </View>
 
-      <SectionCard title="Patient">
+      <SectionCard title="Patient" subtitle="Confirm the correct patient before adding today's visit.">
         {selectedPatient ? (
           <View
             style={{
@@ -488,7 +488,7 @@ export default function AddVisitScreen() {
         ) : null}
       </SectionCard>
 
-      <SectionCard title="Treatment & Billing">
+      <SectionCard title="Treatment & Billing" subtitle="Optional. Add treatment cost and paid amount only when needed.">
         <AppInput label="Treatment name" value={treatmentName} onChangeText={setTreatmentName} placeholder="RCT, extraction, filling, scaling..." />
         <AppInput label="Treatment category" value={treatmentCategory} onChangeText={setTreatmentCategory} placeholder="Optional category" />
         <AppInput label="Treatment cost" value={treatmentCost} onChangeText={setTreatmentCost} keyboardType="numeric" placeholder="Example: 2500" />
@@ -588,3 +588,4 @@ export default function AddVisitScreen() {
     </Screen>
   );
 }
+
