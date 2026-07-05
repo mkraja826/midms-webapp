@@ -128,7 +128,7 @@ export default function EditPatientScreen() {
 
   if (loading) {
     return (
-      <Screen>
+      <Screen refreshing={loading} onRefresh={load}>
         <Text style={{ color: colors.muted }}>Loading patient...</Text>
       </Screen>
     );
@@ -136,34 +136,34 @@ export default function EditPatientScreen() {
 
   if (!patient) {
     return (
-      <Screen>
+      <Screen refreshing={loading} onRefresh={load}>
         <EmptyState title="Patient not found" message="Go back and search again." icon="person-circle-outline" />
       </Screen>
     );
   }
 
   return (
-    <Screen>
+    <Screen refreshing={loading} onRefresh={load}>
       <View style={{ gap: 6 }}>
         <Text style={{ color: colors.text, fontSize: 30, fontWeight: "900" }}>
           Edit Patient Details
         </Text>
         <Text style={{ color: colors.muted, fontSize: 15, lineHeight: 21 }}>
-          Correct spelling, phone, age, gender, or address. Changes are recorded for owner review.
+          Correct patient details carefully. Changes are saved with audit reason for owner review.
         </Text>
       </View>
 
-      <SectionCard title="Patient Details">
-        <AppInput label="Name" value={form.name} onChangeText={(value) => setField("name", value)} />
-        <AppInput label="Phone" value={form.phone} onChangeText={(value) => setField("phone", value)} keyboardType="phone-pad" />
-        <AppInput label="Age" value={form.age} onChangeText={(value) => setField("age", value)} keyboardType="numeric" />
-        <AppInput label="Gender" value={form.gender} onChangeText={(value) => setField("gender", value)} />
-        <AppInput label="Address" value={form.address} onChangeText={(value) => setField("address", value)} multiline />
+      <SectionCard title="Patient Details" subtitle="Update only confirmed details. Add reason when changing phone, age, or address.">
+        <AppInput label="Name" placeholder="Patient full name" value={form.name} onChangeText={(value) => setField("name", value)} />
+        <AppInput label="Phone" placeholder="Patient mobile number" value={form.phone} onChangeText={(value) => setField("phone", value)} keyboardType="phone-pad" />
+        <AppInput label="Age" placeholder="Years" value={form.age} onChangeText={(value) => setField("age", value)} keyboardType="numeric" />
+        <AppInput label="Gender" placeholder="Male / Female / Other" value={form.gender} onChangeText={(value) => setField("gender", value)} />
+        <AppInput label="Address" placeholder="Patient address" value={form.address} onChangeText={(value) => setField("address", value)} multiline />
         <AppInput
           label="Reason optional"
           value={form.reason}
           onChangeText={(value) => setField("reason", value)}
-          placeholder="Example: phone spelling correction"
+          placeholder="Example: patient corrected phone number"
           multiline
         />
       </SectionCard>
