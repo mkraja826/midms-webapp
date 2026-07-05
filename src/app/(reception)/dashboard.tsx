@@ -76,7 +76,7 @@ export default function ReceptionDashboard() {
   const next = waiting[0];
 
   return (
-    <Screen>
+    <Screen refreshing={loading} onRefresh={load}>
       <ClinicBrandHeader subtitle={`${getRoleLabel(profile?.role ?? "receptionist")} • Reception Desk`} />
 
       <SectionCard>
@@ -203,7 +203,7 @@ export default function ReceptionDashboard() {
         <StatCard label="Other" value={loading ? "..." : money(summary?.other_revenue_today)} icon="wallet-outline" />
       </View>
 
-      <SectionCard title="Quick Desk">
+      <SectionCard title="Quick Desk" subtitle="Daily reception actions for check-in, fees, appointments, and reminders.">
         <ActionCard title="Book Appointment" subtitle="For WhatsApp/call/online enquiries" icon="calendar-number-outline" onPress={() => router.push("/appointment/book" as never)} />
         <ActionCard title="Add Old Patient" subtitle="Enter previous clinic records and old pending balance" icon="archive-outline" onPress={() => router.push("/patient/add-old" as never)} />
         <ActionCard title="Search Patient" subtitle="Open patient history or collect fee" icon="search-outline" onPress={() => router.push("/patient" as never)} />
@@ -214,7 +214,7 @@ export default function ReceptionDashboard() {
         <ActionCard title="Change Password" subtitle="Update your login password" icon="key-outline" onPress={() => router.push("/settings/change-password" as never)} />
       </SectionCard>
 
-      <SectionCard title="Waiting Room">
+      <SectionCard title="Waiting Room" subtitle="Patients waiting for doctor visit will appear here.">
         {waiting.length ? (
           <View style={{ gap: 10 }}>
             {waiting.slice(0, 8).map((item: AppointmentRow) => (
@@ -227,7 +227,7 @@ export default function ReceptionDashboard() {
       </SectionCard>
 
       <View style={{ flexDirection: "row", gap: 10 }}>
-        <AppButton title="Refresh" icon="refresh-outline" variant="secondary" onPress={load} style={{ flex: 1 }} />
+        <AppButton title="Refresh" icon="refresh-outline" variant="secondary" onPress={load} loading={loading} style={{ flex: 1 }} />
         <AppButton title="Logout" icon="log-out-outline" variant="ghost" onPress={logout} style={{ flex: 1 }} />
       </View>
     </Screen>
@@ -277,3 +277,4 @@ function AppointmentItem({ item, onPress }: { item: AppointmentRow; onPress: () 
     </Pressable>
   );
 }
+
