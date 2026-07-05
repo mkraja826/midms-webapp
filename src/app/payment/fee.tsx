@@ -8,6 +8,7 @@ import { EmptyState } from "@/components/EmptyState";
 import { Screen } from "@/components/Screen";
 import { SectionCard } from "@/components/SectionCard";
 import { StatusBadge } from "@/components/StatusBadge";
+import { SuccessNotice } from "@/components/SuccessNotice";
 import { colors } from "@/constants/colors";
 import { getPatients, Patient, PaymentCategory, supabase } from "@/lib/supabase";
 
@@ -51,9 +52,7 @@ function getErrorMessage(error: unknown) {
 
   if (typeof error === "object") {
     const err = error as { message?: string; details?: string; hint?: string; code?: string };
-    return [err.message, err.details, err.hint, err.code ? `Code: ${err.code}` : ""]
-      .filter(Boolean)
-      .join("\n");
+    return [err.message, err.details, err.hint, err.code ? `Code: ${err.code}` : ""].filter(Boolean).join("\n");
   }
 
   return "Unknown error";
@@ -61,19 +60,16 @@ function getErrorMessage(error: unknown) {
 
 export default function ReceptionFeeScreen() {
   const params = useLocalSearchParams<{ fee_type?: string }>();
-  const incomingType = (
-    FEE_TYPES.some((item) => item.key === params.fee_type) ? params.fee_type : "op_fee"
-  ) as FeeType;
+  const incomingType = (FEE_TYPES.some((item) => item.key === params.fee_type) ? params.fee_type : "op_fee") as FeeType;
 
   const [feeType, setFeeType] = useState<FeeType>(incomingType);
   const [patients, setPatients] = useState<Patient[]>([]);
   const [patientSearch, setPatientSearch] = useState("");
   const [selectedPatientId, setSelectedPatientId] = useState("");
-
   const [amount, setAmount] = useState(getDefaultAmount(incomingType));
   const [paymentMethod, setPaymentMethod] = useState("Cash");
   const [notes, setNotes] = useState(getDefaultNotes(incomingType));
-
+  const [successMessage, setSuccessMessage] = useState("");
   const [loadingPatients, setLoadingPatients] = useState(true);
   const [saving, setSaving] = useState(false);
 
@@ -83,6 +79,7 @@ export default function ReceptionFeeScreen() {
     setFeeType(next);
     setAmount(getDefaultAmount(next));
     setNotes(getDefaultNotes(next));
+    setSuccessMessage("");
   }
 
   async function loadPatients() {
@@ -111,13 +108,22 @@ export default function ReceptionFeeScreen() {
     if (!term) return patients.slice(0, 12);
 
     return patients
-      .filter((patient) =>
-        patient.name.toLowerCase().includes(term) ||
-        (patient.phone || "").toLowerCase().includes(term) ||
-        (patient.patient_code || "").toLowerCase().includes(term)
+      .filter(
+        (patient) =>
+          patient.name.toLowerCase().includes(term) ||
+          (patient.phone || "").toLowerCase().includes(term) ||
+          (patient.patient_code || "").toLowerCase().includes(term)
       )
       .slice(0, 12);
   }, [patientSearch, patients]);
+
+  function resetForAnother() {
+    setSelectedPatientId("");
+    setPatientSearch("");
+    setAmount(getDefaultAmount(feeType));
+    setPaymentMethod("Cash");
+    setNotes(getDefaultNotes(feeType));
+  }
 
   async function collectFee() {
     if (!selectedPatientId) {
@@ -132,6 +138,7 @@ export default function ReceptionFeeScreen() {
     }
 
     setSaving(true);
+    setSuccessMessage("");
 
     try {
       const { error } = await supabase.rpc("collect_reception_fee", {
@@ -144,26 +151,12 @@ export default function ReceptionFeeScreen() {
 
       if (error) throw error;
 
-      Alert.alert(
-        `${config.title} collected`,
-        `${money(fee)} collected from ${selectedPatient?.name || "patient"} and added to today's revenue.`,
-        [
-          {
-            text: "Open Patient",
-            onPress: () => router.replace(`/patient/${selectedPatientId}` as never),
-          },
-          {
-            text: "Collect Another",
-            onPress: () => {
-              setSelectedPatientId("");
-              setPatientSearch("");
-              setAmount(getDefaultAmount(feeType));
-              setPaymentMethod("Cash");
-              setNotes(getDefaultNotes(feeType));
-            },
-          },
-        ]
-      );
+      setSuccessMessage(`${config.title} collected: ${money(fee)} from ${selectedPatient?.name || "patient"}`);
+
+      Alert.alert(`${config.title} collected`, `${money(fee)} collected from ${selectedPatient?.name || "patient"} and added to today's revenue.`, [
+        { text: "Open Patient", onPress: () => router.replace(`/patient/${selectedPatientId}` as never) },
+        { text: "Collect Another", onPress: resetForAnother },
+      ]);
     } catch (error) {
       Alert.alert("Collection failed", getErrorMessage(error));
     } finally {
@@ -174,25 +167,18 @@ export default function ReceptionFeeScreen() {
   return (
     <Screen refreshing={loadingPatients} onRefresh={loadPatients}>
       <View style={{ gap: 6 }}>
-        <Text style={{ color: colors.text, fontSize: 30, fontWeight: "900" }}>
-          Reception Fees
-        </Text>
+        <Text style={{ color: colors.text, fontSize: 30, fontWeight: "900" }}>Reception Fees</Text>
         <Text style={{ color: colors.muted, fontSize: 15, lineHeight: 21 }}>
           Collect OP, X-ray, medication, treatment, or other clinic fees with correct patient and payment method.
         </Text>
       </View>
 
+      {successMessage ? <SuccessNotice title="Payment saved" message={successMessage} /> : null}
+
       <SectionCard title="Fee Type" subtitle="Choose the correct fee category so owner revenue reports stay clear.">
         <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 10 }}>
           {FEE_TYPES.map((item) => (
-            <FeeTypeCard
-              key={item.key}
-              title={item.title}
-              subtitle={item.subtitle}
-              icon={item.icon}
-              selected={feeType === item.key}
-              onPress={() => changeFeeType(item.key)}
-            />
+            <FeeTypeCard key={item.key} title={item.title} subtitle={item.subtitle} icon={item.icon} selected={feeType === item.key} onPress={() => changeFeeType(item.key)} />
           ))}
         </View>
       </SectionCard>
@@ -208,20 +194,13 @@ export default function ReceptionFeeScreen() {
               </View>
               <StatusBadge label="Selected" tone="success" />
             </View>
-
             <AppButton title="Change Patient" icon="swap-horizontal-outline" variant="secondary" onPress={() => setSelectedPatientId("")} />
           </View>
         ) : (
           <View style={{ gap: 12 }}>
             <View style={{ minHeight: 54, borderRadius: 18, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.background, flexDirection: "row", alignItems: "center", paddingHorizontal: 14, gap: 10 }}>
               <Ionicons name="search-outline" size={21} color={colors.muted} />
-              <TextInput
-                value={patientSearch}
-                onChangeText={setPatientSearch}
-                placeholder="Search patient name, phone, or ID"
-                placeholderTextColor={colors.muted}
-                style={{ flex: 1, minHeight: 54, color: colors.text, fontSize: 16 }}
-              />
+              <TextInput value={patientSearch} onChangeText={setPatientSearch} placeholder="Search patient name, phone, or ID" placeholderTextColor={colors.muted} style={{ flex: 1, minHeight: 54, color: colors.text, fontSize: 16 }} />
             </View>
 
             {loadingPatients ? (
@@ -266,38 +245,16 @@ export default function ReceptionFeeScreen() {
           <Ionicons name={config.icon} size={34} color={feeType === "op_fee" ? colors.success : colors.primary} />
           <Text style={{ color: colors.muted, fontWeight: "800" }}>{config.title}</Text>
           <Text style={{ color: colors.text, fontSize: 42, fontWeight: "900" }}>{amount ? money(amount) : "Rs. 0"}</Text>
-          <Text style={{ color: feeType === "op_fee" ? colors.success : colors.primary, fontWeight: "900" }}>
-            Counts in today's revenue
-          </Text>
+          <Text style={{ color: feeType === "op_fee" ? colors.success : colors.primary, fontWeight: "900" }}>Counts in today's revenue</Text>
         </View>
 
-        <AppInput
-          label="Amount"
-          value={amount}
-          onChangeText={setAmount}
-          keyboardType="numeric"
-          placeholder={feeType === "op_fee" ? "300" : "Enter amount"}
-          helper={feeType === "op_fee" ? "Default OP fee is Rs. 300." : "Amount may change per patient."}
-        />
+        <AppInput label="Amount" value={amount} onChangeText={setAmount} keyboardType="numeric" placeholder={feeType === "op_fee" ? "300" : "Enter amount"} helper={feeType === "op_fee" ? "Default OP fee is Rs. 300." : "Amount may change per patient."} />
 
         <View style={{ flexDirection: "row", gap: 10 }}>
           {PAYMENT_METHODS.map((method) => {
             const selected = paymentMethod === method;
             return (
-              <Pressable
-                key={method}
-                onPress={() => setPaymentMethod(method)}
-                style={{
-                  flex: 1,
-                  minHeight: 48,
-                  borderRadius: 999,
-                  borderWidth: 1,
-                  borderColor: selected ? colors.primary : colors.border,
-                  backgroundColor: selected ? colors.primary : colors.background,
-                  alignItems: "center",
-                  justifyContent: "center",
-                }}
-              >
+              <Pressable key={method} onPress={() => setPaymentMethod(method)} style={{ flex: 1, minHeight: 48, borderRadius: 999, borderWidth: 1, borderColor: selected ? colors.primary : colors.border, backgroundColor: selected ? colors.primary : colors.background, alignItems: "center", justifyContent: "center" }}>
                 <Text style={{ color: selected ? colors.white : colors.text, fontWeight: "900" }}>{method}</Text>
               </Pressable>
             );
@@ -305,8 +262,7 @@ export default function ReceptionFeeScreen() {
         </View>
 
         <AppInput label="Notes" value={notes} onChangeText={setNotes} placeholder={getDefaultNotes(feeType)} />
-
-        <AppButton title={`Collect ${amount ? money(amount) : config.title}`} icon="cash-outline" onPress={collectFee} loading={saving} />
+        <AppButton title={`Collect ${amount ? money(amount) : config.title}`} icon="cash-outline" onPress={collectFee} loading={saving} loadingTitle="Saving payment..." />
       </SectionCard>
 
       <AppButton title="Back" icon="arrow-back-outline" variant="ghost" onPress={() => router.back()} />
@@ -314,33 +270,9 @@ export default function ReceptionFeeScreen() {
   );
 }
 
-function FeeTypeCard({
-  title,
-  subtitle,
-  icon,
-  selected,
-  onPress,
-}: {
-  title: string;
-  subtitle: string;
-  icon: keyof typeof Ionicons.glyphMap;
-  selected: boolean;
-  onPress: () => void;
-}) {
+function FeeTypeCard({ title, subtitle, icon, selected, onPress }: { title: string; subtitle: string; icon: keyof typeof Ionicons.glyphMap; selected: boolean; onPress: () => void }) {
   return (
-    <Pressable
-      onPress={onPress}
-      style={{
-        width: "47%",
-        minHeight: 112,
-        borderRadius: 22,
-        borderWidth: 1,
-        borderColor: selected ? colors.primary : colors.border,
-        backgroundColor: selected ? colors.primary : colors.background,
-        padding: 13,
-        justifyContent: "space-between",
-      }}
-    >
+    <Pressable onPress={onPress} style={{ width: "47%", minHeight: 112, borderRadius: 22, borderWidth: 1, borderColor: selected ? colors.primary : colors.border, backgroundColor: selected ? colors.primary : colors.background, padding: 13, justifyContent: "space-between" }}>
       <Ionicons name={icon} size={25} color={selected ? colors.white : colors.primary} />
       <View style={{ gap: 3 }}>
         <Text style={{ color: selected ? colors.white : colors.text, fontWeight: "900", fontSize: 15 }}>{title}</Text>
