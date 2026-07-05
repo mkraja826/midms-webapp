@@ -1,8 +1,9 @@
 import { useFocusEffect } from "expo-router";
 import { useCallback, useState } from "react";
-import { ActivityIndicator, Alert, ScrollView, Text, View } from "react-native";
+import { ActivityIndicator, Alert, Text, View } from "react-native";
 import { AppButton } from "@/components/AppButton";
 import { EmptyState } from "@/components/EmptyState";
+import { Screen } from "@/components/Screen";
 import { AppInput } from "@/components/AppInput";
 import { QuickAction } from "@/components/QuickAction";
 import { SectionCard } from "@/components/SectionCard";
@@ -23,6 +24,7 @@ export default function BillingScreen() {
 
   const load = useCallback(async () => {
     try {
+      setLoading(true);
       const [payments, allPatients] = await Promise.all([getPendingPayments(), getPatients()]);
       setPending(payments);
       setPatients(allPatients);
@@ -69,19 +71,19 @@ export default function BillingScreen() {
   }
 
   return (
-    <ScrollView contentInsetAdjustmentBehavior="automatic" contentContainerStyle={{ padding: 16, gap: 16 }}>
-      <SectionCard title="Add Invoice">
+    <Screen refreshing={loading} onRefresh={load}>
+      <SectionCard title="Add Invoice" subtitle="Create treatment or service invoice using exact patient phone number or name.">
         <AppInput label="Patient phone or exact name" value={patientPhone} onChangeText={setPatientPhone} />
         <AppInput label="Total amount" value={total} onChangeText={setTotal} keyboardType="numeric" />
         <AppInput label="Paid amount" value={paid} onChangeText={setPaid} keyboardType="numeric" />
-        <AppButton title="Create Invoice" onPress={saveInvoice} />
+        <AppButton title="Create Invoice" icon="receipt-outline" onPress={saveInvoice} />
       </SectionCard>
-      <SectionCard title="Add Payment">
+      <SectionCard title="Add Payment" subtitle="Collect pending amount using invoice ID prefix or patient phone number.">
         <AppInput label="Invoice ID prefix or patient phone" value={paymentInvoice} onChangeText={setPaymentInvoice} />
         <AppInput label="Amount" value={paymentAmount} onChangeText={setPaymentAmount} keyboardType="numeric" />
-        <AppButton title="Add Payment" onPress={savePayment} />
+        <AppButton title="Collect Payment" icon="cash-outline" onPress={savePayment} />
       </SectionCard>
-      <SectionCard title="Pending Payments">
+      <SectionCard title="Pending Payments" subtitle="Track dues and send WhatsApp payment reminders when needed.">
         {loading ? <ActivityIndicator color={colors.primary} /> : null}
         {!loading && !pending.length ? <EmptyState title="No pending payments" body="Paid invoices will stay out of this queue." icon="checkmark-circle-outline" /> : null}
         {pending.map((invoice) => (
@@ -99,6 +101,6 @@ export default function BillingScreen() {
           </View>
         ))}
       </SectionCard>
-    </ScrollView>
+    </Screen>
   );
 }
