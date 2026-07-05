@@ -65,16 +65,16 @@ export default function AddPatientScreen() {
 
   return (
     <ScrollView contentInsetAdjustmentBehavior="automatic" contentContainerStyle={{ padding: 16, gap: 16 }}>
-      <SectionCard title="Patient Details">
-        <AppInput label="Full name" value={form.name} onChangeText={(value) => setField("name", value)} />
-        <AppInput label="Gender" value={form.gender} onChangeText={(value) => setField("gender", value)} />
+      <SectionCard title="Patient Details" subtitle="Name and phone are required. Add age and contact details if available.">
+        <AppInput label="Full name" placeholder="Patient full name" value={form.name} onChangeText={(value) => setField("name", value)} />
+        <AppInput label="Gender" placeholder="Male / Female / Other" value={form.gender} onChangeText={(value) => setField("gender", value)} />
         <AppInput label="Age" value={form.age} onChangeText={(value) => setField("age", value)} keyboardType="numeric" placeholder="Years" />
-        <AppInput label="Phone" value={form.phone} onChangeText={(value) => setField("phone", value)} keyboardType="phone-pad" />
+        <AppInput label="Phone" placeholder="Patient mobile number" value={form.phone} onChangeText={(value) => setField("phone", value)} keyboardType="phone-pad" />
         <AppInput label="Email optional" value={form.email} onChangeText={(value) => setField("email", value)} keyboardType="email-address" autoCapitalize="none" />
         <AppInput label="Address" value={form.address} onChangeText={(value) => setField("address", value)} multiline />
-        <AppInput label="Emergency contact" value={form.emergency_contact} onChangeText={(value) => setField("emergency_contact", value)} />
+        <AppInput label="Emergency contact" placeholder="Optional emergency number" value={form.emergency_contact} onChangeText={(value) => setField("emergency_contact", value)} />
       </SectionCard>
-      <SectionCard title="Medical History">
+      <SectionCard title="Medical History" subtitle="Mark important health conditions now. These can be edited later if patient reveals more.">
         {[
           ["heart_issue", "Heart issue"],
           ["kidney_issue", "Kidney issue"],
@@ -92,11 +92,11 @@ export default function AddPatientScreen() {
             />
           </View>
         ))}
-        <AppInput label="Allergies" value={form.allergies} onChangeText={(value) => setField("allergies", value)} />
-        <AppInput label="Current medicines" value={form.current_medicines} onChangeText={(value) => setField("current_medicines", value)} />
-        <AppInput label="Other notes" value={form.other_notes} onChangeText={(value) => setField("other_notes", value)} multiline />
+        <AppInput label="Allergies" placeholder="Example: Penicillin, painkiller allergy" value={form.allergies} onChangeText={(value) => setField("allergies", value)} />
+        <AppInput label="Current medicines" placeholder="Medicines patient is taking" value={form.current_medicines} onChangeText={(value) => setField("current_medicines", value)} />
+        <AppInput label="Other notes" placeholder="Any other medical notes" value={form.other_notes} onChangeText={(value) => setField("other_notes", value)} multiline />
       </SectionCard>
-      <AppButton title="Register Patient" onPress={save} loading={saving} />
+      <AppButton title="Register Patient" icon="person-add-outline" onPress={save} loading={saving} />
     </ScrollView>
   );
 }
