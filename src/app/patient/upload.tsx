@@ -351,18 +351,18 @@ export default function ClinicalUploadScreen() {
   }
 
   return (
-    <Screen>
+    <Screen refreshing={loadingPatients} onRefresh={loadPatients}>
       <View style={{ gap: 6 }}>
         <Text style={{ color: colors.text, fontSize: 30, fontWeight: "900" }}>
           Upload File
         </Text>
 
         <Text style={{ color: colors.muted, fontSize: 15, lineHeight: 21 }}>
-          Upload X-rays, prescriptions, before/after photos, reports and other patient files.
+          Capture or upload clinical files to the correct patient record. Use camera for prescriptions, X-rays, and before/after photos.
         </Text>
       </View>
 
-      <SectionCard title="Select Patient">
+      <SectionCard title="Select Patient" subtitle="Confirm the correct patient before saving any clinical file.">
         {selectedPatient ? (
           <View
             style={{
@@ -477,7 +477,7 @@ export default function ClinicalUploadScreen() {
         )}
       </SectionCard>
 
-      <SectionCard title="File Type">
+      <SectionCard title="File Type" subtitle="Choose the correct category so files appear in the right section of patient history.">
         <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 10 }}>
           {FILE_TYPES.map((item) => {
             const selected = type === item.key;
@@ -525,7 +525,7 @@ export default function ClinicalUploadScreen() {
         </View>
       </SectionCard>
 
-      <SectionCard title={type === "xray" ? "X-ray Details" : "File Details"}>
+      <SectionCard title={type === "xray" ? "X-ray Details" : "File Details"} subtitle="Add a short note only when it helps the doctor understand this file later.">
         <AppInput
           label={type === "xray" ? "X-ray type / note" : "File note"}
           value={fileNote}
@@ -575,7 +575,7 @@ export default function ClinicalUploadScreen() {
         ) : null}
       </SectionCard>
 
-      <SectionCard title="Choose Image">
+      <SectionCard title="Choose Image" subtitle="Take a fresh photo or choose an existing image, then upload it to patient history.">
         <View style={{ flexDirection: "row", gap: 10 }}>
           <AppButton
             title="Camera"
