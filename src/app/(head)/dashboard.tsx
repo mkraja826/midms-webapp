@@ -92,7 +92,6 @@ export default function HeadDashboard() {
       </View>
 
       <SectionCard title="Owner Actions" subtitle="Clinic control panel for revenue, staff, patients, appointments, and follow-ups.">
-        <ActionCard title="Clinic Report" subtitle="Daily closing report, revenue split, queue and checklist" icon="analytics-outline" onPress={() => router.push("/reports/clinic" as never)} />
         <ActionCard title="Reception Check-in" subtitle="Register/select patient + OP fee + waiting queue" icon="send-outline" onPress={() => router.push("/reception/checkin" as never)} />
         <ActionCard title="Add Old Patient" subtitle="Migrate old clinic files with history and opening due" icon="archive-outline" onPress={() => router.push("/patient/add-old" as never)} />
         <ActionCard title="Book Appointment" subtitle="For online/call enquiries" icon="calendar-number-outline" onPress={() => router.push("/appointment/book" as never)} />
