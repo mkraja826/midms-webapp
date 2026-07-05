@@ -55,13 +55,13 @@ export default function AppointmentsScreen() {
 
   return (
     <ScrollView contentInsetAdjustmentBehavior="automatic" contentContainerStyle={{ padding: 16, gap: 16 }}>
-      <SectionCard title="Create Appointment">
+      <SectionCard title="Create Appointment" subtitle="Schedule a patient visit using exact phone number or patient name.">
         <AppInput label="Patient phone or exact name" value={patientPhone} onChangeText={setPatientPhone} />
         <AppInput label="Date and time" value={dateTime} onChangeText={setDateTime} placeholder="YYYY-MM-DDTHH:mm" />
         <AppInput label="Notes" value={notes} onChangeText={setNotes} multiline />
-        <AppButton title="Schedule" onPress={save} loading={saving} />
+        <AppButton title="Schedule Appointment" icon="calendar-outline" onPress={save} loading={saving} />
       </SectionCard>
-      <SectionCard title="Today's Appointments">
+      <SectionCard title="Today's Appointments" subtitle="Track scheduled patients, mark completed/no-show, or send WhatsApp reminders.">
         {loading ? <ActivityIndicator color={colors.primary} /> : null}
         {!loading && !appointments.length ? <EmptyState title="No appointments today" body="Schedule a patient visit from the form above." icon="calendar-clear-outline" /> : null}
         {appointments.map((item) => (
