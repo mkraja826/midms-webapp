@@ -251,26 +251,26 @@ export default function PatientFollowupReminderScreen() {
 
   if (loading) {
     return (
-      <Screen>
+      <Screen refreshing={loading} onRefresh={loadPatient}>
         <Text style={{ color: colors.muted }}>Loading follow-up...</Text>
       </Screen>
     );
   }
 
   return (
-    <Screen>
+    <Screen refreshing={loading} onRefresh={loadPatient}>
       <View style={{ gap: 6 }}>
         <Text style={{ color: colors.text, fontSize: 30, fontWeight: "900" }}>
           Follow-up Reminder
         </Text>
 
         <Text style={{ color: colors.muted, fontSize: 15, lineHeight: 21 }}>
-          Add patient-specific review reminder from profile.
+          Schedule a patient-specific review reminder so reception can follow up at the right time.
         </Text>
       </View>
 
       {patient ? (
-        <SectionCard>
+        <SectionCard title="Patient" subtitle="Confirm the patient before saving a follow-up reminder.">
           <View style={{ flexDirection: "row", alignItems: "center", gap: 12 }}>
             <View
               style={{
@@ -367,7 +367,7 @@ export default function PatientFollowupReminderScreen() {
         </ScrollView>
       </SectionCard>
 
-      <SectionCard title="Select Time">
+      <SectionCard title="Select Time" subtitle="Only future time slots are enabled.">
         <ScrollView
           horizontal
           showsHorizontalScrollIndicator={false}
@@ -426,7 +426,7 @@ export default function PatientFollowupReminderScreen() {
         </View>
       </SectionCard>
 
-      <SectionCard title="Notes">
+      <SectionCard title="Notes" subtitle="Add a short reason so staff know why this patient should return.">
         <AppInput
           label="Reminder Note"
           value={notes}
