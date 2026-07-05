@@ -246,7 +246,7 @@ export default function GalleryScreen() {
         </Text>
       </View>
 
-      <SectionCard title="Search & Filter" subtitle="Search by patient, phone, or file name. Use filters to narrow clinical records.">
+      <SectionCard title="Search & Filter">
         <View
           style={{
             minHeight: 54,

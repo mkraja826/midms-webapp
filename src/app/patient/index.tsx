@@ -136,7 +136,7 @@ export default function PatientSearchScreen() {
         </Text>
       </View>
 
-      <SectionCard title="Find Patient" subtitle="Search by name, phone, patient ID, or filter by clinic activity date.">
+      <SectionCard title="Find Patient">
         <View
           style={{
             minHeight: 54,
