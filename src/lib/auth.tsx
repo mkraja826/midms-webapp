@@ -38,7 +38,7 @@ function isRoleGroup(segment?: string) {
   return segment === "(head)" || segment === "(doctor)" || segment === "(reception)";
 }
 
-async function withTimeout<T>(promise: Promise<T>, ms = 6000): Promise<T> {
+async function withTimeout<T>(promise: Promise<T>, ms = 12000): Promise<T> {
   return Promise.race([
     promise,
     new Promise<T>((_, reject) =>
@@ -58,7 +58,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   async function refreshProfile() {
     try {
       setLoadingMessage("Loading clinic profile...");
-      const current = await withTimeout(getCurrentProfile(), 6000);
+      const current = await withTimeout(getCurrentProfile(), 12000);
       setProfile(current);
       return current;
     } catch (error) {
@@ -86,7 +86,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     async function initAuth() {
       try {
         setLoadingMessage("Opening DMS...");
-        const { data } = await withTimeout(supabase.auth.getSession(), 6000);
+        const { data } = await supabase.auth.getSession();
 
         if (!mounted) return;
 
@@ -108,16 +108,26 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     initAuth();
 
     const { data: listener } = supabase.auth.onAuthStateChange(
-      async (_event, nextSession) => {
+      async (event, nextSession) => {
         if (!mounted) return;
 
+        if (event === "TOKEN_REFRESHED") {
+          setSession(nextSession);
+          return;
+        }
+
         try {
-          setLoadingMessage("Checking login...");
+          setLoading(true);
+          setLoadingMessage("Restoring clinic session...");
           await loadSession(nextSession);
         } catch (error) {
           console.warn("Auth state load failed:", error);
           setSession(null);
           setProfile(null);
+        } finally {
+          if (mounted) {
+            setLoading(false);
+          }
         }
       }
     );
