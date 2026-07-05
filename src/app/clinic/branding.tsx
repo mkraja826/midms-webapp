@@ -103,17 +103,17 @@ export default function ClinicBrandingScreen() {
   const logoPreview = logoUri || brand?.logo_url || "";
 
   return (
-    <Screen>
+    <Screen refreshing={loading} onRefresh={load}>
       <View style={{ gap: 6 }}>
         <Text style={{ color: colors.text, fontSize: 30, fontWeight: "900" }}>
           Clinic Branding
         </Text>
         <Text style={{ color: colors.muted, fontSize: 15, lineHeight: 21 }}>
-          Set hospital name and logo. This makes the app feel like the clinic’s own app.
+          Set clinic name, logo, phone, and address so the app feels like the clinic’s own workspace.
         </Text>
       </View>
 
-      <SectionCard title="Preview">
+      <SectionCard title="Preview" subtitle="Check how the clinic identity will appear inside the app.">
         <View
           style={{
             borderRadius: 26,
@@ -153,7 +153,7 @@ export default function ClinicBrandingScreen() {
               numberOfLines={1}
               style={{ color: colors.text, fontSize: 22, fontWeight: "900" }}
             >
-              {name || "Your Hospital Name"}
+              {name || "Your Clinic Name"}
             </Text>
             <Text style={{ color: colors.muted, marginTop: 4 }}>
               DMS clinic workspace
@@ -162,7 +162,7 @@ export default function ClinicBrandingScreen() {
         </View>
       </SectionCard>
 
-      <SectionCard title="Hospital Details">
+      <SectionCard title="Clinic Details" subtitle="Keep clinic name, logo, contact number, and address accurate for staff use.">
         <Pressable
           onPress={pickLogo}
           style={{
@@ -182,7 +182,7 @@ export default function ClinicBrandingScreen() {
         </Pressable>
 
         <AppInput
-          label="Hospital / Clinic Name"
+          label="Clinic / Hospital Name"
           value={name}
           onChangeText={setName}
           placeholder="Example: Raja Dental Care"
@@ -205,10 +205,10 @@ export default function ClinicBrandingScreen() {
         />
 
         <AppButton
-          title={loading ? "Loading..." : "Save Branding"}
+          title={loading ? "Loading..." : "Save Clinic Branding"}
           icon="save-outline"
           onPress={save}
-          loading={saving}
+          loading={saving || loading}
         />
       </SectionCard>
     </Screen>
