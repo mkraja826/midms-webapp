@@ -45,14 +45,14 @@ export default function ChangePasswordScreen() {
           Change Password
         </Text>
         <Text style={{ color: colors.muted, fontSize: 15, lineHeight: 21 }}>
-          Update the password for the currently logged-in account.
+          Update the password for the currently logged-in clinic account. Use a strong password and do not share it.
         </Text>
       </View>
 
-      <SectionCard title="New Password">
-        <AppInput label="New password" value={password} onChangeText={setPassword} secureTextEntry />
-        <AppInput label="Confirm password" value={confirmPassword} onChangeText={setConfirmPassword} secureTextEntry />
-        <AppButton title="Save Password" icon="key-outline" onPress={submit} loading={loading} />
+      <SectionCard title="New Password" subtitle="Password must be at least 6 characters and should be known only to this account owner.">
+        <AppInput label="New password" placeholder="Enter new password" value={password} onChangeText={setPassword} secureTextEntry />
+        <AppInput label="Confirm password" placeholder="Re-enter new password" value={confirmPassword} onChangeText={setConfirmPassword} secureTextEntry />
+        <AppButton title="Update Password" icon="key-outline" onPress={submit} loading={loading} />
       </SectionCard>
     </Screen>
   );
