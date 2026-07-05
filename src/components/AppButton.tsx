@@ -8,6 +8,7 @@ type Props = {
   icon?: keyof typeof Ionicons.glyphMap;
   variant?: "primary" | "secondary" | "danger" | "ghost";
   loading?: boolean;
+  loadingTitle?: string;
   disabled?: boolean;
   style?: ViewStyle;
 };
@@ -18,6 +19,7 @@ export function AppButton({
   icon,
   variant = "primary",
   loading,
+  loadingTitle,
   disabled,
   style,
 }: Props) {
@@ -41,11 +43,13 @@ export function AppButton({
 
   const disabledBackground = variant === "ghost" ? "transparent" : colors.border;
   const disabledText = variant === "ghost" ? colors.muted : colors.white;
+  const finalTextColor = isDisabled ? disabledText : textColor;
 
   return (
     <Pressable
       accessibilityRole="button"
       accessibilityLabel={title}
+      accessibilityState={{ disabled: isDisabled, busy: !!loading }}
       onPress={onPress}
       disabled={isDisabled}
       hitSlop={8}
@@ -73,13 +77,21 @@ export function AppButton({
       })}
     >
       {loading ? (
-        <ActivityIndicator color={isDisabled ? disabledText : textColor} />
-      ) : (
         <>
-          {icon ? <Ionicons name={icon} size={20} color={isDisabled ? disabledText : textColor} /> : null}
+          <ActivityIndicator color={finalTextColor} />
           <Text
             numberOfLines={1}
-            style={{ color: isDisabled ? disabledText : textColor, fontSize: 16, fontWeight: "900" }}
+            style={{ color: finalTextColor, fontSize: 16, fontWeight: "900" }}
+          >
+            {loadingTitle ?? title}
+          </Text>
+        </>
+      ) : (
+        <>
+          {icon ? <Ionicons name={icon} size={20} color={finalTextColor} /> : null}
+          <Text
+            numberOfLines={1}
+            style={{ color: finalTextColor, fontSize: 16, fontWeight: "900" }}
           >
             {title}
           </Text>
