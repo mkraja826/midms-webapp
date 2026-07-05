@@ -122,9 +122,9 @@ export default function OnboardingScreen() {
       contentInsetAdjustmentBehavior="automatic"
       contentContainerStyle={{ padding: 16, gap: 16 }}
     >
-      <SectionCard title="Create Clinic">
+      <SectionCard title="Create Owner Clinic" subtitle="Use this only for clinic owner or head doctor account.">
         <Text style={{ color: colors.muted, lineHeight: 21 }}>
-          Create clinic first. Add logo later from Clinic Branding after dashboard opens.
+          Create the clinic workspace first. Logo, phone, and branding can be updated later from Clinic Branding.
         </Text>
 
         <Text selectable style={{ color: colors.muted, lineHeight: 21 }}>
@@ -162,16 +162,16 @@ export default function OnboardingScreen() {
         />
 
         <AppButton
-          title="Create Clinic"
+          title="Create Owner Clinic"
           icon="medkit-outline"
           onPress={finishOwnerSetup}
           loading={loading}
         />
       </SectionCard>
 
-      <SectionCard title="Join Existing Clinic">
+      <SectionCard title="Join Existing Clinic" subtitle="Use this only when owner/head doctor has shared a staff invite code.">
         <Text style={{ color: colors.muted, lineHeight: 21 }}>
-          Use this only for working doctors or receptionists who received an invite code.
+          Working doctors and receptionists should join with a valid staff invite code from the clinic owner.
         </Text>
 
         <AppInput
@@ -184,14 +184,14 @@ export default function OnboardingScreen() {
         />
 
         <AppButton
-          title="Join Invited Clinic"
+          title="Join With Staff Invite Code"
           variant="secondary"
           onPress={joinInvite}
           loading={loading}
         />
       </SectionCard>
 
-      <SectionCard title="Wrong account?">
+      <SectionCard title="Wrong account?" subtitle="Logout and sign in with the correct owner or staff email.">
         <AppButton
           title="Logout"
           icon="log-out-outline"
