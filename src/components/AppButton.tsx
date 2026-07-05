@@ -39,31 +39,48 @@ export function AppButton({
       ? colors.primary
       : colors.primaryDark;
 
+  const disabledBackground = variant === "ghost" ? "transparent" : colors.border;
+  const disabledText = variant === "ghost" ? colors.muted : colors.white;
+
   return (
     <Pressable
+      accessibilityRole="button"
+      accessibilityLabel={title}
       onPress={onPress}
       disabled={isDisabled}
+      hitSlop={8}
+      android_ripple={isDisabled ? undefined : { color: "rgba(15, 118, 110, 0.14)", borderless: false }}
       style={({ pressed }) => ({
-        minHeight: 54,
+        minHeight: 56,
         borderRadius: 18,
-        paddingHorizontal: 16,
-        backgroundColor: isDisabled ? colors.muted : background,
+        paddingHorizontal: 18,
+        paddingVertical: 12,
+        backgroundColor: isDisabled ? disabledBackground : background,
         alignItems: "center",
         justifyContent: "center",
         flexDirection: "row",
         gap: 8,
-        opacity: pressed ? 0.82 : 1,
-        borderWidth: variant === "ghost" ? 1 : 0,
-        borderColor: colors.border,
+        opacity: isDisabled ? 0.72 : pressed ? 0.9 : 1,
+        transform: [{ scale: pressed && !isDisabled ? 0.99 : 1 }],
+        borderWidth: variant === "ghost" || variant === "secondary" ? 1 : 0,
+        borderColor: variant === "secondary" ? colors.primarySoft : colors.border,
+        shadowColor: colors.shadow,
+        shadowOpacity: variant === "primary" && !isDisabled ? 0.12 : 0,
+        shadowRadius: 12,
+        shadowOffset: { width: 0, height: 8 },
+        elevation: variant === "primary" && !isDisabled ? 2 : 0,
         ...style,
       })}
     >
       {loading ? (
-        <ActivityIndicator color={textColor} />
+        <ActivityIndicator color={isDisabled ? disabledText : textColor} />
       ) : (
         <>
-          {icon ? <Ionicons name={icon} size={20} color={textColor} /> : null}
-          <Text style={{ color: textColor, fontSize: 16, fontWeight: "900" }}>
+          {icon ? <Ionicons name={icon} size={20} color={isDisabled ? disabledText : textColor} /> : null}
+          <Text
+            numberOfLines={1}
+            style={{ color: isDisabled ? disabledText : textColor, fontSize: 16, fontWeight: "900" }}
+          >
             {title}
           </Text>
         </>
