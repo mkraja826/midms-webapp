@@ -376,18 +376,18 @@ export default function CollectPendingPaymentScreen() {
   }
 
   return (
-    <Screen>
+    <Screen refreshing={loadingPatients || loadingInvoices} onRefresh={() => selectedPatient ? selectPatientById(selectedPatient.patient_id) : loadPatients(search)}>
       <View style={{ gap: 6 }}>
         <Text style={{ color: colors.text, fontSize: 30, fontWeight: "900" }}>
           Collect Pending
         </Text>
 
         <Text style={{ color: colors.muted, fontSize: 15, lineHeight: 21 }}>
-          Search patient, collect full or partial pending amount, and update payment status.
+          Collect full or partial due amount safely. Choose invoice when needed, then record cash, UPI, or card payment.
         </Text>
       </View>
 
-      <SectionCard>
+      <SectionCard title="Pending Summary" subtitle="Shows total due amount for the current search or selected patient.">
         <View
           style={{
             padding: 16,
@@ -410,7 +410,7 @@ export default function CollectPendingPaymentScreen() {
       </SectionCard>
 
       {!selectedPatient ? (
-        <SectionCard title="Search Patient">
+        <SectionCard title="Search Patient" subtitle="Search by name, phone, or patient ID to find pending dues.">
           <View
             style={{
               minHeight: 54,
@@ -531,7 +531,7 @@ export default function CollectPendingPaymentScreen() {
         </SectionCard>
       ) : (
         <>
-          <SectionCard title="Selected Patient">
+          <SectionCard title="Selected Patient" subtitle="Confirm the patient before collecting any amount.">
             <View
               style={{
                 padding: 14,
@@ -582,7 +582,7 @@ export default function CollectPendingPaymentScreen() {
             </View>
           </SectionCard>
 
-          <SectionCard title="Pending Invoices">
+          <SectionCard title="Pending Invoices" subtitle="Select one invoice or collect total pending amount across invoices.">
             {loadingInvoices ? (
               <Text style={{ color: colors.muted }}>Loading invoices...</Text>
             ) : invoices.length ? (
@@ -665,7 +665,7 @@ export default function CollectPendingPaymentScreen() {
             )}
           </SectionCard>
 
-          <SectionCard title="Collect Payment">
+          <SectionCard title="Collect Payment" subtitle="Enter amount, method, and category before saving payment.">
             <AppInput
               label="Amount"
               value={amount}
