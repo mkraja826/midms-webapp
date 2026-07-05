@@ -63,7 +63,7 @@ export default function DoctorDashboard() {
   const current = waiting[0];
 
   return (
-    <Screen>
+    <Screen refreshing={loading} onRefresh={load}>
       <ClinicBrandHeader subtitle={`${getRoleLabel(profile?.role ?? "working_doctor")} • Doctor Queue`} />
 
       {current ? (
@@ -136,7 +136,7 @@ export default function DoctorDashboard() {
         <StatCard label="Completed" value={loading ? "..." : summary?.completed_count ?? 0} icon="checkmark-done-outline" tone="success" />
       </View>
 
-      <SectionCard title="Doctor Actions">
+      <SectionCard title="Doctor Actions" subtitle="Fast actions used during active patient treatment.">
         <ActionCard title="Search Patient" subtitle="Open previous history before treatment" icon="search-outline" onPress={() => router.push("/patient" as never)} />
         <ActionCard title="Follow-up Reminders" subtitle="Today and overdue review patients" icon="notifications-outline" onPress={() => router.push("/reminders" as never)} />
         <ActionCard title="Add Visit Manually" subtitle="If patient is not in queue" icon="create-outline" onPress={() => router.push("/patient/visit" as never)} />
@@ -146,7 +146,7 @@ export default function DoctorDashboard() {
         <ActionCard title="Change Password" subtitle="Update your login password" icon="key-outline" onPress={() => router.push("/settings/change-password" as never)} />
       </SectionCard>
 
-      <SectionCard title="Waiting Queue">
+      <SectionCard title="Waiting Queue" subtitle="Tap a patient to start the visit entry.">
         {waiting.length ? (
           <View style={{ gap: 10 }}>
             {waiting.slice(0, 10).map((item: AppointmentRow) => (
@@ -203,9 +203,10 @@ export default function DoctorDashboard() {
       </SectionCard>
 
       <View style={{ flexDirection: "row", gap: 10 }}>
-        <AppButton title="Refresh" icon="refresh-outline" variant="secondary" onPress={load} style={{ flex: 1 }} />
+        <AppButton title="Refresh" icon="refresh-outline" variant="secondary" onPress={load} loading={loading} style={{ flex: 1 }} />
         <AppButton title="Logout" icon="log-out-outline" variant="ghost" onPress={logout} style={{ flex: 1 }} />
       </View>
     </Screen>
   );
 }
+
