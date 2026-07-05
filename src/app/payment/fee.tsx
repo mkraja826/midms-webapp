@@ -172,17 +172,17 @@ export default function ReceptionFeeScreen() {
   }
 
   return (
-    <Screen>
+    <Screen refreshing={loadingPatients} onRefresh={loadPatients}>
       <View style={{ gap: 6 }}>
         <Text style={{ color: colors.text, fontSize: 30, fontWeight: "900" }}>
           Reception Fees
         </Text>
         <Text style={{ color: colors.muted, fontSize: 15, lineHeight: 21 }}>
-          Collect OP, X-ray, medication, treatment, or other clinic fees as separate categories.
+          Collect OP, X-ray, medication, treatment, or other clinic fees with correct patient and payment method.
         </Text>
       </View>
 
-      <SectionCard title="Fee Type">
+      <SectionCard title="Fee Type" subtitle="Choose the correct fee category so owner revenue reports stay clear.">
         <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 10 }}>
           {FEE_TYPES.map((item) => (
             <FeeTypeCard
@@ -197,7 +197,7 @@ export default function ReceptionFeeScreen() {
         </View>
       </SectionCard>
 
-      <SectionCard title="Select Patient">
+      <SectionCard title="Select Patient" subtitle="Confirm the patient before collecting any clinic fee.">
         {selectedPatient ? (
           <View style={{ padding: 14, borderRadius: 18, borderWidth: 1, borderColor: colors.primary, backgroundColor: colors.primarySoft, gap: 8 }}>
             <View style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
@@ -261,7 +261,7 @@ export default function ReceptionFeeScreen() {
         )}
       </SectionCard>
 
-      <SectionCard title="Payment">
+      <SectionCard title="Payment" subtitle="Check amount, payment method, and notes before saving collection.">
         <View style={{ padding: 16, borderRadius: 24, backgroundColor: feeType === "op_fee" ? colors.successSoft : colors.primarySoft, borderWidth: 1, borderColor: colors.border, alignItems: "center", gap: 6 }}>
           <Ionicons name={config.icon} size={34} color={feeType === "op_fee" ? colors.success : colors.primary} />
           <Text style={{ color: colors.muted, fontWeight: "800" }}>{config.title}</Text>
