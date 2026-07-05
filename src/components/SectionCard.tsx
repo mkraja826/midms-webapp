@@ -17,22 +17,22 @@ export function SectionCard({
     <View
       style={{
         backgroundColor: colors.surface,
-        borderRadius: 26,
+        borderRadius: 28,
         padding: 16,
-        gap: 12,
+        gap: 14,
         borderWidth: 1,
         borderColor: colors.border,
         shadowColor: colors.shadow,
-        shadowOpacity: 0.05,
-        shadowRadius: 16,
-        shadowOffset: { width: 0, height: 8 },
+        shadowOpacity: 0.055,
+        shadowRadius: 18,
+        shadowOffset: { width: 0, height: 9 },
         elevation: 2,
         ...style,
       }}
     >
       {title ? (
-        <View style={{ gap: 4 }}>
-          <Text style={{ color: colors.text, fontSize: 18, fontWeight: "900" }}>
+        <View style={{ gap: 5 }}>
+          <Text style={{ color: colors.text, fontSize: 18, fontWeight: "900", letterSpacing: -0.2 }}>
             {title}
           </Text>
           {subtitle ? (
