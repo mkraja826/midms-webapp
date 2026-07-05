@@ -67,7 +67,7 @@ export default function HeadDashboard() {
   const waiting = appointments.filter((item: AppointmentRow) => isWaitingStatus(item.status));
 
   return (
-    <Screen>
+    <Screen refreshing={loading} onRefresh={load}>
       <ClinicBrandHeader
         showManage
         subtitle={`${getRoleLabel(profile?.role ?? "head_doctor")} • Owner Dashboard`}
@@ -91,7 +91,7 @@ export default function HeadDashboard() {
         <StatCard label="Total Patients" value={loading ? "..." : stats?.totalPatients ?? 0} icon="person-outline" />
       </View>
 
-      <SectionCard title="Owner Actions">
+      <SectionCard title="Owner Actions" subtitle="Clinic control panel for revenue, staff, patients, appointments, and follow-ups.">
         <ActionCard title="Reception Check-in" subtitle="Register/select patient + OP fee + waiting queue" icon="send-outline" onPress={() => router.push("/reception/checkin" as never)} />
         <ActionCard title="Add Old Patient" subtitle="Migrate old clinic files with history and opening due" icon="archive-outline" onPress={() => router.push("/patient/add-old" as never)} />
         <ActionCard title="Book Appointment" subtitle="For online/call enquiries" icon="calendar-number-outline" onPress={() => router.push("/appointment/book" as never)} />
@@ -103,7 +103,7 @@ export default function HeadDashboard() {
         <ActionCard title="Change Password" subtitle="Update your login password" icon="key-outline" onPress={() => router.push("/settings/change-password" as never)} />
       </SectionCard>
 
-      <SectionCard title="Live Waiting Queue">
+      <SectionCard title="Live Waiting Queue" subtitle="Track patients currently waiting for doctor visit.">
         {waiting.length ? (
           <View style={{ gap: 10 }}>
             {waiting.slice(0, 8).map((item: AppointmentRow) => (
@@ -154,9 +154,10 @@ export default function HeadDashboard() {
       </SectionCard>
 
       <View style={{ flexDirection: "row", gap: 10 }}>
-        <AppButton title="Refresh" icon="refresh-outline" variant="secondary" onPress={load} style={{ flex: 1 }} />
+        <AppButton title="Refresh" icon="refresh-outline" variant="secondary" onPress={load} loading={loading} style={{ flex: 1 }} />
         <AppButton title="Logout" icon="log-out-outline" variant="ghost" onPress={logout} style={{ flex: 1 }} />
       </View>
     </Screen>
   );
 }
+
