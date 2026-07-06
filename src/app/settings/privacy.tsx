@@ -1,10 +1,14 @@
-import { Ionicons } from "@expo/vector-icons";
+﻿import { Ionicons } from "@expo/vector-icons";
 import { router } from "expo-router";
-import { Text, View } from "react-native";
+import { Alert, Linking, Text, View } from "react-native";
 import { AppButton } from "@/components/AppButton";
 import { Screen } from "@/components/Screen";
 import { SectionCard } from "@/components/SectionCard";
 import { colors } from "@/constants/colors";
+
+const PRIVACY_URL = "https://main.dms-legal.pages.dev/privacy.html";
+const DELETE_URL = "https://main.dms-legal.pages.dev/delete-account.html";
+const TERMS_URL = "https://main.dms-legal.pages.dev/terms.html";
 
 function Row({ text }: { text: string }) {
   return (
@@ -15,32 +19,43 @@ function Row({ text }: { text: string }) {
   );
 }
 
+function openUrl(url: string) {
+  Linking.openURL(url).catch(() => {
+    Alert.alert("Unable to open link", "Please try again later.");
+  });
+}
+
 export default function PrivacyScreen() {
   return (
     <Screen>
       <View style={{ gap: 6 }}>
         <Text style={{ color: colors.text, fontSize: 30, fontWeight: "900" }}>Privacy Help</Text>
         <Text style={{ color: colors.muted, fontSize: 15, lineHeight: 21 }}>
-          Basic privacy and support information for clinic users.
+          Privacy, legal, and support information for clinic users.
         </Text>
       </View>
 
-      <SectionCard title="Privacy" subtitle="Add final live policy link before release.">
-        <Row text="The app is used for clinic records, appointments, uploads, payments, and staff access." />
+      <SectionCard title="Privacy" subtitle="Live public privacy policy is available.">
+        <Row text="DMS is used for clinic records, appointments, uploads, payments, reminders, and staff access." />
+        <Row text="DMS may store clinic, staff, patient, appointment, visit, payment, prescription, X-ray, and photo data." />
         <Row text="Only authorized clinic staff should use the app." />
         <Row text="Keep login details private and do not share staff accounts." />
       </SectionCard>
 
-      <SectionCard title="Account support" subtitle="Add final support link before release.">
-        <Row text="Staff can ask the clinic owner or support contact to remove login access." />
-        <Row text="Clinic records may need to stay available for clinic record keeping." />
+      <SectionCard title="Account and data deletion" subtitle="Deletion requests are available in-app and on the web.">
+        <Row text="Users can request account and related data deletion from Legal & Account." />
+        <Row text="Clinic records may need to be retained for medical, billing, legal, security, or regulatory reasons." />
       </SectionCard>
 
       <SectionCard title="Disclaimer" subtitle="Clinic workflow only.">
         <Row text="This app is for clinic management and record keeping." />
-        <Row text="Clinical decisions remain with clinic professionals." />
+        <Row text="DMS does not provide medical advice, diagnosis, or treatment." />
+        <Row text="Clinical decisions remain with qualified clinic professionals." />
       </SectionCard>
 
+      <AppButton title="Open Privacy Policy" icon="open-outline" variant="secondary" onPress={() => openUrl(PRIVACY_URL)} />
+      <AppButton title="Open Delete Account Page" icon="trash-outline" variant="secondary" onPress={() => openUrl(DELETE_URL)} />
+      <AppButton title="Open Terms Page" icon="document-text-outline" variant="secondary" onPress={() => openUrl(TERMS_URL)} />
       <AppButton title="Back" icon="arrow-back-outline" variant="ghost" onPress={() => router.back()} />
     </Screen>
   );
