@@ -1,4 +1,4 @@
-import { router } from "expo-router";
+﻿import { router } from "expo-router";
 import { Alert, ScrollView, Text } from "react-native";
 import { AppButton } from "@/components/AppButton";
 import { SectionCard } from "@/components/SectionCard";
@@ -32,6 +32,20 @@ export default function ProfileScreen() {
         variant="secondary"
         icon="shield-checkmark-outline"
         onPress={() => router.push("/settings/privacy")}
+      />
+
+      <AppButton
+        title="Terms & Conditions"
+        variant="secondary"
+        icon="document-text-outline"
+        onPress={() => router.push("/settings/terms")}
+      />
+
+      <AppButton
+        title="Delete Account & Data"
+        variant="secondary"
+        icon="trash-outline"
+        onPress={() => router.push("/settings/delete-account")}
       />
 
       <AppButton

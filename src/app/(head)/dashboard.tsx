@@ -217,6 +217,7 @@ export default function HeadDashboard() {
           <QuickAction title="Book Appointment" icon="calendar-number-outline" onPress={() => router.push("/appointment/book" as never)} />
           <QuickAction title="Reminders" icon="notifications-outline" onPress={() => router.push("/reminders" as never)} />
           <QuickAction title="Staff" icon="people-circle-outline" onPress={() => router.push("/staff" as never)} />
+          <QuickAction title="Legal & Account" icon="shield-checkmark-outline" onPress={() => router.push("/settings/legal" as never)} />
         </View>
       </SectionCard>
 
@@ -286,3 +287,4 @@ export default function HeadDashboard() {
     </Screen>
   );
 }
+
