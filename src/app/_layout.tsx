@@ -3,6 +3,7 @@ import { StatusBar } from "expo-status-bar";
 import { ActivityIndicator, Text, View } from "react-native";
 import { AuthProvider, useAuth } from "@/lib/auth";
 import { colors } from "@/constants/colors";
+import "@/lib/error-messages";
 import { isSupabaseConfigured } from "@/lib/supabase";
 
 function ConfigurationErrorScreen() {
@@ -75,15 +76,13 @@ function RootStack() {
           }}
         />
         <Stack.Screen name="payment/fee" options={{ headerShown: true, title: "Reception Fees" }} />
-<Stack.Screen name="payment/op-fee" options={{ headerShown: true, title: "OP Fee" }} />
-<Stack.Screen name="payment/medication-fee" options={{ headerShown: true, title: "Medication Fee" }} />
+        <Stack.Screen name="payment/op-fee" options={{ headerShown: true, title: "OP Fee" }} />
+        <Stack.Screen name="payment/medication-fee" options={{ headerShown: true, title: "Medication Fee" }} />
         <Stack.Screen name="image-viewer" />
         <Stack.Screen name="(head)" />
         <Stack.Screen name="(doctor)" />
         <Stack.Screen name="(reception)" />
 
-        {/* Existing patient/staff routes can stay. These lines keep old screens reachable if present. */}
-        
         <Stack.Screen name="patient/add" options={{ headerShown: true, title: "Add Patient" }} />
         <Stack.Screen name="patient/add-old" options={{ headerShown: true, title: "Add Old Patient" }} />
         <Stack.Screen name="patient/edit" options={{ headerShown: true, title: "Edit Patient" }} />
