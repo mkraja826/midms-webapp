@@ -117,3 +117,5 @@ export function installFriendlyAlertFilter() {
     return originalAlert(title, safeMessage, buttons, options);
   };
 }
+
+installFriendlyAlertFilter();
