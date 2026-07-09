@@ -135,8 +135,15 @@ export default function ClinicReportScreen() {
         </View>
       </SectionCard>
 
-      <SectionCard title="Export Note" subtitle="Full Excel/PDF export needs backend/export support later. For pilot, use this report as the daily closing view.">
-        <EmptyState title="Export coming after pilot" message="First verify clinic workflow accuracy. Then we can add patient, visit, billing, and staff export safely." icon="download-outline" />
+      <SectionCard
+        title="Export Privacy"
+        subtitle="Owner-facing exports should look human-readable and clinic-friendly."
+      >
+        <EmptyState
+          title="No technical IDs in exports"
+          message="When export is enabled, it should use patient names, phone numbers, patient codes, visit dates, staff names, and amounts. Internal database IDs, UUIDs, clinic IDs, file IDs, and user IDs should stay hidden."
+          icon="shield-checkmark-outline"
+        />
       </SectionCard>
 
       <View style={{ flexDirection: "row", gap: 10 }}>
