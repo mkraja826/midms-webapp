@@ -1,6 +1,5 @@
 import { Session } from "@supabase/supabase-js";
 import { router, useSegments } from "expo-router";
-import * as Linking from "expo-linking";
 import {
   createContext,
   ReactNode,
@@ -34,13 +33,11 @@ type AuthContextValue = {
 };
 
 const AuthContext = createContext<AuthContextValue | null>(null);
+const PASSWORD_RESET_REDIRECT_URL =
+  process.env.EXPO_PUBLIC_PASSWORD_RESET_REDIRECT_URL ?? "dms://auth/reset-password";
 
 function isRoleGroup(segment?: string) {
   return segment === "(head)" || segment === "(doctor)" || segment === "(reception)";
-}
-
-function getResetPasswordRedirectUrl() {
-  return Linking.createURL("/auth/reset-password");
 }
 
 async function withTimeout<T>(promise: Promise<T>, ms = 12000): Promise<T> {
@@ -263,7 +260,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       async resetPassword(email) {
         const { error } = await withTimeout(
           supabase.auth.resetPasswordForEmail(email.trim().toLowerCase(), {
-            redirectTo: getResetPasswordRedirectUrl(),
+            redirectTo: PASSWORD_RESET_REDIRECT_URL,
           }),
           10000
         );
