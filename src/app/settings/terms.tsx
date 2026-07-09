@@ -1,8 +1,16 @@
-﻿import { ScrollView, Text, View } from "react-native";
+import { router } from "expo-router";
+import { Alert, Linking, ScrollView, Text, View } from "react-native";
 import { AppButton } from "@/components/AppButton";
 import { SectionCard } from "@/components/SectionCard";
 import { colors } from "@/constants/colors";
-import { router } from "expo-router";
+
+const TERMS_URL = "https://dms.micirql.com/terms";
+
+function openTermsPage() {
+  Linking.openURL(TERMS_URL).catch(() => {
+    Alert.alert("Unable to open link", "Please try again later.");
+  });
+}
 
 export default function TermsScreen() {
   return (
@@ -47,6 +55,7 @@ export default function TermsScreen() {
         </View>
       </SectionCard>
 
+      <AppButton title="Open Terms Page" variant="secondary" icon="open-outline" onPress={openTermsPage} />
       <AppButton title="Back" variant="secondary" icon="arrow-back-outline" onPress={() => router.back()} />
     </ScrollView>
   );
