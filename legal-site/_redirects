@@ -2,4 +2,6 @@
 /terms /terms.html 200
 /delete-account /delete-account.html 200
 /account-deletion /delete-account.html 200
+/auth/callback /auth/callback.html 200
+/auth/reset-password /auth/reset-password.html 200
 /* /index.html 200
