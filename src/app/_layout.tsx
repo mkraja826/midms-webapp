@@ -34,9 +34,9 @@ function RootStack() {
   if (loading) {
     return (
       <View style={styles.loadingScreen}>
-        <StatusBar style="light" />
+        <StatusBar style="dark" />
 
-        <View style={styles.logoGlow}>
+        <View style={styles.logoCard}>
           <Image source={appLogo} style={styles.loadingLogo} resizeMode="contain" />
         </View>
 
@@ -44,7 +44,7 @@ function RootStack() {
         <Text style={styles.loadingSubtitle}>Clinic Management System</Text>
 
         <View style={styles.loadingStatus}>
-          <ActivityIndicator color="#22D3EE" />
+          <ActivityIndicator color={colors.primary} />
           <Text style={styles.loadingMessage}>
             {loadingMessage || "Preparing your clinic workspace..."}
           </Text>
@@ -110,37 +110,39 @@ const styles = StyleSheet.create({
     flex: 1,
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: "#030614",
+    backgroundColor: colors.background,
     paddingHorizontal: 28,
   },
-  logoGlow: {
-    width: 148,
-    height: 148,
+  logoCard: {
+    width: 164,
+    height: 164,
     borderRadius: 42,
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: "rgba(15, 23, 42, 0.92)",
-    shadowColor: "#22D3EE",
-    shadowOpacity: 0.35,
-    shadowRadius: 28,
-    shadowOffset: { width: 0, height: 0 },
-    elevation: 12,
+    backgroundColor: colors.white,
+    borderWidth: 1,
+    borderColor: colors.border,
+    shadowColor: colors.shadow,
+    shadowOpacity: 0.1,
+    shadowRadius: 18,
+    shadowOffset: { width: 0, height: 8 },
+    elevation: 8,
   },
   loadingLogo: {
-    width: 128,
-    height: 128,
-    borderRadius: 34,
+    width: 132,
+    height: 132,
+    borderRadius: 30,
   },
   loadingTitle: {
     marginTop: 26,
-    color: "#F8FAFC",
+    color: colors.text,
     fontSize: 34,
     fontWeight: "900",
     letterSpacing: 0.8,
   },
   loadingSubtitle: {
     marginTop: 8,
-    color: "#94A3B8",
+    color: colors.muted,
     fontSize: 14,
     fontWeight: "700",
     letterSpacing: 0.4,
@@ -151,7 +153,7 @@ const styles = StyleSheet.create({
     gap: 12,
   },
   loadingMessage: {
-    color: "#CBD5E1",
+    color: colors.muted,
     fontSize: 14,
     fontWeight: "700",
     textAlign: "center",
