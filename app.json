@@ -7,6 +7,11 @@
     "orientation": "portrait",
     "userInterfaceStyle": "light",
     "icon": "./assets/icon.png",
+    "splash": {
+      "image": "./assets/splash-logo.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#030614"
+    },
     "assetBundlePatterns": [
       "**/*"
     ],
