@@ -1,5 +1,6 @@
 import { Session } from "@supabase/supabase-js";
 import { router, useSegments } from "expo-router";
+import * as Linking from "expo-linking";
 import {
   createContext,
   ReactNode,
@@ -36,6 +37,10 @@ const AuthContext = createContext<AuthContextValue | null>(null);
 
 function isRoleGroup(segment?: string) {
   return segment === "(head)" || segment === "(doctor)" || segment === "(reception)";
+}
+
+function getResetPasswordRedirectUrl() {
+  return Linking.createURL("/auth/reset-password");
 }
 
 async function withTimeout<T>(promise: Promise<T>, ms = 12000): Promise<T> {
@@ -258,7 +263,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       async resetPassword(email) {
         const { error } = await withTimeout(
           supabase.auth.resetPasswordForEmail(email.trim().toLowerCase(), {
-            redirectTo: "dms://auth/reset-password",
+            redirectTo: getResetPasswordRedirectUrl(),
           }),
           10000
         );
@@ -267,7 +272,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
         Alert.alert(
           "Check your email",
-          "If this email is registered, reset link will be sent."
+          "Open the reset link from the same phone to set a new password."
         );
       },
 
