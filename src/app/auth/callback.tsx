@@ -1,4 +1,5 @@
 import { router } from "expo-router";
+import * as Linking from "expo-linking";
 import { useEffect, useState } from "react";
 import { Alert, ActivityIndicator, Text, View } from "react-native";
 import { AppButton } from "@/components/AppButton";
@@ -20,7 +21,9 @@ function paramsFromUrl(url: string) {
   return params;
 }
 
-async function completeAuthCallback(url: string) {
+async function completeAuthCallback(url: string | null) {
+  if (!url) return;
+
   const params = paramsFromUrl(url);
   const code = params.get("code");
   const accessToken = params.get("access_token");
@@ -44,7 +47,6 @@ async function completeAuthCallback(url: string) {
     });
 
     if (error) throw error;
-    return;
   }
 }
 
@@ -54,16 +56,9 @@ export default function AuthCallbackScreen() {
   useEffect(() => {
     let mounted = true;
 
-    async function handleCallback() {
+    async function handleCallback(url: string | null) {
       try {
-        const { data } = await supabase.auth.getSession();
-
-        if (!data.session) {
-          const currentUrl = window?.location?.href;
-          if (currentUrl) {
-            await completeAuthCallback(currentUrl);
-          }
-        }
+        await completeAuthCallback(url);
 
         if (!mounted) return;
 
@@ -81,10 +76,17 @@ export default function AuthCallbackScreen() {
       }
     }
 
-    handleCallback();
+    Linking.getInitialURL().then(handleCallback).catch(() => {
+      if (mounted) setFailed(true);
+    });
+
+    const subscription = Linking.addEventListener("url", ({ url }) => {
+      handleCallback(url).catch(() => undefined);
+    });
 
     return () => {
       mounted = false;
+      subscription.remove();
     };
   }, []);
 
