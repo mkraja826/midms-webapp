@@ -33,8 +33,12 @@ type AuthContextValue = {
 };
 
 const AuthContext = createContext<AuthContextValue | null>(null);
+const EMAIL_VERIFICATION_REDIRECT_URL =
+  process.env.EXPO_PUBLIC_EMAIL_VERIFICATION_REDIRECT_URL ??
+  "https://dms.micirql.com/auth/callback";
 const PASSWORD_RESET_REDIRECT_URL =
-  process.env.EXPO_PUBLIC_PASSWORD_RESET_REDIRECT_URL ?? "dms://auth/reset-password";
+  process.env.EXPO_PUBLIC_PASSWORD_RESET_REDIRECT_URL ??
+  "https://dms.micirql.com/auth/reset-password";
 
 function isRoleGroup(segment?: string) {
   return segment === "(head)" || segment === "(doctor)" || segment === "(reception)";
@@ -233,7 +237,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             email: email.trim().toLowerCase(),
             password,
             options: {
-              emailRedirectTo: "dms://auth/callback",
+              emailRedirectTo: EMAIL_VERIFICATION_REDIRECT_URL,
             },
           }),
           10000
@@ -248,7 +252,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             email: email.trim().toLowerCase(),
             password,
             options: {
-              emailRedirectTo: "dms://auth/callback",
+              emailRedirectTo: EMAIL_VERIFICATION_REDIRECT_URL,
             },
           }),
           10000
