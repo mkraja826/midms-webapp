@@ -41,12 +41,12 @@ function RootStack() {
         </View>
 
         <Text style={styles.loadingTitle}>MiDMS</Text>
-        <Text style={styles.loadingSubtitle}>Clinic Management System</Text>
+        <Text style={styles.loadingSubtitle}>Dental Management System</Text>
 
         <View style={styles.loadingStatus}>
           <ActivityIndicator color={colors.primary} />
           <Text style={styles.loadingMessage}>
-            {loadingMessage || "Preparing your clinic workspace..."}
+            {loadingMessage || "Preparing your dental workspace..."}
           </Text>
         </View>
       </View>
