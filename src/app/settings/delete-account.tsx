@@ -1,20 +1,21 @@
-﻿import { Linking, ScrollView, Text, View } from "react-native";
+import { router } from "expo-router";
+import { Linking, ScrollView, Text, View } from "react-native";
 import { AppButton } from "@/components/AppButton";
 import { SectionCard } from "@/components/SectionCard";
 import { colors } from "@/constants/colors";
-import { router } from "expo-router";
 import { useAuth } from "@/lib/auth";
 
-const SUPPORT_EMAIL = "karthikraja826@gmail.com";
+const SUPPORT_EMAIL = "support@micirql.com";
+const DELETE_ACCOUNT_URL = "https://dms.micirql.com/delete-account";
 
 export default function DeleteAccountScreen() {
   const { profile } = useAuth();
 
-  const subject = encodeURIComponent("DMS account and data deletion request");
+  const subject = encodeURIComponent("MiDMS account and data deletion request");
   const body = encodeURIComponent(
-    `Hello DMS Support,
+    `Hello MiDMS Support,
 
-I want to request deletion of my DMS account and related clinic data.
+I want to request deletion of my MiDMS account and related clinic data.
 
 Account email: ${profile?.email ?? ""}
 Clinic ID: ${profile?.clinic_id ?? ""}
@@ -30,6 +31,10 @@ ${profile?.name ?? ""}`
 
   function requestDeletion() {
     Linking.openURL(`mailto:${SUPPORT_EMAIL}?subject=${subject}&body=${body}`);
+  }
+
+  function openDeletePage() {
+    Linking.openURL(DELETE_ACCOUNT_URL);
   }
 
   return (
@@ -51,12 +56,13 @@ ${profile?.name ?? ""}`
 
           <Text style={{ color: colors.text, fontWeight: "900", fontSize: 16 }}>How to request deletion</Text>
           <Text style={{ color: colors.muted, lineHeight: 21 }}>
-            Tap the button below to send a deletion request from your registered email. Support will verify the
-            request before deleting or restricting access to data.
+            Tap the button below to open the public deletion page or send a deletion request email. Support will verify
+            the request before deleting or restricting access to data.
           </Text>
         </View>
       </SectionCard>
 
+      <AppButton title="Open Delete Account Page" variant="secondary" icon="open-outline" onPress={openDeletePage} />
       <AppButton title="Request deletion by email" variant="danger" icon="trash-outline" onPress={requestDeletion} />
       <AppButton title="Back" variant="secondary" icon="arrow-back-outline" onPress={() => router.back()} />
     </ScrollView>
