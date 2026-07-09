@@ -10,7 +10,7 @@
     "splash": {
       "image": "./assets/splash-logo.png",
       "resizeMode": "contain",
-      "backgroundColor": "#030614"
+      "backgroundColor": "#F6FAFB"
     },
     "assetBundlePatterns": [
       "**/*"
@@ -42,7 +42,7 @@
       "allowBackup": false,
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
-        "backgroundColor": "#030614"
+        "backgroundColor": "#F6FAFB"
       },
       "permissions": [
         "android.permission.CAMERA",
