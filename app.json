@@ -37,7 +37,7 @@
       "allowBackup": false,
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
-        "backgroundColor": "#0F766E"
+        "backgroundColor": "#030614"
       },
       "permissions": [
         "android.permission.CAMERA",
