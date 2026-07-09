@@ -1,4 +1,4 @@
-﻿import { Ionicons } from "@expo/vector-icons";
+import { Ionicons } from "@expo/vector-icons";
 import { router } from "expo-router";
 import { Alert, Linking, Text, View } from "react-native";
 import { AppButton } from "@/components/AppButton";
@@ -6,9 +6,9 @@ import { Screen } from "@/components/Screen";
 import { SectionCard } from "@/components/SectionCard";
 import { colors } from "@/constants/colors";
 
-const PRIVACY_URL = "https://main.dms-legal.pages.dev/privacy.html";
-const DELETE_URL = "https://main.dms-legal.pages.dev/delete-account.html";
-const TERMS_URL = "https://main.dms-legal.pages.dev/terms.html";
+const PRIVACY_URL = "https://dms.micirql.com/privacy";
+const DELETE_URL = "https://dms.micirql.com/delete-account";
+const TERMS_URL = "https://dms.micirql.com/terms";
 
 function Row({ text }: { text: string }) {
   return (
