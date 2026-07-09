@@ -58,6 +58,10 @@ function toNumber(value: string) {
   return Number.isFinite(number) ? number : 0;
 }
 
+function formatMoney(value: number) {
+  return `₹${Math.max(0, Math.round(Number(value || 0))).toLocaleString("en-IN")}`;
+}
+
 function pad(value: number) {
   return String(value).padStart(2, "0");
 }
@@ -125,6 +129,8 @@ export default function AddVisitScreen() {
   const [treatmentCategory, setTreatmentCategory] = useState("");
   const [treatmentCost, setTreatmentCost] = useState("");
   const [paidAmount, setPaidAmount] = useState("");
+  const [pendingBalance, setPendingBalance] = useState(0);
+  const [loadingPendingBalance, setLoadingPendingBalance] = useState(false);
   const [bookFollowup, setBookFollowup] = useState(false);
   const [selectedDateKey, setSelectedDateKey] = useState(firstDateWithFutureSlot.key);
   const [selectedTimeIndex, setSelectedTimeIndex] = useState(0);
@@ -150,6 +156,48 @@ export default function AddVisitScreen() {
   useEffect(() => {
     loadPatients();
   }, [incomingPatientId]);
+
+  useEffect(() => {
+    let active = true;
+
+    async function loadPendingBalance() {
+      if (!selectedPatientId) {
+        setPendingBalance(0);
+        setLoadingPendingBalance(false);
+        return;
+      }
+
+      try {
+        setLoadingPendingBalance(true);
+        const { data, error } = await supabase
+          .from("invoices")
+          .select("due_amount")
+          .eq("patient_id", selectedPatientId)
+          .gt("due_amount", 0)
+          .in("status", ["unpaid", "partial"]);
+
+        if (error) throw error;
+
+        const total = (data ?? []).reduce(
+          (sum: number, row: { due_amount?: number | string | null }) => sum + Number(row.due_amount || 0),
+          0
+        );
+
+        if (active) setPendingBalance(total);
+      } catch (error) {
+        console.warn("Pending balance load failed", error instanceof Error ? error.message : error);
+        if (active) setPendingBalance(0);
+      } finally {
+        if (active) setLoadingPendingBalance(false);
+      }
+    }
+
+    loadPendingBalance();
+
+    return () => {
+      active = false;
+    };
+  }, [selectedPatientId]);
 
   const selectedPatient = useMemo(
     () => patients.find((patient) => patient.id === selectedPatientId) || null,
@@ -191,6 +239,9 @@ export default function AddVisitScreen() {
   }, [availableTimeSlots, selectedTimeIndex]);
 
   const selectedTime = TIME_SLOTS[selectedTimeIndex] || TIME_SLOTS[0];
+  const treatmentCostValue = toNumber(treatmentCost);
+  const paidNowValue = toNumber(paidAmount);
+  const balanceAfterVisit = Math.max(pendingBalance + treatmentCostValue - paidNowValue, 0);
 
   const complaintSummary = useMemo(() => {
     const selectedWithoutOther = selectedComplaints.filter((item) => item !== "Other");
@@ -432,6 +483,30 @@ export default function AddVisitScreen() {
         <AppInput label="Treatment name" value={treatmentName} onChangeText={setTreatmentName} placeholder="RCT, extraction, filling, scaling..." />
         <AppInput label="Treatment category" value={treatmentCategory} onChangeText={setTreatmentCategory} placeholder="Optional category" />
         <AppInput label="Treatment cost" value={treatmentCost} onChangeText={setTreatmentCost} keyboardType="numeric" placeholder="Example: 2500" />
+
+        <View
+          style={{
+            padding: 12,
+            borderRadius: 16,
+            borderWidth: 1,
+            borderColor: pendingBalance > 0 ? colors.warning : colors.border,
+            backgroundColor: pendingBalance > 0 ? colors.warningSoft : colors.surfaceSoft,
+            gap: 6,
+          }}
+        >
+          <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+            <Ionicons name="wallet-outline" size={18} color={pendingBalance > 0 ? colors.warning : colors.primary} />
+            <Text style={{ color: colors.text, fontWeight: "900" }}>
+              Previous pending: {loadingPendingBalance ? "Checking..." : formatMoney(pendingBalance)}
+            </Text>
+          </View>
+          {(pendingBalance > 0 || treatmentCostValue > 0 || paidNowValue > 0) ? (
+            <Text style={{ color: colors.muted, fontSize: 12, lineHeight: 17 }}>
+              Balance after this visit: {formatMoney(balanceAfterVisit)}
+            </Text>
+          ) : null}
+        </View>
+
         <AppInput label="Paid now" value={paidAmount} onChangeText={setPaidAmount} keyboardType="numeric" placeholder="Example: 1000" helper="If paid partially, due amount is created automatically." />
       </SectionCard>
 
