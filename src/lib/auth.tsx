@@ -33,12 +33,8 @@ type AuthContextValue = {
 };
 
 const AuthContext = createContext<AuthContextValue | null>(null);
-const EMAIL_VERIFICATION_REDIRECT_URL =
-  process.env.EXPO_PUBLIC_EMAIL_VERIFICATION_REDIRECT_URL ??
-  "https://dms.micirql.com/auth/callback";
 const PASSWORD_RESET_REDIRECT_URL =
-  process.env.EXPO_PUBLIC_PASSWORD_RESET_REDIRECT_URL ??
-  "https://dms.micirql.com/auth/reset-password";
+  process.env.EXPO_PUBLIC_PASSWORD_RESET_REDIRECT_URL ?? "dms://auth/reset-password";
 
 function isRoleGroup(segment?: string) {
   return segment === "(head)" || segment === "(doctor)" || segment === "(reception)";
@@ -47,15 +43,12 @@ function isRoleGroup(segment?: string) {
 async function withTimeout<T>(promise: Promise<T>, ms = 12000): Promise<T> {
   return Promise.race([
     promise,
-    new Promise<T>((_, reject) =>
-      setTimeout(() => reject(new Error("Request timed out")), ms)
-    ),
+    new Promise<T>((_, reject) => setTimeout(() => reject(new Error("Request timed out")), ms)),
   ]);
 }
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const segments = useSegments();
-
   const [session, setSession] = useState<Session | null>(null);
   const [profile, setProfile] = useState<Profile | null>(null);
   const [loading, setLoading] = useState(true);
@@ -77,67 +70,49 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   async function loadSession(nextSession: Session | null) {
     setLoadingMessage("Checking login...");
     setSession(nextSession);
-
     if (!nextSession) {
       setProfile(null);
       return;
     }
-
     await refreshProfile();
   }
 
   useEffect(() => {
     let mounted = true;
-
     async function initAuth() {
       try {
         setLoadingMessage("Opening DMS...");
         const { data } = await supabase.auth.getSession();
-
         if (!mounted) return;
-
         await loadSession(data.session);
       } catch (error) {
         console.warn("Initial auth load failed:", error);
-
         if (!mounted) return;
-
         setSession(null);
         setProfile(null);
       } finally {
-        if (mounted) {
-          setLoading(false);
-        }
+        if (mounted) setLoading(false);
       }
     }
-
     initAuth();
-
-    const { data: listener } = supabase.auth.onAuthStateChange(
-      async (event, nextSession) => {
-        if (!mounted) return;
-
-        if (event === "TOKEN_REFRESHED") {
-          setSession(nextSession);
-          return;
-        }
-
-        try {
-          setLoading(true);
-          setLoadingMessage("Restoring clinic session...");
-          await loadSession(nextSession);
-        } catch (error) {
-          console.warn("Auth state load failed:", error);
-          setSession(null);
-          setProfile(null);
-        } finally {
-          if (mounted) {
-            setLoading(false);
-          }
-        }
+    const { data: listener } = supabase.auth.onAuthStateChange(async (event, nextSession) => {
+      if (!mounted) return;
+      if (event === "TOKEN_REFRESHED") {
+        setSession(nextSession);
+        return;
       }
-    );
-
+      try {
+        setLoading(true);
+        setLoadingMessage("Restoring clinic session...");
+        await loadSession(nextSession);
+      } catch (error) {
+        console.warn("Auth state load failed:", error);
+        setSession(null);
+        setProfile(null);
+      } finally {
+        if (mounted) setLoading(false);
+      }
+    });
     return () => {
       mounted = false;
       listener.subscription.unsubscribe();
@@ -146,61 +121,37 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     if (loading) return;
-
     const firstSegment = segments[0];
     const secondSegment = segments[1];
     const isAuthScreen = firstSegment === "auth";
-    const isSettingsPasswordScreen =
-      firstSegment === "settings" && secondSegment === "change-password";
+    const isSettingsPasswordScreen = firstSegment === "settings" && secondSegment === "change-password";
 
     if (!session) {
-      if (firstSegment !== "login" && !isAuthScreen) {
-        router.replace("/login");
-      }
+      if (firstSegment !== "login" && !isAuthScreen) router.replace("/login");
       return;
     }
-
-    if (isAuthScreen || isSettingsPasswordScreen) {
-      return;
-    }
-
+    if (isAuthScreen || isSettingsPasswordScreen) return;
     if (session && !profile) {
-      if (firstSegment !== "onboarding") {
-        router.replace("/onboarding");
-      }
+      if (firstSegment !== "onboarding") router.replace("/onboarding");
       return;
     }
-
     if (session && profile) {
       const normalizedRole = normalizeRole(profile.role);
-
       if (!profile.clinic_id) {
         if (normalizedRole === "head_doctor") {
           if (firstSegment !== "onboarding") router.replace("/onboarding");
           return;
         }
-
-        if (firstSegment !== "clinic" || secondSegment !== "contact-admin") {
-          router.replace("/clinic/contact-admin" as never);
-        }
+        if (firstSegment !== "clinic" || secondSegment !== "contact-admin") router.replace("/clinic/contact-admin" as never);
         return;
       }
-
       const correctPath = getDashboardPath(profile.role);
       const correctSegment = getRoleSegment(profile.role);
-
-      if (
-        firstSegment === "login" ||
-        firstSegment === "onboarding" ||
-        firstSegment === undefined
-      ) {
+      if (firstSegment === "login" || firstSegment === "onboarding" || firstSegment === undefined) {
         router.replace(correctPath as never);
         return;
       }
-
-      if (isRoleGroup(firstSegment) && firstSegment !== correctSegment) {
-        router.replace(correctPath as never);
-      }
+      if (isRoleGroup(firstSegment) && firstSegment !== correctSegment) router.replace(correctPath as never);
     }
   }, [loading, session, profile, segments]);
 
@@ -211,18 +162,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       loading,
       loadingMessage,
       refreshProfile,
-
       async signIn(email, password) {
         const { data, error } = await withTimeout(
-          supabase.auth.signInWithPassword({
-            email: email.trim().toLowerCase(),
-            password,
-          }),
+          supabase.auth.signInWithPassword({ email: email.trim().toLowerCase(), password }),
           10000
         );
-
         if (error) throw error;
-
         if (data.user && !data.user.email_confirmed_at) {
           await supabase.auth.signOut();
           setSession(null);
@@ -230,67 +175,43 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           throw new Error("Please verify your email before logging in.");
         }
       },
-
       async signUpOwner(email, password) {
         const { error } = await withTimeout(
           supabase.auth.signUp({
             email: email.trim().toLowerCase(),
             password,
-            options: {
-              emailRedirectTo: EMAIL_VERIFICATION_REDIRECT_URL,
-            },
+            options: { emailRedirectTo: "dms://auth/callback" },
           }),
           10000
         );
-
         if (error) throw error;
       },
-
       async signUpStaff(email, password) {
         const { error } = await withTimeout(
           supabase.auth.signUp({
             email: email.trim().toLowerCase(),
             password,
-            options: {
-              emailRedirectTo: EMAIL_VERIFICATION_REDIRECT_URL,
-            },
+            options: { emailRedirectTo: "dms://auth/callback" },
           }),
           10000
         );
-
         if (error) throw error;
       },
-
       async resetPassword(email) {
         const { error } = await withTimeout(
-          supabase.auth.resetPasswordForEmail(email.trim().toLowerCase(), {
-            redirectTo: PASSWORD_RESET_REDIRECT_URL,
-          }),
+          supabase.auth.resetPasswordForEmail(email.trim().toLowerCase(), { redirectTo: PASSWORD_RESET_REDIRECT_URL }),
           10000
         );
-
         if (error) throw error;
-
-        Alert.alert(
-          "Check your email",
-          "Open the reset link from the same phone to set a new password."
-        );
+        Alert.alert("Check your email", "Open the reset link from the same phone to set a new password.");
       },
-
       async updatePassword(password) {
-        const { error } = await withTimeout(
-          supabase.auth.updateUser({ password }),
-          10000
-        );
-
+        const { error } = await withTimeout(supabase.auth.updateUser({ password }), 10000);
         if (error) throw error;
       },
-
       async signOut() {
         const { error } = await supabase.auth.signOut();
-
         if (error) throw error;
-
         setSession(null);
         setProfile(null);
         router.replace("/login");
@@ -304,10 +225,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
 export function useAuth() {
   const value = useContext(AuthContext);
-
-  if (!value) {
-    throw new Error("useAuth must be used inside AuthProvider");
-  }
-
+  if (!value) throw new Error("useAuth must be used inside AuthProvider");
   return value;
 }
