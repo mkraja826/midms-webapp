@@ -58,6 +58,7 @@ function RootStack() {
       >
         <Stack.Screen name="index" />
         <Stack.Screen name="login" />
+        <Stack.Screen name="auth/callback" options={{ headerShown: true, title: "Verifying Email" }} />
         <Stack.Screen name="auth/forgot-password" options={{ headerShown: true, title: "Forgot Password" }} />
         <Stack.Screen name="auth/reset-password" options={{ headerShown: true, title: "Reset Password" }} />
         <Stack.Screen name="settings/change-password" options={{ headerShown: true, title: "Change Password" }} />
@@ -75,15 +76,14 @@ function RootStack() {
           }}
         />
         <Stack.Screen name="payment/fee" options={{ headerShown: true, title: "Reception Fees" }} />
-<Stack.Screen name="payment/op-fee" options={{ headerShown: true, title: "OP Fee" }} />
-<Stack.Screen name="payment/medication-fee" options={{ headerShown: true, title: "Medication Fee" }} />
+        <Stack.Screen name="payment/op-fee" options={{ headerShown: true, title: "OP Fee" }} />
+        <Stack.Screen name="payment/medication-fee" options={{ headerShown: true, title: "Medication Fee" }} />
         <Stack.Screen name="image-viewer" />
         <Stack.Screen name="(head)" />
         <Stack.Screen name="(doctor)" />
         <Stack.Screen name="(reception)" />
 
         {/* Existing patient/staff routes can stay. These lines keep old screens reachable if present. */}
-        
         <Stack.Screen name="patient/add" options={{ headerShown: true, title: "Add Patient" }} />
         <Stack.Screen name="patient/add-old" options={{ headerShown: true, title: "Add Old Patient" }} />
         <Stack.Screen name="patient/edit" options={{ headerShown: true, title: "Edit Patient" }} />
