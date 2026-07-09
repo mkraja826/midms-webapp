@@ -7,16 +7,20 @@
     "orientation": "portrait",
     "userInterfaceStyle": "light",
     "icon": "./assets/icon.png",
-    "splash": {
-      "image": "./assets/splash-logo.png",
-      "resizeMode": "contain",
-      "backgroundColor": "#F6FAFB"
-    },
     "assetBundlePatterns": [
       "**/*"
     ],
     "plugins": [
       "expo-router",
+      [
+        "expo-splash-screen",
+        {
+          "image": "./assets/splash-logo.png",
+          "imageWidth": 220,
+          "resizeMode": "contain",
+          "backgroundColor": "#F6FAFB"
+        }
+      ],
       [
         "expo-image-picker",
         {
