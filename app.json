@@ -1,6 +1,6 @@
 {
   "expo": {
-    "name": "DMS",
+    "name": "MiDMS",
     "slug": "dmsdms",
     "scheme": "dms",
     "version": "1.1.0",
@@ -15,8 +15,8 @@
       [
         "expo-image-picker",
         {
-          "cameraPermission": "DMS needs camera access to take patient photos, prescription photos, and X-ray images.",
-          "photosPermission": "DMS needs photo library access to upload patient photos, prescriptions, X-rays, and reports."
+          "cameraPermission": "MiDMS needs camera access to take patient photos, prescription photos, and X-ray images.",
+          "photosPermission": "MiDMS needs photo library access to upload patient photos, prescriptions, X-rays, and reports."
         }
       ],
       [
@@ -54,8 +54,8 @@
       "bundleIdentifier": "com.dms.clinic",
       "buildNumber": "2",
       "infoPlist": {
-        "NSCameraUsageDescription": "DMS needs camera access to take patient photos, prescription photos, and X-ray images.",
-        "NSPhotoLibraryUsageDescription": "DMS needs photo library access to upload patient photos, prescriptions, X-rays, and reports.",
+        "NSCameraUsageDescription": "MiDMS needs camera access to take patient photos, prescription photos, and X-ray images.",
+        "NSPhotoLibraryUsageDescription": "MiDMS needs photo library access to upload patient photos, prescriptions, X-rays, and reports.",
         "ITSAppUsesNonExemptEncryption": false
       }
     },
