@@ -14,6 +14,8 @@ import { Patient, searchPatientsAdvanced } from "@/lib/supabase";
 type DatePreset = "all" | "today" | "yesterday" | "week" | "month" | "custom";
 type DateField = "registered" | "visit" | "appointment" | "followup" | "payment";
 
+const PAGE_SIZE = 10;
+
 const DATE_PRESETS: { key: DatePreset; label: string }[] = [
   { key: "all", label: "All" },
   { key: "today", label: "Today" },
@@ -43,6 +45,7 @@ export default function PatientSearchScreen() {
   const [dateField, setDateField] = useState<DateField>("registered");
   const [startDate, setStartDate] = useState("");
   const [endDate, setEndDate] = useState("");
+  const [page, setPage] = useState(1);
   const [loading, setLoading] = useState(true);
   const [searching, setSearching] = useState(false);
 
@@ -70,6 +73,7 @@ export default function PatientSearchScreen() {
         endDate,
       });
       setPatients(rows);
+      setPage(1);
     } catch (error) {
       Alert.alert(
         "Search failed",
@@ -85,11 +89,24 @@ export default function PatientSearchScreen() {
     runSearch({ datePreset: "all" });
   }, []);
 
+  const totalPages = Math.max(1, Math.ceil(patients.length / PAGE_SIZE));
+  const currentPage = Math.min(page, totalPages);
+  const pageStart = (currentPage - 1) * PAGE_SIZE;
+  const visiblePatients = useMemo(
+    () => patients.slice(pageStart, pageStart + PAGE_SIZE),
+    [patients, pageStart]
+  );
+  const rangeStart = patients.length ? pageStart + 1 : 0;
+  const rangeEnd = Math.min(pageStart + PAGE_SIZE, patients.length);
+
   const title = useMemo(() => {
     if (loading) return "Loading patients...";
-    if (query.trim() || datePreset !== "all") return `${patients.length} result${patients.length === 1 ? "" : "s"}`;
-    return `${patients.length} patient${patients.length === 1 ? "" : "s"}`;
-  }, [datePreset, loading, patients.length, query]);
+    if (!patients.length) return query.trim() || datePreset !== "all" ? "No results" : "No patients yet";
+    if (query.trim() || datePreset !== "all") {
+      return `Showing ${rangeStart}-${rangeEnd} of ${patients.length} result${patients.length === 1 ? "" : "s"}`;
+    }
+    return `Showing ${rangeStart}-${rangeEnd} of ${patients.length} patients`;
+  }, [datePreset, loading, patients.length, query, rangeEnd, rangeStart]);
 
   function updatePreset(next: DatePreset) {
     setDatePreset(next);
@@ -107,6 +124,7 @@ export default function PatientSearchScreen() {
     setDateField("registered");
     setStartDate("");
     setEndDate("");
+    setPage(1);
     runSearch({ query: "", datePreset: "all", dateField: "registered" });
   }
 
@@ -132,7 +150,7 @@ export default function PatientSearchScreen() {
           Patients
         </Text>
         <Text style={{ color: colors.muted, fontSize: 15, lineHeight: 21 }}>
-          Search patients by name, phone, ID, registration, visit, appointment, follow-up, or payment date.
+          Search patients by name, phone, patient code, registration, visit, appointment, follow-up, or payment date.
         </Text>
       </View>
 
@@ -155,7 +173,7 @@ export default function PatientSearchScreen() {
             value={query}
             onChangeText={setQuery}
             onSubmitEditing={() => runSearch()}
-            placeholder="Search patient name, phone, or ID"
+            placeholder="Search patient name, phone, or patient code"
             placeholderTextColor={colors.muted}
             autoCapitalize="none"
             returnKeyType="search"
@@ -273,14 +291,14 @@ export default function PatientSearchScreen() {
         </View>
       </SectionCard>
 
-      <SectionCard title={title} subtitle="Tap a patient to open history. Use the call button for quick contact.">
+      <SectionCard title={title} subtitle="Latest patients appear first. Tap a patient to open history.">
         {loading || searching ? (
           <Text style={{ color: colors.muted }}>
             {loading ? "Loading patients..." : "Searching..."}
           </Text>
         ) : patients.length ? (
           <View style={{ gap: 10 }}>
-            {patients.map((patient) => (
+            {visiblePatients.map((patient) => (
               <Pressable
                 key={patient.id}
                 onPress={() => router.push(`/patient/${patient.id}` as never)}
@@ -319,7 +337,7 @@ export default function PatientSearchScreen() {
 
                   {patient.patient_code ? (
                     <Text style={{ color: colors.muted, marginTop: 2, fontSize: 12 }}>
-                      ID: {patient.patient_code}
+                      Patient Code: {patient.patient_code}
                     </Text>
                   ) : null}
                 </View>
@@ -353,6 +371,31 @@ export default function PatientSearchScreen() {
                 </View>
               </Pressable>
             ))}
+
+            {totalPages > 1 ? (
+              <View style={{ gap: 10, marginTop: 4 }}>
+                <Text style={{ color: colors.muted, textAlign: "center", fontWeight: "800" }}>
+                  Page {currentPage} of {totalPages}
+                </Text>
+                <View style={{ flexDirection: "row", gap: 10 }}>
+                  <AppButton
+                    title="Previous"
+                    icon="chevron-back-outline"
+                    variant="secondary"
+                    disabled={currentPage <= 1}
+                    onPress={() => setPage((value) => Math.max(1, value - 1))}
+                    style={{ flex: 1 }}
+                  />
+                  <AppButton
+                    title="Next"
+                    icon="chevron-forward-outline"
+                    disabled={currentPage >= totalPages}
+                    onPress={() => setPage((value) => Math.min(totalPages, value + 1))}
+                    style={{ flex: 1 }}
+                  />
+                </View>
+              </View>
+            ) : null}
           </View>
         ) : (
           <EmptyState
@@ -369,5 +412,3 @@ export default function PatientSearchScreen() {
     </Screen>
   );
 }
-
-
