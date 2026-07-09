@@ -1,9 +1,11 @@
 import { Stack } from "expo-router";
 import { StatusBar } from "expo-status-bar";
-import { ActivityIndicator, Text, View } from "react-native";
+import { ActivityIndicator, Image, StyleSheet, Text, View } from "react-native";
 import { AuthProvider, useAuth } from "@/lib/auth";
 import { colors } from "@/constants/colors";
 import { isSupabaseConfigured } from "@/lib/supabase";
+
+const appLogo = require("../../assets/icon.png");
 
 function ConfigurationErrorScreen() {
   return (
@@ -31,18 +33,22 @@ function RootStack() {
 
   if (loading) {
     return (
-      <View
-        style={{
-          flex: 1,
-          alignItems: "center",
-          justifyContent: "center",
-          backgroundColor: colors.background,
-        }}
-      >
-        <ActivityIndicator color={colors.primary} />
-        <Text style={{ marginTop: 12, color: colors.muted, fontWeight: "700" }}>
-          {loadingMessage}
-        </Text>
+      <View style={styles.loadingScreen}>
+        <StatusBar style="light" />
+
+        <View style={styles.logoGlow}>
+          <Image source={appLogo} style={styles.loadingLogo} resizeMode="contain" />
+        </View>
+
+        <Text style={styles.loadingTitle}>MiDMS</Text>
+        <Text style={styles.loadingSubtitle}>Clinic Management System</Text>
+
+        <View style={styles.loadingStatus}>
+          <ActivityIndicator color="#22D3EE" />
+          <Text style={styles.loadingMessage}>
+            {loadingMessage || "Preparing your clinic workspace..."}
+          </Text>
+        </View>
       </View>
     );
   }
@@ -98,6 +104,59 @@ function RootStack() {
     </>
   );
 }
+
+const styles = StyleSheet.create({
+  loadingScreen: {
+    flex: 1,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "#030614",
+    paddingHorizontal: 28,
+  },
+  logoGlow: {
+    width: 148,
+    height: 148,
+    borderRadius: 42,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "rgba(15, 23, 42, 0.92)",
+    shadowColor: "#22D3EE",
+    shadowOpacity: 0.35,
+    shadowRadius: 28,
+    shadowOffset: { width: 0, height: 0 },
+    elevation: 12,
+  },
+  loadingLogo: {
+    width: 128,
+    height: 128,
+    borderRadius: 34,
+  },
+  loadingTitle: {
+    marginTop: 26,
+    color: "#F8FAFC",
+    fontSize: 34,
+    fontWeight: "900",
+    letterSpacing: 0.8,
+  },
+  loadingSubtitle: {
+    marginTop: 8,
+    color: "#94A3B8",
+    fontSize: 14,
+    fontWeight: "700",
+    letterSpacing: 0.4,
+  },
+  loadingStatus: {
+    marginTop: 34,
+    alignItems: "center",
+    gap: 12,
+  },
+  loadingMessage: {
+    color: "#CBD5E1",
+    fontSize: 14,
+    fontWeight: "700",
+    textAlign: "center",
+  },
+});
 
 export default function Layout() {
   if (!isSupabaseConfigured) {
