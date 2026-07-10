@@ -1,4 +1,4 @@
-﻿import { Ionicons } from "@expo/vector-icons";
+import { Ionicons } from "@expo/vector-icons";
 import { router } from "expo-router";
 import { useEffect, useMemo, useState, type ComponentProps } from "react";
 import { Alert, Pressable, Text, View } from "react-native";
@@ -10,6 +10,7 @@ import { SectionCard } from "@/components/SectionCard";
 import { StatusBadge } from "@/components/StatusBadge";
 import { colors } from "@/constants/colors";
 import { useAuth } from "@/lib/auth";
+import { ClinicSubscription, getClinicSubscription, getSubscriptionDisplay } from "@/lib/subscription";
 import { DashboardStats, getDashboardStats, getRoleLabel, getWorkflowDashboardSummary } from "@/lib/supabase";
 
 type AppointmentRow = any;
@@ -26,6 +27,30 @@ function appointmentTime(value: string) {
 function isWaitingStatus(status?: string | null) {
   const value = String(status || "").toLowerCase();
   return ["scheduled", "waiting", "checked_in", "booked"].includes(value);
+}
+
+function toneColors(tone: "success" | "warning" | "danger") {
+  if (tone === "danger") {
+    return {
+      background: colors.dangerSoft,
+      icon: colors.danger,
+      border: "#FECACA",
+    };
+  }
+
+  if (tone === "warning") {
+    return {
+      background: colors.warningSoft,
+      icon: colors.warning,
+      border: "#FDE68A",
+    };
+  }
+
+  return {
+    background: colors.successSoft,
+    icon: colors.success,
+    border: "#A7F3D0",
+  };
 }
 
 function MoneyCard({
@@ -134,6 +159,7 @@ export default function HeadDashboard() {
   const { profile, signOut } = useAuth();
   const [stats, setStats] = useState<DashboardStats | null>(null);
   const [summary, setSummary] = useState<any>(null);
+  const [subscription, setSubscription] = useState<ClinicSubscription | null>(null);
   const [loading, setLoading] = useState(true);
 
   async function load() {
@@ -144,6 +170,9 @@ export default function HeadDashboard() {
 
       const row = await getWorkflowDashboardSummary();
       if (row) setSummary(row);
+
+      const plan = await getClinicSubscription();
+      setSubscription(plan);
     } catch (error) {
       Alert.alert("Dashboard load failed", error instanceof Error ? error.message : "Please try again.");
     } finally {
@@ -170,6 +199,8 @@ export default function HeadDashboard() {
   const pendingPayments = summary?.pending_payments ?? stats?.pendingPayments;
   const waitingCount = summary?.waiting_count ?? waiting.length;
   const completedCount = summary?.completed_count ?? 0;
+  const subscriptionInfo = getSubscriptionDisplay(subscription);
+  const subscriptionTone = toneColors(subscriptionInfo.tone);
 
   return (
     <Screen refreshing={loading} onRefresh={load}>
@@ -196,6 +227,43 @@ export default function HeadDashboard() {
           Quick owner view. Detailed breakdown is inside Clinic Report.
         </Text>
       </View>
+
+      <SectionCard title="Subscription" subtitle="Trial and renewal status for this clinic.">
+        <View
+          style={{
+            borderRadius: 22,
+            padding: 14,
+            backgroundColor: subscriptionTone.background,
+            borderWidth: 1,
+            borderColor: subscriptionTone.border,
+            flexDirection: "row",
+            alignItems: "center",
+            gap: 12,
+          }}
+        >
+          <View
+            style={{
+              width: 44,
+              height: 44,
+              borderRadius: 16,
+              backgroundColor: colors.white,
+              alignItems: "center",
+              justifyContent: "center",
+            }}
+          >
+            <Ionicons name="calendar-outline" size={23} color={subscriptionTone.icon} />
+          </View>
+
+          <View style={{ flex: 1 }}>
+            <Text style={{ color: colors.text, fontSize: 16, fontWeight: "900" }}>
+              {loading ? "Checking subscription..." : subscriptionInfo.title}
+            </Text>
+            <Text style={{ color: colors.muted, marginTop: 4, lineHeight: 19 }}>
+              {loading ? "Please wait while we load clinic trial details." : subscriptionInfo.subtitle}
+            </Text>
+          </View>
+        </View>
+      </SectionCard>
 
       <View style={{ flexDirection: "row", gap: 10 }}>
         <MoneyCard label="Revenue" value={loading ? "..." : money(todayRevenue)} icon="cash-outline" />
@@ -287,4 +355,3 @@ export default function HeadDashboard() {
     </Screen>
   );
 }
-
