@@ -1,7 +1,7 @@
 import { Ionicons } from "@expo/vector-icons";
 import { router } from "expo-router";
 import { useEffect, useMemo, useState } from "react";
-import { Alert, Pressable, Text, View } from "react-native";
+import { Alert, Image, Pressable, Text, View } from "react-native";
 import { ActionCard } from "@/components/ActionCard";
 import { AppButton } from "@/components/AppButton";
 import { ClinicBrandHeader } from "@/components/ClinicBrandHeader";
@@ -12,7 +12,12 @@ import { StatCard } from "@/components/StatCard";
 import { StatusBadge } from "@/components/StatusBadge";
 import { colors } from "@/constants/colors";
 import { useAuth } from "@/lib/auth";
-import { DashboardStats, getDashboardStats, getRoleLabel, getWorkflowDashboardSummary } from "@/lib/supabase";
+import {
+  ClinicFeatureSettings,
+  DEFAULT_CLINIC_FEATURE_SETTINGS,
+  getClinicFeatureSettings,
+} from "@/lib/clinicOptions";
+import { DashboardStats, getDashboardStats, getRoleLabel, getWorkflowDashboardSummary, supabase } from "@/lib/supabase";
 
 type AppointmentRow = any;
 
@@ -22,6 +27,18 @@ function money(value?: number) {
 
 function appointmentTime(value: string) {
   return new Date(value).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+}
+
+function startOfToday() {
+  const date = new Date();
+  date.setHours(0, 0, 0, 0);
+  return date.toISOString();
+}
+
+function endOfToday() {
+  const date = new Date();
+  date.setHours(23, 59, 59, 999);
+  return date.toISOString();
 }
 
 function isWaitingStatus(status?: string | null) {
@@ -41,16 +58,38 @@ export default function ReceptionDashboard() {
   const { profile, signOut } = useAuth();
   const [stats, setStats] = useState<DashboardStats | null>(null);
   const [summary, setSummary] = useState<any>(null);
+  const [features, setFeatures] = useState<ClinicFeatureSettings>(DEFAULT_CLINIC_FEATURE_SETTINGS);
   const [loading, setLoading] = useState(true);
 
   async function load() {
     try {
       setLoading(true);
 
-      const data = await getDashboardStats();
-      setStats(data);
+      const [data, row, featureSettings] = await Promise.all([
+        getDashboardStats(),
+        getWorkflowDashboardSummary(),
+        getClinicFeatureSettings().catch((error) => {
+          console.warn("Reception optional features load failed:", error);
+          return DEFAULT_CLINIC_FEATURE_SETTINGS;
+        }),
+      ]);
 
-      const row = await getWorkflowDashboardSummary();
+      setFeatures(featureSettings);
+
+      const { data: appointmentRows, error: appointmentError } = await supabase
+        .from("appointments")
+        .select("*, patients(id,name,phone,photo_url), profiles(id,name)")
+        .gte("appointment_time", startOfToday())
+        .lte("appointment_time", endOfToday())
+        .order("appointment_time", { ascending: true });
+
+      if (!appointmentError && Array.isArray(appointmentRows)) {
+        setStats({ ...data, todayAppointmentList: appointmentRows as any });
+      } else {
+        if (appointmentError) console.warn("Reception photo appointment query failed:", appointmentError.message);
+        setStats(data);
+      }
+
       if (row) setSummary(row);
     } catch (error) {
       Alert.alert("Dashboard load failed", error instanceof Error ? error.message : "Please try again.");
@@ -149,18 +188,11 @@ export default function ReceptionDashboard() {
             }}
           >
             <View style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
-              <View
-                style={{
-                  width: 48,
-                  height: 48,
-                  borderRadius: 18,
-                  backgroundColor: colors.warning,
-                  alignItems: "center",
-                  justifyContent: "center",
-                }}
-              >
-                <Ionicons name="time-outline" size={24} color={colors.white} />
-              </View>
+              <PatientAvatar
+                photoUrl={features.enable_patient_photos ? next.patients?.photo_url : null}
+                warning
+                size={48}
+              />
 
               <View style={{ flex: 1 }}>
                 <Text style={{ color: colors.text, fontSize: 14, fontWeight: "900" }}>
@@ -197,7 +229,9 @@ export default function ReceptionDashboard() {
       <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 10 }}>
         <StatCard label="OP Fees" value={loading ? "..." : money(summary?.op_fee_revenue_today)} icon="receipt-outline" tone="success" />
         <StatCard label="X-ray" value={loading ? "..." : money(summary?.xray_revenue_today)} icon="scan-outline" />
-        <StatCard label="Medication" value={loading ? "..." : money(summary?.medication_revenue_today)} icon="medical-outline" />
+        {features.enable_medication_module ? (
+          <StatCard label="Medication" value={loading ? "..." : money(summary?.medication_revenue_today)} icon="medical-outline" />
+        ) : null}
         <StatCard label="Treatment" value={loading ? "..." : money(summary?.treatment_revenue_today)} icon="hammer-outline" tone="success" />
         <StatCard label="Pending Paid" value={loading ? "..." : money(summary?.pending_collected_today)} icon="checkmark-circle-outline" tone="success" />
         <StatCard label="Other" value={loading ? "..." : money(summary?.other_revenue_today)} icon="wallet-outline" />
@@ -207,7 +241,10 @@ export default function ReceptionDashboard() {
         <ActionCard title="Book Appointment" subtitle="For WhatsApp/call/online enquiries" icon="calendar-number-outline" onPress={() => router.push("/appointment/book" as never)} />
         <ActionCard title="Add Old Patient" subtitle="Enter previous clinic records and old pending balance" icon="archive-outline" onPress={() => router.push("/patient/add-old" as never)} />
         <ActionCard title="Search Patient" subtitle="Open patient history or collect fee" icon="search-outline" onPress={() => router.push("/patient" as never)} />
-        <ActionCard title="Medication / Treatment Fee" subtitle="Collect medicine, treatment, or other fee" icon="cash-outline" onPress={() => router.push({ pathname: "/payment/fee", params: { fee_type: "medication_fee" } } as never)} />
+        {features.enable_medication_module ? (
+          <ActionCard title="Medication Fee" subtitle="Collect medicine amount only when owner enables it" icon="medical-outline" onPress={() => router.push({ pathname: "/payment/fee", params: { fee_type: "medication_fee" } } as never)} />
+        ) : null}
+        <ActionCard title="Treatment / Other Fee" subtitle="Collect treatment or clinic-defined fees" icon="cash-outline" onPress={() => router.push({ pathname: "/payment/fee", params: { fee_type: "treatment_fee" } } as never)} />
         <ActionCard title="Gallery" subtitle="View X-rays, prescriptions, reports and photos" icon="images-outline" onPress={() => router.push("/gallery" as never)} />
         <ActionCard title="Collect Pending Payment" subtitle="Old due or treatment balance" icon="wallet-outline" onPress={() => router.push("/patient/payment" as never)} />
         <ActionCard title="Reminders" subtitle="Follow-ups due and pending payments" icon="notifications-outline" onPress={() => router.push("/reminders" as never)} />
@@ -218,7 +255,12 @@ export default function ReceptionDashboard() {
         {waiting.length ? (
           <View style={{ gap: 10 }}>
             {waiting.slice(0, 8).map((item: AppointmentRow) => (
-              <AppointmentItem key={item.id} item={item} onPress={() => router.push(`/patient/${item.patient_id}` as never)} />
+              <AppointmentItem
+                key={item.id}
+                item={item}
+                showPhoto={features.enable_patient_photos}
+                onPress={() => router.push(`/patient/${item.patient_id}` as never)}
+              />
             ))}
           </View>
         ) : (
@@ -234,7 +276,7 @@ export default function ReceptionDashboard() {
   );
 }
 
-function AppointmentItem({ item, onPress }: { item: AppointmentRow; onPress: () => void }) {
+function AppointmentItem({ item, onPress, showPhoto }: { item: AppointmentRow; onPress: () => void; showPhoto: boolean }) {
   return (
     <Pressable
       onPress={onPress}
@@ -249,18 +291,7 @@ function AppointmentItem({ item, onPress }: { item: AppointmentRow; onPress: () 
         borderColor: colors.border,
       })}
     >
-      <View
-        style={{
-          width: 46,
-          height: 46,
-          borderRadius: 17,
-          backgroundColor: colors.warningSoft,
-          alignItems: "center",
-          justifyContent: "center",
-        }}
-      >
-        <Ionicons name="time-outline" size={22} color={colors.warning} />
-      </View>
+      <PatientAvatar photoUrl={showPhoto ? item.patients?.photo_url : null} />
 
       <View style={{ flex: 1 }}>
         <Text numberOfLines={1} style={{ color: colors.text, fontWeight: "900", fontSize: 16 }}>
@@ -278,3 +309,34 @@ function AppointmentItem({ item, onPress }: { item: AppointmentRow; onPress: () 
   );
 }
 
+function PatientAvatar({
+  photoUrl,
+  warning = false,
+  size = 46,
+}: {
+  photoUrl?: string | null;
+  warning?: boolean;
+  size?: number;
+}) {
+  return (
+    <View
+      style={{
+        width: size,
+        height: size,
+        borderRadius: Math.round(size * 0.37),
+        backgroundColor: warning ? colors.warningSoft : colors.primarySoft,
+        alignItems: "center",
+        justifyContent: "center",
+        overflow: "hidden",
+        borderWidth: 1,
+        borderColor: colors.border,
+      }}
+    >
+      {photoUrl ? (
+        <Image source={{ uri: photoUrl }} style={{ width: "100%", height: "100%" }} resizeMode="cover" />
+      ) : (
+        <Ionicons name={warning ? "time-outline" : "person-outline"} size={22} color={warning ? colors.warning : colors.primary} />
+      )}
+    </View>
+  );
+}
