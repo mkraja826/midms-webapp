@@ -74,6 +74,49 @@ function formatDateTime(value: string) {
   });
 }
 
+function formatTime(value: string) {
+  return new Date(value).toLocaleTimeString([], {
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+}
+
+function minutesUntil(value: string) {
+  const target = new Date(value).getTime();
+  if (!Number.isFinite(target)) return null;
+
+  return Math.round((target - Date.now()) / (1000 * 60));
+}
+
+function timeHint(item: FollowupReminder) {
+  const minutes = minutesUntil(item.appointment_time);
+
+  if (minutes === null) return "Time not available";
+  if (minutes < -1440) return `${Math.abs(Math.round(minutes / 1440))} days overdue`;
+  if (minutes < -60) return `${Math.abs(Math.round(minutes / 60))} hrs overdue`;
+  if (minutes < 0) return `${Math.abs(minutes)} min overdue`;
+  if (minutes === 0) return "Due now";
+  if (minutes < 60) return `Due in ${minutes} min`;
+  if (minutes < 1440) return `Due in ${Math.round(minutes / 60)} hrs`;
+
+  return formatDateTime(item.appointment_time);
+}
+
+function isNearFollowup(item: FollowupReminder) {
+  const minutes = minutesUntil(item.appointment_time);
+  return minutes !== null && minutes >= 0 && minutes <= 120;
+}
+
+function urgencyTone(item: FollowupReminder): "success" | "warning" | "danger" | "primary" {
+  const minutes = minutesUntil(item.appointment_time);
+
+  if (item.reminder_state === "overdue" || (minutes !== null && minutes < 0)) return "danger";
+  if (minutes !== null && minutes <= 120) return "warning";
+  if (item.reminder_state === "tomorrow") return "success";
+
+  return "primary";
+}
+
 function stateTone(state?: string): "success" | "warning" | "danger" | "primary" {
   if (state === "overdue") return "danger";
   if (state === "today") return "warning";
@@ -191,13 +234,17 @@ export default function RemindersScreen() {
     }
   }
 
-  function callPatient(phone?: string | null) {
+  async function callPatient(phone?: string | null) {
     if (!phone) {
       Alert.alert("No phone number", "This patient has no phone number.");
       return;
     }
 
-    Linking.openURL(`tel:${phone}`);
+    try {
+      await Linking.openURL(`tel:${phone}`);
+    } catch {
+      Alert.alert("Call unavailable", "This device cannot open phone calls now.");
+    }
   }
 
   function cleanIndianPhone(phone?: string | null) {
@@ -210,19 +257,25 @@ export default function RemindersScreen() {
     return digits;
   }
 
-  function whatsappPatient(phone?: string | null, message?: string) {
+  async function whatsappPatient(phone?: string | null, message?: string) {
     const cleaned = cleanIndianPhone(phone);
 
     if (!cleaned) {
       Alert.alert("No phone number", "This patient has no phone number.");
-      return;
+      return false;
     }
 
     const url = `https://wa.me/${cleaned}?text=${encodeURIComponent(
       message || "Hello, this is a reminder from our dental clinic."
     )}`;
 
-    Linking.openURL(url);
+    try {
+      await Linking.openURL(url);
+      return true;
+    } catch {
+      Alert.alert("WhatsApp unavailable", "Unable to open WhatsApp. Check the number or try again.");
+      return false;
+    }
   }
 
   function buildFollowupReminderMessage(item: FollowupReminder) {
@@ -237,20 +290,33 @@ export default function RemindersScreen() {
     )}. Please reply on WhatsApp or contact reception for payment details. Thank you.`;
   }
 
+  const sortedFollowups = useMemo(
+    () =>
+      [...followups].sort(
+        (a, b) => new Date(a.appointment_time).getTime() - new Date(b.appointment_time).getTime()
+      ),
+    [followups]
+  );
+
+  const nearFollowups = useMemo(
+    () => sortedFollowups.filter((item) => isNearFollowup(item)),
+    [sortedFollowups]
+  );
+
   const totalFollowupAlerts = useMemo(
     () => Number(summary?.followups_today || 0) + Number(summary?.followups_overdue || 0),
     [summary]
   );
 
   return (
-    <Screen>
+    <Screen refreshing={loading} onRefresh={() => load(filter, search)}>
       <View style={{ gap: 6 }}>
         <Text style={{ color: colors.text, fontSize: 30, fontWeight: "900" }}>
           Reminders
         </Text>
 
         <Text style={{ color: colors.muted, fontSize: 15, lineHeight: 21 }}>
-          Follow-up reminders and due payment reminders in one place.
+          Follow-up reminders, near appointment timing, WhatsApp reminders, and due payment reminders in one place.
         </Text>
       </View>
 
@@ -263,17 +329,17 @@ export default function RemindersScreen() {
         />
 
         <StatCard
+          label="Near Time"
+          value={loading ? "..." : nearFollowups.length}
+          icon="alarm-outline"
+          tone="warning"
+        />
+
+        <StatCard
           label="Overdue"
           value={loading ? "..." : summary?.followups_overdue ?? 0}
           icon="alert-circle-outline"
           tone="danger"
-        />
-
-        <StatCard
-          label="Due Patients"
-          value={loading ? "..." : summary?.pending_patients ?? 0}
-          icon="wallet-outline"
-          tone="warning"
         />
 
         <StatCard
@@ -364,6 +430,7 @@ export default function RemindersScreen() {
             icon="refresh-outline"
             variant="secondary"
             onPress={() => load(filter, search)}
+            loading={loading}
             style={{ flex: 1 }}
           />
 
@@ -375,6 +442,53 @@ export default function RemindersScreen() {
           />
         </View>
       </SectionCard>
+
+      {nearFollowups.length ? (
+        <SectionCard title="Near Follow-up Time" subtitle="Follow-ups due within the next 2 hours.">
+          <View style={{ gap: 10 }}>
+            {nearFollowups.slice(0, 5).map((item) => (
+              <Pressable
+                key={`near-${item.appointment_id}`}
+                onPress={() => router.push(`/patient/${item.patient_id}` as never)}
+                style={({ pressed }) => ({
+                  padding: 12,
+                  borderRadius: 20,
+                  backgroundColor: pressed ? colors.warningSoft : colors.background,
+                  borderWidth: 1,
+                  borderColor: colors.border,
+                  flexDirection: "row",
+                  alignItems: "center",
+                  gap: 12,
+                })}
+              >
+                <View
+                  style={{
+                    width: 46,
+                    height: 46,
+                    borderRadius: 17,
+                    backgroundColor: colors.warningSoft,
+                    alignItems: "center",
+                    justifyContent: "center",
+                  }}
+                >
+                  <Ionicons name="alarm-outline" size={22} color={colors.warning} />
+                </View>
+
+                <View style={{ flex: 1 }}>
+                  <Text style={{ color: colors.text, fontSize: 16, fontWeight: "900" }}>
+                    {item.patient_name}
+                  </Text>
+                  <Text style={{ color: colors.muted, marginTop: 2 }}>
+                    {formatTime(item.appointment_time)} • {item.patient_phone || "No phone"}
+                  </Text>
+                </View>
+
+                <StatusBadge label={timeHint(item)} tone="warning" />
+              </Pressable>
+            ))}
+          </View>
+        </SectionCard>
+      ) : null}
 
       {totalFollowupAlerts > 0 ? (
         <SectionCard>
@@ -393,19 +507,19 @@ export default function RemindersScreen() {
             </Text>
 
             <Text style={{ color: colors.muted, lineHeight: 20 }}>
-              You have {summary?.followups_today || 0} follow-up(s) today and{" "}
+              You have {summary?.followups_today || 0} follow-up(s) today and {" "}
               {summary?.followups_overdue || 0} overdue follow-up(s).
             </Text>
           </View>
         </SectionCard>
       ) : null}
 
-      <SectionCard title="Follow-up Reminders">
+      <SectionCard title="Follow-up Reminders" subtitle="Sorted by appointment time. Use WhatsApp, call, confirm, or mark done.">
         {loading ? (
           <Text style={{ color: colors.muted }}>Loading follow-ups...</Text>
-        ) : followups.length ? (
+        ) : sortedFollowups.length ? (
           <View style={{ gap: 10 }}>
-            {followups.map((item) => (
+            {sortedFollowups.map((item) => (
               <View
                 key={item.appointment_id}
                 style={{
@@ -413,7 +527,7 @@ export default function RemindersScreen() {
                   borderRadius: 20,
                   backgroundColor: colors.background,
                   borderWidth: 1,
-                  borderColor: colors.border,
+                  borderColor: isNearFollowup(item) ? colors.warning : colors.border,
                   gap: 10,
                 }}
               >
@@ -449,12 +563,12 @@ export default function RemindersScreen() {
                     </Text>
 
                     <Text style={{ color: colors.muted, marginTop: 2 }}>
-                      {formatDateTime(item.appointment_time)}
+                      {formatDateTime(item.appointment_time)} • {timeHint(item)}
                     </Text>
                   </View>
 
                   <View style={{ alignItems: "flex-end", gap: 6 }}>
-                    <StatusBadge label={item.reminder_state} tone={stateTone(item.reminder_state)} />
+                    <StatusBadge label={timeHint(item)} tone={urgencyTone(item)} />
                     <StatusBadge label={item.reminder_status || "pending"} />
                   </View>
                 </View>
@@ -475,15 +589,15 @@ export default function RemindersScreen() {
                   <MiniButton
                     label="WhatsApp"
                     icon="logo-whatsapp"
-                    onPress={() =>
-                      {
-                        whatsappPatient(
-                          item.patient_phone,
-                          buildFollowupReminderMessage(item)
-                        );
-                        markAppointment(item.appointment_id, "message_sent");
-                      }
-                    }
+                    loading={markingId === item.appointment_id}
+                    onPress={async () => {
+                      const opened = await whatsappPatient(
+                        item.patient_phone,
+                        buildFollowupReminderMessage(item)
+                      );
+
+                      if (opened) await markAppointment(item.appointment_id, "message_sent");
+                    }}
                   />
 
                   <MiniButton
@@ -525,68 +639,83 @@ export default function RemindersScreen() {
         )}
       </SectionCard>
 
-      <SectionCard title="Due Payment Reminders">
+      <SectionCard title="Due Payment Reminders" subtitle="Send WhatsApp reminder, open collection screen, or open patient profile.">
         {loading ? (
           <Text style={{ color: colors.muted }}>Loading due payments...</Text>
         ) : pendingPatients.length ? (
           <View style={{ gap: 10 }}>
             {pendingPatients.slice(0, 20).map((patient) => (
-              <Pressable
+              <View
                 key={patient.patient_id}
-                onPress={() =>
-                  whatsappPatient(
-                    patient.patient_phone,
-                    buildDueReminderMessage(patient)
-                  )
-                }
-                style={({ pressed }) => ({
+                style={{
                   padding: 12,
                   borderRadius: 20,
-                  backgroundColor: pressed ? colors.surfaceSoft : colors.background,
+                  backgroundColor: colors.background,
                   borderWidth: 1,
                   borderColor: colors.border,
-                  flexDirection: "row",
-                  alignItems: "center",
-                  gap: 12,
-                })}
+                  gap: 10,
+                }}
               >
-                <View
-                  style={{
-                    width: 48,
-                    height: 48,
-                    borderRadius: 18,
-                    backgroundColor: colors.warningSoft,
-                    alignItems: "center",
-                    justifyContent: "center",
-                  }}
-                >
-                  <Ionicons name="wallet-outline" size={22} color={colors.warning} />
+                <View style={{ flexDirection: "row", alignItems: "center", gap: 12 }}>
+                  <View
+                    style={{
+                      width: 48,
+                      height: 48,
+                      borderRadius: 18,
+                      backgroundColor: colors.warningSoft,
+                      alignItems: "center",
+                      justifyContent: "center",
+                    }}
+                  >
+                    <Ionicons name="wallet-outline" size={22} color={colors.warning} />
+                  </View>
+
+                  <View style={{ flex: 1 }}>
+                    <Text style={{ color: colors.text, fontWeight: "900", fontSize: 16 }}>
+                      {patient.patient_name}
+                    </Text>
+
+                    <Text style={{ color: colors.muted, marginTop: 2 }}>
+                      {patient.patient_phone || "No phone"}
+                      {patient.patient_code ? ` • ${patient.patient_code}` : ""}
+                    </Text>
+
+                    <Text style={{ color: colors.muted, marginTop: 2, fontSize: 12 }}>
+                      {patient.invoice_count} pending invoice{patient.invoice_count === 1 ? "" : "s"}
+                    </Text>
+                  </View>
+
+                  <View style={{ alignItems: "flex-end", gap: 4 }}>
+                    <Text style={{ color: colors.warning, fontWeight: "900", fontSize: 17 }}>
+                      {money(patient.pending_amount)}
+                    </Text>
+                    <StatusBadge label="pending" tone="warning" />
+                  </View>
                 </View>
 
-                <View style={{ flex: 1 }}>
-                  <Text style={{ color: colors.text, fontWeight: "900", fontSize: 16 }}>
-                    {patient.patient_name}
-                  </Text>
-
-                  <Text style={{ color: colors.muted, marginTop: 2 }}>
-                    {patient.patient_phone || "No phone"}
-                    {patient.patient_code ? ` • ${patient.patient_code}` : ""}
-                  </Text>
-
-                  <Text style={{ color: colors.muted, marginTop: 2, fontSize: 12 }}>
-                    {patient.invoice_count} pending invoice{patient.invoice_count === 1 ? "" : "s"}
-                  </Text>
+                <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8 }}>
+                  <MiniButton
+                    label="WhatsApp"
+                    icon="logo-whatsapp"
+                    onPress={() => whatsappPatient(patient.patient_phone, buildDueReminderMessage(patient))}
+                  />
+                  <MiniButton
+                    label="Collect"
+                    icon="wallet-outline"
+                    onPress={() =>
+                      router.push({
+                        pathname: "/patient/payment",
+                        params: { patient_id: patient.patient_id },
+                      } as never)
+                    }
+                  />
+                  <MiniButton
+                    label="Patient"
+                    icon="person-outline"
+                    onPress={() => router.push(`/patient/${patient.patient_id}` as never)}
+                  />
                 </View>
-
-                <View style={{ alignItems: "flex-end", gap: 4 }}>
-                  <Text style={{ color: colors.warning, fontWeight: "900", fontSize: 17 }}>
-                    {money(patient.pending_amount)}
-                  </Text>
-                  <Text style={{ color: colors.primary, fontWeight: "900", fontSize: 12 }}>
-                    Collect
-                  </Text>
-                </View>
-              </Pressable>
+              </View>
             ))}
           </View>
         ) : (
@@ -616,7 +745,7 @@ function MiniButton({
 }: {
   label: string;
   icon: keyof typeof Ionicons.glyphMap;
-  onPress: () => void;
+  onPress: () => void | Promise<void>;
   loading?: boolean;
 }) {
   return (
