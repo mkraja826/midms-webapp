@@ -121,6 +121,47 @@ function MiniStat({
   );
 }
 
+function RevenueBreakdownRow({
+  label,
+  value,
+  icon,
+}: {
+  label: string;
+  value: string;
+  icon: IconName;
+}) {
+  return (
+    <View
+      style={{
+        flexDirection: "row",
+        alignItems: "center",
+        gap: 12,
+        padding: 12,
+        borderRadius: 18,
+        backgroundColor: colors.background,
+        borderWidth: 1,
+        borderColor: colors.border,
+      }}
+    >
+      <View
+        style={{
+          width: 38,
+          height: 38,
+          borderRadius: 14,
+          backgroundColor: colors.primarySoft,
+          alignItems: "center",
+          justifyContent: "center",
+        }}
+      >
+        <Ionicons name={icon} size={19} color={colors.primary} />
+      </View>
+
+      <Text style={{ flex: 1, color: colors.text, fontWeight: "900" }}>{label}</Text>
+      <Text style={{ color: colors.text, fontWeight: "900", fontSize: 16 }}>{value}</Text>
+    </View>
+  );
+}
+
 function QuickAction({
   title,
   icon,
@@ -202,6 +243,14 @@ export default function HeadDashboard() {
   const subscriptionInfo = getSubscriptionDisplay(subscription);
   const subscriptionTone = toneColors(subscriptionInfo.tone);
 
+  const opRevenue = Number(summary?.op_fee_revenue_today || 0);
+  const xrayRevenue = Number(summary?.xray_revenue_today || 0);
+  const medicineRevenue = Number(summary?.medication_revenue_today || 0);
+  const treatmentRevenue = Number(summary?.treatment_revenue_today || 0);
+  const pendingCollected = Number(summary?.pending_collected_today || 0);
+  const otherRevenue = Number(summary?.other_revenue_today || 0);
+  const hasBreakdown = Boolean(summary);
+
   return (
     <Screen refreshing={loading} onRefresh={load}>
       <ClinicBrandHeader
@@ -224,7 +273,7 @@ export default function HeadDashboard() {
           {loading ? "Loading..." : `${waitingCount} waiting • ${completedCount} completed`}
         </Text>
         <Text style={{ color: "rgba(255,255,255,0.76)", fontWeight: "700" }}>
-          Quick owner view. Detailed breakdown is inside Clinic Report.
+          Quick owner view with today’s money, pending dues, and clinic queue.
         </Text>
       </View>
 
@@ -269,6 +318,27 @@ export default function HeadDashboard() {
         <MoneyCard label="Revenue" value={loading ? "..." : money(todayRevenue)} icon="cash-outline" />
         <MoneyCard label="Pending" value={loading ? "..." : money(pendingPayments)} icon="wallet-outline" warning />
       </View>
+
+      <SectionCard title="Today Revenue Breakdown" subtitle="Owner-friendly split of today’s collections.">
+        {hasBreakdown ? (
+          <View style={{ gap: 10 }}>
+            <RevenueBreakdownRow label="OP consultation fees" value={money(opRevenue)} icon="receipt-outline" />
+            <RevenueBreakdownRow label="Medication fees" value={money(medicineRevenue)} icon="medical-outline" />
+            <RevenueBreakdownRow label="X-ray fees" value={money(xrayRevenue)} icon="scan-outline" />
+            <RevenueBreakdownRow label="Treatment fees" value={money(treatmentRevenue)} icon="hammer-outline" />
+            <RevenueBreakdownRow label="Pending collected" value={money(pendingCollected)} icon="wallet-outline" />
+            {otherRevenue > 0 ? (
+              <RevenueBreakdownRow label="Other collections" value={money(otherRevenue)} icon="cash-outline" />
+            ) : null}
+          </View>
+        ) : (
+          <EmptyState
+            title="Breakdown not available"
+            message="Today’s total revenue is still shown above. Detailed split will appear when workflow summary is available."
+            icon="analytics-outline"
+          />
+        )}
+      </SectionCard>
 
       <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 10 }}>
         <MiniStat label="Waiting" value={loading ? "..." : waitingCount} icon="hourglass-outline" />
