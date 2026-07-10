@@ -1,13 +1,24 @@
 import { Ionicons } from "@expo/vector-icons";
 import { router, useLocalSearchParams } from "expo-router";
 import { useEffect, useMemo, useState } from "react";
-import { Alert, Pressable, Text, View } from "react-native";
+import { Alert, Platform, Pressable, Text, View } from "react-native";
 import { AppButton } from "@/components/AppButton";
-import { AppInput } from "@/components/AppInput";
 import { Screen } from "@/components/Screen";
 import { SectionCard } from "@/components/SectionCard";
 import { StatusBadge } from "@/components/StatusBadge";
 import { colors } from "@/constants/colors";
+import {
+  addGooglePlayPurchaseListeners,
+  endGooglePlayBilling,
+  finishGooglePlaySubscriptionPurchase,
+  GOOGLE_PLAY_MONTHLY_PRODUCT_ID,
+  GOOGLE_PLAY_TRIAL_OFFER_ID,
+  googlePlayBillingUnavailableReason,
+  GooglePlayBillingOffer,
+  launchGooglePlaySubscriptionPurchase,
+  loadGooglePlayBillingOffer,
+  recordGooglePlaySubscriptionPurchase,
+} from "@/lib/googlePlayBilling";
 import { useAuth } from "@/lib/auth";
 import { getDashboardPath } from "@/lib/supabase";
 import {
@@ -15,89 +26,14 @@ import {
   getClinicSubscription,
   getSubscriptionAccess,
   getSubscriptionDisplay,
-  getSubscriptionPaymentRequests,
-  requestSubscriptionPayment,
+  googlePlayBillingStatusLabel,
+  hasGooglePlayAutopay,
   SUBSCRIPTION_MONTHLY_AMOUNT,
-  SUBSCRIPTION_YEARLY_AMOUNT,
-  subscriptionBillingLabel,
-  subscriptionPaymentStatusLabel,
-  subscriptionPaymentStatusTone,
 } from "@/lib/subscription";
-import type {
-  ClinicSubscription,
-  SubscriptionBillingCycle,
-  SubscriptionPaymentRequest,
-} from "@/lib/subscription";
-
-const MONTHLY_AMOUNT = SUBSCRIPTION_MONTHLY_AMOUNT;
-const YEARLY_AMOUNT = SUBSCRIPTION_YEARLY_AMOUNT;
+import type { ClinicSubscription } from "@/lib/subscription";
 
 function money(value: number) {
   return `₹${Math.round(Number(value || 0)).toLocaleString("en-IN")}`;
-}
-
-function PlanOption({
-  active,
-  title,
-  subtitle,
-  price,
-  badge,
-  onPress,
-}: {
-  active: boolean;
-  title: string;
-  subtitle: string;
-  price: string;
-  badge?: string;
-  onPress: () => void;
-}) {
-  return (
-    <Pressable
-      onPress={onPress}
-      style={({ pressed }) => ({
-        minHeight: 126,
-        borderRadius: 24,
-        padding: 14,
-        gap: 12,
-        borderWidth: 1,
-        borderColor: active ? colors.primary : colors.border,
-        backgroundColor: active ? colors.primarySoft : colors.background,
-        opacity: pressed ? 0.82 : 1,
-      })}
-    >
-      <View style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
-        <View
-          style={{
-            width: 42,
-            height: 42,
-            borderRadius: 15,
-            backgroundColor: active ? colors.primary : colors.surface,
-            alignItems: "center",
-            justifyContent: "center",
-            borderWidth: active ? 0 : 1,
-            borderColor: colors.border,
-          }}
-        >
-          <Ionicons
-            name={active ? "checkmark-outline" : "ellipse-outline"}
-            size={22}
-            color={active ? colors.white : colors.muted}
-          />
-        </View>
-
-        <View style={{ flex: 1 }}>
-          <Text style={{ color: colors.text, fontSize: 17, fontWeight: "900" }}>{title}</Text>
-          <Text style={{ color: colors.muted, marginTop: 2 }}>{subtitle}</Text>
-        </View>
-
-        {badge ? <StatusBadge label={badge} tone="success" /> : null}
-      </View>
-
-      <Text style={{ color: colors.text, fontSize: 26, fontWeight: "900", fontVariant: ["tabular-nums"] }}>
-        {price}
-      </Text>
-    </Pressable>
-  );
 }
 
 function FeatureRow({ icon, label }: { icon: keyof typeof Ionicons.glyphMap; label: string }) {
@@ -120,97 +56,94 @@ function FeatureRow({ icon, label }: { icon: keyof typeof Ionicons.glyphMap; lab
   );
 }
 
-function PaymentRequestCard({ request }: { request: SubscriptionPaymentRequest }) {
+function DetailRow({ label, value }: { label: string; value: string }) {
   return (
-    <View
-      style={{
-        padding: 14,
-        borderRadius: 20,
+    <View style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
+      <Text style={{ flex: 1, color: colors.muted, fontWeight: "800" }}>{label}</Text>
+      <Text selectable style={{ flex: 1, color: colors.text, fontWeight: "900", textAlign: "right" }}>
+        {value}
+      </Text>
+    </View>
+  );
+}
+
+function GooglePlayPlanCard({ offer, onPress }: { offer: GooglePlayBillingOffer | null; onPress: () => void }) {
+  return (
+    <Pressable
+      onPress={onPress}
+      style={({ pressed }) => ({
+        borderRadius: 28,
+        padding: 16,
+        gap: 14,
         borderWidth: 1,
-        borderColor: colors.border,
-        backgroundColor: colors.background,
-        gap: 10,
-      }}
+        borderColor: colors.primary,
+        backgroundColor: colors.primarySoft,
+        opacity: pressed ? 0.85 : 1,
+      })}
     >
-      <View style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
+      <View style={{ flexDirection: "row", alignItems: "center", gap: 12 }}>
         <View
           style={{
-            width: 42,
-            height: 42,
-            borderRadius: 15,
-            backgroundColor: colors.primarySoft,
+            width: 52,
+            height: 52,
+            borderRadius: 18,
+            backgroundColor: colors.primary,
             alignItems: "center",
             justifyContent: "center",
           }}
         >
-          <Ionicons name="receipt-outline" size={20} color={colors.primary} />
+          <Ionicons name="logo-google-playstore" size={25} color={colors.white} />
         </View>
-
         <View style={{ flex: 1 }}>
-          <Text style={{ color: colors.text, fontWeight: "900", fontSize: 16 }}>
-            {subscriptionBillingLabel(request.billing_cycle)} • {money(Number(request.amount || 0))}
-          </Text>
-          <Text style={{ color: colors.muted, marginTop: 2, fontSize: 12 }}>
-            Requested {formatSubscriptionDateTime(request.requested_at)}
+          <Text style={{ color: colors.text, fontSize: 19, fontWeight: "900" }}>Google Play Monthly</Text>
+          <Text style={{ color: colors.muted, marginTop: 3, lineHeight: 20 }}>
+            3 months free trial, then auto-renews monthly.
           </Text>
         </View>
-
-        <StatusBadge label={subscriptionPaymentStatusLabel(request.status)} tone={subscriptionPaymentStatusTone(request.status)} />
+        <StatusBadge label="Autopay" tone="success" />
       </View>
 
-      {request.payment_reference ? (
-        <Text style={{ color: colors.text, fontWeight: "800" }}>
-          Reference: <Text style={{ color: colors.muted }}>{request.payment_reference}</Text>
+      <View style={{ gap: 8 }}>
+        <Text style={{ color: colors.text, fontSize: 28, fontWeight: "900", fontVariant: ["tabular-nums"] }}>
+          {offer?.displayPrice || `${money(SUBSCRIPTION_MONTHLY_AMOUNT)} / month`}
         </Text>
-      ) : null}
-
-      {request.owner_note ? <Text style={{ color: colors.muted, lineHeight: 19 }}>{request.owner_note}</Text> : null}
-      {request.admin_note ? <Text style={{ color: colors.muted, lineHeight: 19 }}>Admin note: {request.admin_note}</Text> : null}
-    </View>
+        <Text style={{ color: colors.muted, lineHeight: 20 }}>
+          Owner confirms once in Google Play. Google handles renewal after the free trial unless the owner cancels in Play Store.
+        </Text>
+      </View>
+    </Pressable>
   );
 }
 
 export default function SubscriptionScreen() {
   const params = useLocalSearchParams<{ locked?: string }>();
   const { profile } = useAuth();
-  const [plan, setPlan] = useState<SubscriptionBillingCycle>("monthly");
   const [subscription, setSubscription] = useState<ClinicSubscription | null>(null);
-  const [paymentRequests, setPaymentRequests] = useState<SubscriptionPaymentRequest[]>([]);
-  const [paymentReference, setPaymentReference] = useState("");
-  const [ownerNote, setOwnerNote] = useState("");
+  const [billingOffer, setBillingOffer] = useState<GooglePlayBillingOffer | null>(null);
+  const [billingError, setBillingError] = useState<string | null>(googlePlayBillingUnavailableReason());
   const [loading, setLoading] = useState(true);
-  const [submittingPayment, setSubmittingPayment] = useState(false);
+  const [loadingBilling, setLoadingBilling] = useState(false);
+  const [startingTrial, setStartingTrial] = useState(false);
 
   const locked = params.locked === "1";
   const subscriptionInfo = getSubscriptionDisplay(subscription);
   const access = getSubscriptionAccess(subscription);
-  const latestPendingRequest = paymentRequests.find((request) => request.status === "pending_review") || null;
+  const googlePlayLinked = hasGooglePlayAutopay(subscription);
 
-  const summary = useMemo(() => {
-    if (plan === "monthly") {
-      return {
-        title: "Monthly billing",
-        amount: money(MONTHLY_AMOUNT),
-        note: "One month access after payment approval",
-      };
-    }
-
-    return {
-      title: "Yearly billing",
-      amount: money(YEARLY_AMOUNT),
-      note: `${money(MONTHLY_AMOUNT)} per month, 12 months access after approval`,
-    };
-  }, [plan]);
+  const summary = useMemo(
+    () => ({
+      title: "3-month free trial",
+      amount: `${money(SUBSCRIPTION_MONTHLY_AMOUNT)} / month after trial`,
+      note: "Google Play auto-renewing monthly subscription",
+    }),
+    []
+  );
 
   async function load() {
     try {
       setLoading(true);
-      const [subscriptionData, paymentRows] = await Promise.all([
-        getClinicSubscription(),
-        getSubscriptionPaymentRequests(5),
-      ]);
+      const subscriptionData = await getClinicSubscription();
       setSubscription(subscriptionData);
-      setPaymentRequests(paymentRows);
     } catch (error) {
       Alert.alert("Subscription load failed", error instanceof Error ? error.message : "Please try again.");
     } finally {
@@ -218,8 +151,63 @@ export default function SubscriptionScreen() {
     }
   }
 
+  async function loadBillingOffer() {
+    if (Platform.OS !== "android") {
+      setBillingError("Google Play Billing works only inside the Android app installed from Play testing/production.");
+      return;
+    }
+
+    try {
+      setLoadingBilling(true);
+      setBillingError(null);
+      const offer = await loadGooglePlayBillingOffer();
+      setBillingOffer(offer);
+
+      if (!offer) {
+        setBillingError(
+          `Subscription product not found. Create product ${GOOGLE_PLAY_MONTHLY_PRODUCT_ID} with a 3-month free trial offer in Play Console.`
+        );
+      }
+    } catch (error) {
+      setBillingError(error instanceof Error ? error.message : "Google Play Billing could not load subscription offer.");
+    } finally {
+      setLoadingBilling(false);
+    }
+  }
+
   useEffect(() => {
     load();
+  }, [profile?.clinic_id]);
+
+  useEffect(() => {
+    loadBillingOffer();
+
+    const cleanup = addGooglePlayPurchaseListeners({
+      onPurchase: async (purchase) => {
+        try {
+          const updatedSubscription = await recordGooglePlaySubscriptionPurchase(purchase);
+          await finishGooglePlaySubscriptionPurchase(purchase);
+          setSubscription(updatedSubscription as ClinicSubscription);
+          await load();
+
+          Alert.alert(
+            "Google Play trial started",
+            "MiDMS is now linked to Google Play. The clinic gets 3 months free trial and Google Play will auto-renew monthly after the trial unless cancelled."
+          );
+        } catch (error) {
+          Alert.alert("Subscription save failed", error instanceof Error ? error.message : "Please try again.");
+        }
+      },
+      onError: (message) => {
+        setStartingTrial(false);
+        Alert.alert("Google Play Billing", message);
+      },
+    });
+
+    return () => {
+      cleanup();
+      endGooglePlayBilling();
+    };
   }, [profile?.clinic_id]);
 
   function goDashboard() {
@@ -231,46 +219,39 @@ export default function SubscriptionScreen() {
     router.replace("/" as never);
   }
 
-  async function submitPaymentRequest() {
-    if (!profile?.clinic_id) {
-      Alert.alert("Clinic missing", "Clinic profile was not loaded. Please sign in again.");
-      return;
-    }
-
+  async function startGooglePlayTrial() {
     try {
-      setSubmittingPayment(true);
-      const request = await requestSubscriptionPayment({
-        billingCycle: plan,
-        paymentReference,
-        ownerNote,
-      });
+      setStartingTrial(true);
 
-      setPaymentReference("");
-      setOwnerNote("");
-      await load();
+      let offer = billingOffer;
+      if (!offer) {
+        offer = await loadGooglePlayBillingOffer();
+        setBillingOffer(offer);
+      }
 
-      Alert.alert(
-        "Payment request submitted",
-        `${subscriptionBillingLabel(request.billing_cycle)} plan request for ${money(Number(request.amount || 0))} is pending MiDMS admin approval. No referral credit or discount is applied.`
-      );
+      if (!offer) {
+        throw new Error(`Subscription product ${GOOGLE_PLAY_MONTHLY_PRODUCT_ID} was not returned by Google Play.`);
+      }
+
+      await launchGooglePlaySubscriptionPurchase(offer);
     } catch (error) {
-      Alert.alert("Payment request failed", error instanceof Error ? error.message : "Please try again.");
+      Alert.alert("Google Play subscription failed", error instanceof Error ? error.message : "Please try again.");
     } finally {
-      setSubmittingPayment(false);
+      setStartingTrial(false);
     }
   }
 
   return (
-    <Screen refreshing={loading} onRefresh={load}>
+    <Screen refreshing={loading || loadingBilling} onRefresh={() => { load(); loadBillingOffer(); }}>
       <View style={{ gap: 8 }}>
         <Text style={{ color: colors.text, fontSize: 30, fontWeight: "900" }}>Subscription</Text>
         <Text style={{ color: colors.muted, fontSize: 15, lineHeight: 21 }}>
-          Review clinic trial, payment request status, and renewal before enabling live billing.
+          Start Google Play 3-month free trial. After trial, Google Play handles automatic monthly billing.
         </Text>
       </View>
 
       {locked || access.blocked ? (
-        <SectionCard title="Clinic Access Paused" subtitle="Renewal is required before staff can continue normal clinic work.">
+        <SectionCard title="Clinic Access Paused" subtitle="Google Play subscription is required before staff can continue normal clinic work.">
           <View
             style={{
               borderRadius: 22,
@@ -315,7 +296,7 @@ export default function SubscriptionScreen() {
                 justifyContent: "center",
               }}
             >
-              <Ionicons name="shield-checkmark-outline" size={25} color={colors.primary} />
+              <Ionicons name={googlePlayLinked ? "logo-google-playstore" : "shield-checkmark-outline"} size={25} color={colors.primary} />
             </View>
             <View style={{ flex: 1 }}>
               <Text style={{ color: colors.text, fontSize: 19, fontWeight: "900" }}>
@@ -330,119 +311,66 @@ export default function SubscriptionScreen() {
         </View>
       </SectionCard>
 
-      <SectionCard title="Choose Billing" subtitle="Select monthly or yearly billing before submitting payment request.">
-        <PlanOption
-          active={plan === "monthly"}
-          title="Monthly"
-          subtitle="One month access"
-          price={`${money(MONTHLY_AMOUNT)} / month`}
-          onPress={() => setPlan("monthly")}
-        />
+      <SectionCard title="Google Play Autopay" subtitle="This replaces manual UPI/cash renewal requests.">
+        <GooglePlayPlanCard offer={billingOffer} onPress={startGooglePlayTrial} />
 
-        <PlanOption
-          active={plan === "yearly"}
-          title="Yearly"
-          subtitle="Twelve months access"
-          price={`${money(YEARLY_AMOUNT)} / year`}
-          badge="12 months"
-          onPress={() => setPlan("yearly")}
-        />
-      </SectionCard>
-
-      <SectionCard title="Payment Handling" subtitle="Manual payment record. No referral program, credits, or discount logic is applied.">
-        <View
-          style={{
-            padding: 14,
-            borderRadius: 20,
-            backgroundColor: colors.warningSoft,
-            borderWidth: 1,
-            borderColor: colors.border,
-            gap: 8,
-          }}
-        >
-          <View style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
-            <Ionicons name="information-circle-outline" size={22} color={colors.warning} />
-            <Text style={{ flex: 1, color: colors.text, fontWeight: "900" }}>
-              Manual approval flow
-            </Text>
-          </View>
-          <Text style={{ color: colors.muted, lineHeight: 20 }}>
-            Owner submits payment reference after UPI/cash/bank collection. MiDMS admin verifies it, then approves the request from Supabase to activate the clinic period.
-          </Text>
-        </View>
-
-        {latestPendingRequest ? (
+        {billingError ? (
           <View
             style={{
               padding: 14,
               borderRadius: 20,
-              backgroundColor: colors.primarySoft,
+              backgroundColor: colors.warningSoft,
               borderWidth: 1,
               borderColor: colors.border,
-              gap: 6,
+              gap: 8,
             }}
           >
-            <StatusBadge label="Pending payment already submitted" tone="warning" />
-            <Text style={{ color: colors.text, fontWeight: "900", fontSize: 16 }}>
-              {subscriptionBillingLabel(latestPendingRequest.billing_cycle)} • {money(Number(latestPendingRequest.amount || 0))}
-            </Text>
-            <Text style={{ color: colors.muted, lineHeight: 20 }}>
-              Submitting again will update the existing pending request instead of creating a duplicate.
-            </Text>
+            <View style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
+              <Ionicons name="information-circle-outline" size={22} color={colors.warning} />
+              <Text style={{ flex: 1, color: colors.text, fontWeight: "900" }}>Google Play setup needed</Text>
+            </View>
+            <Text style={{ color: colors.muted, lineHeight: 20 }}>{billingError}</Text>
           </View>
         ) : null}
 
-        <AppInput
-          label="Payment reference / UTR / receipt number"
-          value={paymentReference}
-          onChangeText={setPaymentReference}
-          placeholder="Optional but recommended"
-          autoCapitalize="characters"
-          helper="Use UPI UTR, cash receipt number, or bank transfer reference."
-        />
-
-        <AppInput
-          label="Owner note"
-          value={ownerNote}
-          onChangeText={setOwnerNote}
-          placeholder="Example: Paid by UPI from clinic account"
-          multiline
-          helper="This note is visible in the payment request history."
+        <AppButton
+          title={googlePlayLinked ? "Google Play Linked" : "Start 3-Month Free Trial"}
+          icon={googlePlayLinked ? "checkmark-circle-outline" : "logo-google-playstore"}
+          onPress={startGooglePlayTrial}
+          loading={startingTrial || loadingBilling}
+          loadingTitle={startingTrial ? "Opening Google Play..." : "Loading Play Billing..."}
+          disabled={googlePlayLinked || Platform.OS !== "android"}
         />
       </SectionCard>
 
-      <SectionCard title="Included" subtitle="Core clinic tools covered under the selected MiDMS plan.">
+      <SectionCard title="Billing Summary" subtitle="What the clinic owner accepts in Google Play.">
+        <View style={{ gap: 12 }}>
+          <DetailRow label="Trial" value={summary.title} />
+          <DetailRow label="After trial" value={summary.amount} />
+          <DetailRow label="Billing" value={summary.note} />
+          <DetailRow label="Product ID" value={GOOGLE_PLAY_MONTHLY_PRODUCT_ID} />
+          <DetailRow label="Trial offer ID" value={GOOGLE_PLAY_TRIAL_OFFER_ID} />
+          {billingOffer?.basePlanId ? <DetailRow label="Base plan" value={billingOffer.basePlanId} /> : null}
+          {billingOffer?.offerId ? <DetailRow label="Offer" value={billingOffer.offerId} /> : null}
+        </View>
+      </SectionCard>
+
+      <SectionCard title="Google Play Status" subtitle="Stored billing link for this clinic.">
+        <View style={{ gap: 12 }}>
+          <DetailRow label="Billing provider" value={subscription?.billing_provider || "google_play"} />
+          <DetailRow label="Play status" value={googlePlayBillingStatusLabel(subscription?.google_play_status)} />
+          <DetailRow label="Autopay" value={subscription?.google_play_auto_renewing ? "Enabled" : googlePlayLinked ? "Linked" : "Not started"} />
+          <DetailRow label="Linked at" value={formatSubscriptionDateTime(subscription?.google_play_linked_at)} />
+          <DetailRow label="Last event" value={formatSubscriptionDateTime(subscription?.google_play_last_event_at)} />
+        </View>
+      </SectionCard>
+
+      <SectionCard title="Included" subtitle="Core clinic tools covered under MiDMS subscription.">
         <FeatureRow icon="people-outline" label="Unlimited patient search and clinical history" />
         <FeatureRow icon="cloud-upload-outline" label="Photo, prescription, report and X-ray uploads" />
         <FeatureRow icon="cash-outline" label="OP, X-ray, medication and pending payment tracking" />
         <FeatureRow icon="notifications-outline" label="Follow-up and payment reminder workflow" />
         <FeatureRow icon="lock-closed-outline" label="Role-based access for owner, doctor and reception" />
-      </SectionCard>
-
-      <SectionCard title="Billing Summary" subtitle="Review selected billing cycle and amount before request.">
-        <View style={{ flexDirection: "row", alignItems: "center", gap: 12 }}>
-          <View style={{ flex: 1 }}>
-            <Text style={{ color: colors.text, fontSize: 17, fontWeight: "900" }}>{summary.title}</Text>
-            <Text style={{ color: colors.muted, marginTop: 3 }}>{summary.note}</Text>
-          </View>
-          <Text style={{ color: colors.text, fontSize: 22, fontWeight: "900", fontVariant: ["tabular-nums"] }}>
-            {summary.amount}
-          </Text>
-        </View>
-      </SectionCard>
-
-      <SectionCard title="Payment Request History" subtitle="Recent subscription payment requests for this clinic only.">
-        {paymentRequests.length ? (
-          <View style={{ gap: 10 }}>
-            {paymentRequests.map((request) => (
-              <PaymentRequestCard key={request.id} request={request} />
-            ))}
-          </View>
-        ) : (
-          <Text style={{ color: colors.muted, lineHeight: 20 }}>
-            No payment requests submitted yet.
-          </Text>
-        )}
       </SectionCard>
 
       <View style={{ flexDirection: "row", gap: 10 }}>
@@ -455,11 +383,11 @@ export default function SubscriptionScreen() {
           style={{ flex: 1 }}
         />
         <AppButton
-          title={access.blocked ? "Submit Renewal" : "Submit Payment"}
-          icon="card-outline"
-          onPress={submitPaymentRequest}
-          loading={submittingPayment}
-          loadingTitle="Submitting..."
+          title="Reload Billing"
+          icon="refresh-circle-outline"
+          variant="ghost"
+          onPress={loadBillingOffer}
+          loading={loadingBilling}
           style={{ flex: 1 }}
         />
       </View>
