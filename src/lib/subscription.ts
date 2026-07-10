@@ -1,6 +1,11 @@
 import { getCurrentProfile, supabase } from "@/lib/supabase";
 
 export type ClinicSubscriptionStatus = "trial" | "active" | "expired" | "cancelled" | "grace_period";
+export type SubscriptionBillingCycle = "monthly" | "yearly";
+export type SubscriptionPaymentStatus = "pending_review" | "approved" | "rejected" | "cancelled";
+
+export const SUBSCRIPTION_MONTHLY_AMOUNT = 799;
+export const SUBSCRIPTION_YEARLY_AMOUNT = SUBSCRIPTION_MONTHLY_AMOUNT * 12;
 
 export type ClinicSubscription = {
   id: string;
@@ -17,12 +22,52 @@ export type ClinicSubscription = {
   updated_at: string;
 };
 
+export type SubscriptionPaymentRequest = {
+  id: string;
+  clinic_id: string;
+  subscription_id: string | null;
+  requested_by: string | null;
+  billing_cycle: SubscriptionBillingCycle;
+  amount: number;
+  payment_method: string;
+  payment_reference: string | null;
+  owner_note: string | null;
+  admin_note: string | null;
+  status: SubscriptionPaymentStatus;
+  requested_at: string;
+  reviewed_at: string | null;
+  reviewed_by: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
 export type SubscriptionAccess = {
   allowed: boolean;
   blocked: boolean;
   reason: string;
   statusLabel: string;
 };
+
+export function subscriptionBillingAmount(cycle: SubscriptionBillingCycle) {
+  return cycle === "yearly" ? SUBSCRIPTION_YEARLY_AMOUNT : SUBSCRIPTION_MONTHLY_AMOUNT;
+}
+
+export function subscriptionBillingLabel(cycle: SubscriptionBillingCycle) {
+  return cycle === "yearly" ? "Yearly" : "Monthly";
+}
+
+export function subscriptionPaymentStatusLabel(status?: SubscriptionPaymentStatus | null) {
+  if (status === "approved") return "Approved";
+  if (status === "rejected") return "Rejected";
+  if (status === "cancelled") return "Cancelled";
+  return "Pending review";
+}
+
+export function subscriptionPaymentStatusTone(status?: SubscriptionPaymentStatus | null) {
+  if (status === "approved") return "success" as const;
+  if (status === "rejected" || status === "cancelled") return "danger" as const;
+  return "warning" as const;
+}
 
 export async function getClinicSubscription() {
   const profile = await getCurrentProfile();
@@ -43,6 +88,43 @@ export async function getClinicSubscription() {
   }
 
   return data;
+}
+
+export async function getSubscriptionPaymentRequests(limit = 5) {
+  const profile = await getCurrentProfile();
+
+  if (!profile?.clinic_id) return [] as SubscriptionPaymentRequest[];
+
+  const { data, error } = await supabase
+    .from("clinic_subscription_payments")
+    .select(
+      "id,clinic_id,subscription_id,requested_by,billing_cycle,amount,payment_method,payment_reference,owner_note,admin_note,status,requested_at,reviewed_at,reviewed_by,created_at,updated_at"
+    )
+    .eq("clinic_id", profile.clinic_id)
+    .order("requested_at", { ascending: false })
+    .limit(limit);
+
+  if (error) {
+    console.warn("Subscription payment requests load failed:", error.message);
+    return [] as SubscriptionPaymentRequest[];
+  }
+
+  return (data || []) as SubscriptionPaymentRequest[];
+}
+
+export async function requestSubscriptionPayment(input: {
+  billingCycle: SubscriptionBillingCycle;
+  paymentReference?: string;
+  ownerNote?: string;
+}) {
+  const { data, error } = await supabase.rpc("request_clinic_subscription_payment", {
+    p_billing_cycle: input.billingCycle,
+    p_payment_reference: input.paymentReference?.trim() || null,
+    p_owner_note: input.ownerNote?.trim() || null,
+  });
+
+  if (error) throw error;
+  return data as SubscriptionPaymentRequest;
 }
 
 export function daysUntil(value?: string | null) {
@@ -75,6 +157,21 @@ export function formatPlanDate(value?: string | null) {
     day: "2-digit",
     month: "short",
     year: "numeric",
+  });
+}
+
+export function formatSubscriptionDateTime(value?: string | null) {
+  if (!value) return "Not set";
+
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "Not set";
+
+  return date.toLocaleString("en-IN", {
+    day: "2-digit",
+    month: "short",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
   });
 }
 
