@@ -43,20 +43,13 @@ function endOfToday() {
 }
 
 export function getExportDateRange(key: ExportRangeKey): DateRange {
-  if (key === "all") {
-    return { start: null, end: null, label: "All records" };
-  }
+  if (key === "all") return { start: null, end: null, label: "All records" };
 
   const start = startOfToday();
   const end = endOfToday();
 
-  if (key === "week") {
-    start.setDate(start.getDate() - 6);
-  }
-
-  if (key === "month") {
-    start.setDate(1);
-  }
+  if (key === "week") start.setDate(start.getDate() - 6);
+  if (key === "month") start.setDate(1);
 
   return {
     start: start.toISOString(),
@@ -146,6 +139,7 @@ export async function buildOwnerExport(rangeKey: ExportRangeKey): Promise<OwnerE
   if (!profile?.clinic_id) throw new Error("Clinic profile not found");
 
   const range = getExportDateRange(rangeKey);
+  const limit = rangeKey === "all" ? 2000 : 500;
 
   const patientQuery = applyDateRange(
     supabase
@@ -153,7 +147,7 @@ export async function buildOwnerExport(rangeKey: ExportRangeKey): Promise<OwnerE
       .select("id,patient_code,name,phone,gender,age,created_at")
       .eq("clinic_id", profile.clinic_id)
       .order("created_at", { ascending: false })
-      .limit(rangeKey === "all" ? 2000 : 500),
+      .limit(limit),
     "created_at",
     range
   );
@@ -178,7 +172,7 @@ export async function buildOwnerExport(rangeKey: ExportRangeKey): Promise<OwnerE
       .select("patient_id,doctor_id,visit_date,chief_complaint,doctor_notes,next_appointment_date,created_at")
       .eq("clinic_id", profile.clinic_id)
       .order("visit_date", { ascending: false })
-      .limit(rangeKey === "all" ? 2000 : 500),
+      .limit(limit),
     "visit_date",
     range
   );
@@ -189,7 +183,7 @@ export async function buildOwnerExport(rangeKey: ExportRangeKey): Promise<OwnerE
       .select("patient_id,doctor_id,appointment_time,status,notes,created_at")
       .eq("clinic_id", profile.clinic_id)
       .order("appointment_time", { ascending: false })
-      .limit(rangeKey === "all" ? 2000 : 500),
+      .limit(limit),
     "appointment_time",
     range
   );
@@ -200,7 +194,7 @@ export async function buildOwnerExport(rangeKey: ExportRangeKey): Promise<OwnerE
       .select("patient_id,total_amount,paid_amount,due_amount,status,notes,created_at")
       .eq("clinic_id", profile.clinic_id)
       .order("created_at", { ascending: false })
-      .limit(rangeKey === "all" ? 2000 : 500),
+      .limit(limit),
     "created_at",
     range
   );
@@ -211,18 +205,20 @@ export async function buildOwnerExport(rangeKey: ExportRangeKey): Promise<OwnerE
       .select("patient_id,amount,payment_method,payment_category,notes,collected_by,created_at")
       .eq("clinic_id", profile.clinic_id)
       .order("created_at", { ascending: false })
-      .limit(rangeKey === "all" ? 2000 : 500),
+      .limit(limit),
     "created_at",
     range
   );
 
+  // Real uploaded files are saved in public.files by uploadPatientFile().
+  // Do not query public.patient_files because that table does not exist in this project.
   const filesQuery = applyDateRange(
     supabase
-      .from("patient_files")
-      .select("patient_id,file_type,file_name,file_note,uploaded_by,created_at")
+      .from("files")
+      .select("patient_id,file_type,file_name,uploaded_by,created_at")
       .eq("clinic_id", profile.clinic_id)
       .order("created_at", { ascending: false })
-      .limit(rangeKey === "all" ? 2000 : 500),
+      .limit(limit),
     "created_at",
     range
   );
@@ -233,7 +229,7 @@ export async function buildOwnerExport(rangeKey: ExportRangeKey): Promise<OwnerE
       .select("patient_id,medication_name,dosage,frequency,duration,instructions,prescribed_by,created_at")
       .eq("clinic_id", profile.clinic_id)
       .order("created_at", { ascending: false })
-      .limit(rangeKey === "all" ? 2000 : 500),
+      .limit(limit),
     "created_at",
     range
   );
@@ -308,12 +304,11 @@ export async function buildOwnerExport(rangeKey: ExportRangeKey): Promise<OwnerE
     ),
     section(
       "Uploaded Files",
-      ["Patient", "File Type", "File Name", "Note", "Uploaded By", "Uploaded At"],
+      ["Patient", "File Type", "File Name", "Uploaded By", "Uploaded At"],
       files.map((row) => [
         patientLabel(patientMap.get(row.patient_id)),
         row.file_type,
         row.file_name,
-        row.file_note,
         staffLabel(staffMap.get(row.uploaded_by)),
         dateText(row.created_at),
       ])
