@@ -17,9 +17,26 @@ import {
   DEFAULT_CLINIC_FEATURE_SETTINGS,
   getClinicFeatureSettings,
 } from "@/lib/clinicOptions";
-import { DashboardStats, getDashboardStats, getRoleLabel, getWorkflowDashboardSummary, supabase } from "@/lib/supabase";
+import {
+  DashboardStats,
+  getDashboardStats,
+  getRoleLabel,
+  getWorkflowDashboardSummary,
+  supabase,
+} from "@/lib/supabase";
 
-type AppointmentRow = any;
+type AppointmentRow = {
+  id: string;
+  patient_id: string;
+  appointment_time: string;
+  status?: string | null;
+  patients?: {
+    id?: string;
+    name?: string | null;
+    phone?: string | null;
+    photo_url?: string | null;
+  } | null;
+};
 
 function money(value?: number) {
   return `₹${Math.round(Number(value || 0)).toLocaleString("en-IN")}`;
@@ -110,8 +127,11 @@ export default function ReceptionDashboard() {
     }
   }
 
-  const appointments = useMemo(() => stats?.todayAppointmentList ?? [], [stats?.todayAppointmentList]);
-  const waiting = appointments.filter((item: AppointmentRow) => isWaitingStatus(item.status));
+  const appointments = useMemo<AppointmentRow[]>(
+    () => ((stats?.todayAppointmentList ?? []) as AppointmentRow[]),
+    [stats?.todayAppointmentList]
+  );
+  const waiting = appointments.filter((item) => isWaitingStatus(item.status));
   const next = waiting[0];
 
   return (
@@ -264,7 +284,7 @@ export default function ReceptionDashboard() {
       <SectionCard title="Waiting Room" subtitle="Patients waiting for doctor visit will appear here.">
         {waiting.length ? (
           <View style={{ gap: 10 }}>
-            {waiting.slice(0, 8).map((item: AppointmentRow) => (
+            {waiting.slice(0, 8).map((item) => (
               <AppointmentItem
                 key={item.id}
                 item={item}
