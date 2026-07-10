@@ -2,12 +2,12 @@ import { getCurrentProfile, Profile, supabase } from "@/lib/supabase";
 
 export type ClinicFeatureSettings = {
   enable_patient_photos: boolean;
-  enable_medication_module: boolean;
+  enable_prescription_medications: boolean;
 };
 
 export const DEFAULT_CLINIC_FEATURE_SETTINGS: ClinicFeatureSettings = {
   enable_patient_photos: false,
-  enable_medication_module: false,
+  enable_prescription_medications: false,
 };
 
 export function canManageClinicFeatureSettings(profile?: Profile | null) {
@@ -21,7 +21,7 @@ export async function getClinicFeatureSettings(): Promise<ClinicFeatureSettings>
 
   const { data, error } = await supabase
     .from("clinics")
-    .select("enable_patient_photos,enable_medication_module")
+    .select("enable_patient_photos,enable_prescription_medications")
     .eq("id", profile.clinic_id)
     .maybeSingle();
 
@@ -29,7 +29,7 @@ export async function getClinicFeatureSettings(): Promise<ClinicFeatureSettings>
 
   return {
     enable_patient_photos: Boolean(data?.enable_patient_photos),
-    enable_medication_module: Boolean(data?.enable_medication_module),
+    enable_prescription_medications: Boolean(data?.enable_prescription_medications),
   };
 }
 
@@ -45,16 +45,16 @@ export async function updateClinicFeatureSettings(input: ClinicFeatureSettings) 
     .from("clinics")
     .update({
       enable_patient_photos: input.enable_patient_photos,
-      enable_medication_module: input.enable_medication_module,
+      enable_prescription_medications: input.enable_prescription_medications,
     })
     .eq("id", profile.clinic_id)
-    .select("enable_patient_photos,enable_medication_module")
+    .select("enable_patient_photos,enable_prescription_medications")
     .single();
 
   if (error) throw error;
 
   return {
     enable_patient_photos: Boolean(data?.enable_patient_photos),
-    enable_medication_module: Boolean(data?.enable_medication_module),
+    enable_prescription_medications: Boolean(data?.enable_prescription_medications),
   };
 }
