@@ -1,6 +1,6 @@
+import { router } from "expo-router";
 import { useEffect, useState } from "react";
 import { Alert, Switch, Text, View } from "react-native";
-import { router } from "expo-router";
 import { AppButton } from "@/components/AppButton";
 import { EmptyState } from "@/components/EmptyState";
 import { Screen } from "@/components/Screen";
@@ -107,10 +107,10 @@ export default function AccountSettingsScreen() {
         />
 
         <FeatureSwitch
-          title="Medication collection"
-          subtitle="When on, receptionist dashboard shows medication fee collection. When off, medicine options are hidden."
-          value={settings.enable_medication_module}
-          onValueChange={(value) => setFeature("enable_medication_module", value)}
+          title="Prescribed tablets section"
+          subtitle="When on, receptionist can enter tablets prescribed to a patient and reuse repeated medicine names. Medication fee collection is not changed."
+          value={settings.enable_prescription_medications}
+          onValueChange={(value) => setFeature("enable_prescription_medications", value)}
         />
 
         <AppButton
@@ -125,7 +125,9 @@ export default function AccountSettingsScreen() {
         <Text style={{ color: colors.muted, lineHeight: 21 }}>
           Patient photos: {settings.enable_patient_photos ? "ON" : "OFF"}
           {"\n"}
-          Medication option: {settings.enable_medication_module ? "ON" : "OFF"}
+          Prescribed tablets section: {settings.enable_prescription_medications ? "ON" : "OFF"}
+          {"\n"}
+          Medication fee module: unchanged
         </Text>
       </SectionCard>
 
