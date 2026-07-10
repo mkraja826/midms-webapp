@@ -1,10 +1,16 @@
 import { router } from "expo-router";
-import { useState } from "react";
-import { Alert, ScrollView, Switch, Text, View } from "react-native";
+import * as ImagePicker from "expo-image-picker";
+import { useEffect, useState } from "react";
+import { Alert, Image, Pressable, ScrollView, Switch, Text, View } from "react-native";
 import { AppButton } from "@/components/AppButton";
 import { AppInput } from "@/components/AppInput";
 import { SectionCard } from "@/components/SectionCard";
 import { colors } from "@/constants/colors";
+import {
+  DEFAULT_CLINIC_FEATURE_SETTINGS,
+  getClinicFeatureSettings,
+} from "@/lib/clinicOptions";
+import { uploadPatientProfilePhoto } from "@/lib/patientProfilePhoto";
 import { createPatient } from "@/lib/supabase";
 
 export default function AddPatientScreen() {
@@ -27,10 +33,46 @@ export default function AddPatientScreen() {
     diabetes: false,
     blood_pressure: false,
   });
+  const [features, setFeatures] = useState(DEFAULT_CLINIC_FEATURE_SETTINGS);
+  const [photoUri, setPhotoUri] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
 
   function setField(key: keyof typeof form, value: string) {
     setForm((current) => ({ ...current, [key]: value }));
+  }
+
+  async function loadFeatures() {
+    try {
+      const data = await getClinicFeatureSettings();
+      setFeatures(data);
+    } catch (error) {
+      console.warn("Clinic optional features load failed:", error);
+      setFeatures(DEFAULT_CLINIC_FEATURE_SETTINGS);
+    }
+  }
+
+  useEffect(() => {
+    loadFeatures();
+  }, []);
+
+  async function pickPatientPhoto() {
+    const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
+
+    if (!permission.granted) {
+      Alert.alert("Gallery permission needed", "Allow gallery access to select patient photo.");
+      return;
+    }
+
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ImagePicker.MediaTypeOptions.Images,
+      quality: 0.8,
+      allowsEditing: true,
+      aspect: [1, 1],
+    });
+
+    if (result.canceled) return;
+
+    setPhotoUri(result.assets[0].uri);
   }
 
   async function save() {
@@ -55,6 +97,11 @@ export default function AddPatientScreen() {
           other_notes: form.other_notes.trim(),
         },
       });
+
+      if (features.enable_patient_photos && photoUri) {
+        await uploadPatientProfilePhoto(patient.id, photoUri);
+      }
+
       router.replace({ pathname: "/patient/[id]", params: { id: patient.id } });
     } catch (error) {
       Alert.alert("Patient save failed", error instanceof Error ? error.message : "Unable to add patient.");
@@ -66,6 +113,37 @@ export default function AddPatientScreen() {
   return (
     <ScrollView contentInsetAdjustmentBehavior="automatic" contentContainerStyle={{ padding: 16, gap: 16 }}>
       <SectionCard title="Patient Details" subtitle="Name and phone are required. Add age and contact details if available.">
+        {features.enable_patient_photos ? (
+          <View style={{ alignItems: "center", gap: 10 }}>
+            <Pressable
+              onPress={pickPatientPhoto}
+              style={{
+                width: 108,
+                height: 108,
+                borderRadius: 36,
+                backgroundColor: colors.primarySoft,
+                borderWidth: 1,
+                borderColor: colors.border,
+                overflow: "hidden",
+                alignItems: "center",
+                justifyContent: "center",
+              }}
+            >
+              {photoUri ? (
+                <Image source={{ uri: photoUri }} style={{ width: "100%", height: "100%" }} resizeMode="cover" />
+              ) : (
+                <Text style={{ color: colors.primary, fontWeight: "900", textAlign: "center" }}>
+                  Add Photo
+                </Text>
+              )}
+            </Pressable>
+
+            <Text style={{ color: colors.muted, textAlign: "center", lineHeight: 19 }}>
+              Optional patient profile photo. Owner can turn this off from Account Settings.
+            </Text>
+          </View>
+        ) : null}
+
         <AppInput label="Full name" placeholder="Patient full name" value={form.name} onChangeText={(value) => setField("name", value)} />
         <AppInput label="Gender" placeholder="Male / Female / Other" value={form.gender} onChangeText={(value) => setField("gender", value)} />
         <AppInput label="Age" value={form.age} onChangeText={(value) => setField("age", value)} keyboardType="numeric" placeholder="Years" />
