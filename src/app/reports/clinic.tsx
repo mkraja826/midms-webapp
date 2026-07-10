@@ -117,22 +117,32 @@ export default function ClinicReportScreen() {
         </View>
       </SectionCard>
 
-      <SectionCard title="Owner Export" subtitle="Export patient, visit, payment, appointment, staff, file and tablet data in owner-friendly CSV text.">
+      <SectionCard title="Owner Tools" subtitle="Review activity and export records without exposing technical IDs.">
         <View style={{ gap: 10 }}>
           <View style={{ padding: 14, borderRadius: 20, backgroundColor: colors.primarySoft, borderWidth: 1, borderColor: colors.border, gap: 6 }}>
             <Text style={{ color: colors.text, fontWeight: "900", fontSize: 16 }}>
-              Human-readable export
+              Activity + Excel export
             </Text>
             <Text style={{ color: colors.muted, lineHeight: 20 }}>
-              Uses patient names, phone numbers, patient codes, staff names, dates and amounts. Internal UUIDs stay hidden.
+              Activity log shows staff actions. Export downloads Excel-compatible owner data using patient names, staff names, dates and amounts.
             </Text>
           </View>
 
-          <AppButton
-            title="Open Owner Export"
-            icon="document-text-outline"
-            onPress={() => router.push("/reports/export" as never)}
-          />
+          <View style={{ flexDirection: "row", gap: 10 }}>
+            <AppButton
+              title="Activity Log"
+              icon="pulse-outline"
+              variant="secondary"
+              onPress={() => router.push("/reports/activity" as never)}
+              style={{ flex: 1 }}
+            />
+            <AppButton
+              title="Excel Export"
+              icon="download-outline"
+              onPress={() => router.push("/reports/export" as never)}
+              style={{ flex: 1 }}
+            />
+          </View>
         </View>
       </SectionCard>
 
@@ -159,8 +169,8 @@ export default function ClinicReportScreen() {
         subtitle="Owner-facing exports should look human-readable and clinic-friendly."
       >
         <EmptyState
-          title="No technical IDs in exports"
-          message="Exports use patient names, phone numbers, patient codes, visit dates, staff names, and amounts. Internal database IDs, UUIDs, clinic IDs, file IDs, and user IDs stay hidden."
+          title="No technical IDs in owner tools"
+          message="Exports and activity views use patient names, phone numbers, patient codes, visit dates, staff names, and amounts. Internal database IDs, UUIDs, clinic IDs, file IDs, and user IDs stay hidden."
           icon="shield-checkmark-outline"
         />
       </SectionCard>
