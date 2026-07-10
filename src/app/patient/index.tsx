@@ -9,10 +9,15 @@ import { Screen } from "@/components/Screen";
 import { SectionCard } from "@/components/SectionCard";
 import { StatusBadge } from "@/components/StatusBadge";
 import { colors } from "@/constants/colors";
-import { Patient, searchPatientsAdvanced } from "@/lib/supabase";
+import {
+  PatientDirectoryDateField,
+  PatientDirectoryDatePreset,
+  searchPatientsPage,
+} from "@/lib/patientDirectory";
+import { Patient } from "@/lib/supabase";
 
-type DatePreset = "all" | "today" | "yesterday" | "week" | "month" | "custom";
-type DateField = "registered" | "visit" | "appointment" | "followup" | "payment";
+type DatePreset = PatientDirectoryDatePreset;
+type DateField = PatientDirectoryDateField;
 
 const PAGE_SIZE = 10;
 
@@ -46,17 +51,21 @@ export default function PatientSearchScreen() {
   const [startDate, setStartDate] = useState("");
   const [endDate, setEndDate] = useState("");
   const [page, setPage] = useState(1);
+  const [totalCount, setTotalCount] = useState(0);
   const [loading, setLoading] = useState(true);
   const [searching, setSearching] = useState(false);
+  const [scrollKey, setScrollKey] = useState(0);
 
   async function runSearch(next?: {
     query?: string;
     datePreset?: DatePreset;
     dateField?: DateField;
+    page?: number;
   }) {
     const finalQuery = next?.query ?? query;
     const finalPreset = next?.datePreset ?? datePreset;
     const finalField = next?.dateField ?? dateField;
+    const finalPage = next?.page ?? page;
 
     if (finalPreset === "custom" && (!startDate.trim() || !endDate.trim())) {
       Alert.alert("Date range required", "Enter start and end date in YYYY-MM-DD format.");
@@ -65,15 +74,20 @@ export default function PatientSearchScreen() {
 
     try {
       setSearching(true);
-      const rows = await searchPatientsAdvanced({
+      const result = await searchPatientsPage({
         query: finalQuery,
         dateField: finalField,
         preset: finalPreset,
         startDate,
         endDate,
+        page: finalPage,
+        pageSize: PAGE_SIZE,
       });
-      setPatients(rows);
-      setPage(1);
+
+      setPatients(result.patients);
+      setTotalCount(result.total);
+      setPage(result.page);
+      setScrollKey((value) => value + 1);
     } catch (error) {
       Alert.alert(
         "Search failed",
@@ -86,36 +100,46 @@ export default function PatientSearchScreen() {
   }
 
   useEffect(() => {
-    runSearch({ datePreset: "all" });
+    runSearch({ datePreset: "all", page: 1 });
   }, []);
 
-  const totalPages = Math.max(1, Math.ceil(patients.length / PAGE_SIZE));
+  const totalPages = Math.max(1, Math.ceil(totalCount / PAGE_SIZE));
   const currentPage = Math.min(page, totalPages);
-  const pageStart = (currentPage - 1) * PAGE_SIZE;
-  const visiblePatients = useMemo(
-    () => patients.slice(pageStart, pageStart + PAGE_SIZE),
-    [patients, pageStart]
-  );
-  const rangeStart = patients.length ? pageStart + 1 : 0;
-  const rangeEnd = Math.min(pageStart + PAGE_SIZE, patients.length);
+  const pageStart = totalCount ? (currentPage - 1) * PAGE_SIZE : 0;
+  const rangeStart = totalCount ? pageStart + 1 : 0;
+  const rangeEnd = Math.min(pageStart + patients.length, totalCount);
+  const hasFilters = Boolean(query.trim()) || datePreset !== "all";
 
   const title = useMemo(() => {
-    if (loading) return "Loading patients...";
-    if (!patients.length) return query.trim() || datePreset !== "all" ? "No results" : "No patients yet";
-    if (query.trim() || datePreset !== "all") {
-      return `Showing ${rangeStart}-${rangeEnd} of ${patients.length} result${patients.length === 1 ? "" : "s"}`;
+    if (loading) return "Loading latest patients...";
+    if (!totalCount) return hasFilters ? "No results" : "No patients yet";
+    if (hasFilters) {
+      return `Showing ${rangeStart}-${rangeEnd} of ${totalCount} result${totalCount === 1 ? "" : "s"}`;
     }
-    return `Showing ${rangeStart}-${rangeEnd} of ${patients.length} patients`;
-  }, [datePreset, loading, patients.length, query, rangeEnd, rangeStart]);
+    return `Latest patients: ${rangeStart}-${rangeEnd} of ${totalCount}`;
+  }, [hasFilters, loading, rangeEnd, rangeStart, totalCount]);
 
   function updatePreset(next: DatePreset) {
     setDatePreset(next);
-    if (next !== "custom") runSearch({ datePreset: next });
+    setPage(1);
+    if (next !== "custom") runSearch({ datePreset: next, page: 1 });
   }
 
   function updateField(next: DateField) {
     setDateField(next);
-    runSearch({ dateField: next });
+    setPage(1);
+    runSearch({ dateField: next, page: 1 });
+  }
+
+  function searchFirstPage() {
+    setPage(1);
+    runSearch({ page: 1 });
+  }
+
+  function goToPage(nextPage: number) {
+    const safePage = Math.max(1, Math.min(totalPages, nextPage));
+    setPage(safePage);
+    runSearch({ page: safePage });
   }
 
   function clearFilters() {
@@ -125,7 +149,7 @@ export default function PatientSearchScreen() {
     setStartDate("");
     setEndDate("");
     setPage(1);
-    runSearch({ query: "", datePreset: "all", dateField: "registered" });
+    runSearch({ query: "", datePreset: "all", dateField: "registered", page: 1 });
   }
 
   async function callPatient(phone?: string | null) {
@@ -144,17 +168,17 @@ export default function PatientSearchScreen() {
   }
 
   return (
-    <Screen refreshing={loading || searching} onRefresh={() => runSearch()}>
+    <Screen refreshing={loading || searching} onRefresh={() => runSearch({ page })} scrollToTopKey={scrollKey}>
       <View style={{ gap: 6 }}>
         <Text style={{ color: colors.text, fontSize: 30, fontWeight: "900" }}>
           Patients
         </Text>
         <Text style={{ color: colors.muted, fontSize: 15, lineHeight: 21 }}>
-          Search patients by name, phone, patient code, registration, visit, appointment, follow-up, or payment date.
+          Latest 10 patients appear first. Search checks the full clinic database, not only the current page.
         </Text>
       </View>
 
-      <SectionCard title="Find Patient">
+      <SectionCard title="Find Patient" subtitle="Search existing patients first. Add patient only when no record exists.">
         <View
           style={{
             minHeight: 54,
@@ -172,7 +196,7 @@ export default function PatientSearchScreen() {
           <TextInput
             value={query}
             onChangeText={setQuery}
-            onSubmitEditing={() => runSearch()}
+            onSubmitEditing={searchFirstPage}
             placeholder="Search patient name, phone, or patient code"
             placeholderTextColor={colors.muted}
             autoCapitalize="none"
@@ -189,12 +213,18 @@ export default function PatientSearchScreen() {
             <Pressable
               onPress={() => {
                 setQuery("");
-                runSearch({ query: "" });
+                setPage(1);
+                runSearch({ query: "", page: 1 });
               }}
             >
               <Ionicons name="close-circle" size={22} color={colors.muted} />
             </Pressable>
           ) : null}
+        </View>
+
+        <View style={{ flexDirection: "row", gap: 10 }}>
+          <AppButton title="Search" icon="search-outline" onPress={searchFirstPage} loading={searching} style={{ flex: 1 }} />
+          <AppButton title="Clear" icon="close-circle-outline" variant="secondary" onPress={clearFilters} style={{ flex: 1 }} />
         </View>
 
         <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8 }}>
@@ -270,14 +300,10 @@ export default function PatientSearchScreen() {
         ) : null}
 
         <View style={{ flexDirection: "row", gap: 10 }}>
-          <AppButton title="Search" icon="search-outline" onPress={() => runSearch()} loading={searching} style={{ flex: 1 }} />
-          <AppButton title="Clear" icon="close-circle-outline" variant="secondary" onPress={clearFilters} style={{ flex: 1 }} />
-        </View>
-
-        <View style={{ flexDirection: "row", gap: 10 }}>
           <AppButton
-            title="Add Patient"
+            title="Add New Patient"
             icon="person-add-outline"
+            variant="secondary"
             onPress={() => router.push("/patient/add" as never)}
             style={{ flex: 1 }}
           />
@@ -291,14 +317,14 @@ export default function PatientSearchScreen() {
         </View>
       </SectionCard>
 
-      <SectionCard title={title} subtitle="Latest patients appear first. Tap a patient to open history.">
+      <SectionCard title={title} subtitle="Page loads 10 patients at a time for faster clinic use.">
         {loading || searching ? (
           <Text style={{ color: colors.muted }}>
-            {loading ? "Loading patients..." : "Searching..."}
+            {loading ? "Loading latest patients..." : "Searching full database..."}
           </Text>
         ) : patients.length ? (
           <View style={{ gap: 10 }}>
-            {visiblePatients.map((patient) => (
+            {patients.map((patient) => (
               <Pressable
                 key={patient.id}
                 onPress={() => router.push(`/patient/${patient.id}` as never)}
@@ -372,40 +398,38 @@ export default function PatientSearchScreen() {
               </Pressable>
             ))}
 
-            {totalPages > 1 ? (
-              <View style={{ gap: 10, marginTop: 4 }}>
-                <Text style={{ color: colors.muted, textAlign: "center", fontWeight: "800" }}>
-                  Page {currentPage} of {totalPages}
-                </Text>
-                <View style={{ flexDirection: "row", gap: 10 }}>
-                  <AppButton
-                    title="Previous"
-                    icon="chevron-back-outline"
-                    variant="secondary"
-                    disabled={currentPage <= 1}
-                    onPress={() => setPage((value) => Math.max(1, value - 1))}
-                    style={{ flex: 1 }}
-                  />
-                  <AppButton
-                    title="Next"
-                    icon="chevron-forward-outline"
-                    disabled={currentPage >= totalPages}
-                    onPress={() => setPage((value) => Math.min(totalPages, value + 1))}
-                    style={{ flex: 1 }}
-                  />
-                </View>
+            <View style={{ gap: 10, marginTop: 4 }}>
+              <Text style={{ color: colors.muted, textAlign: "center", fontWeight: "800" }}>
+                Page {currentPage} of {totalPages} • {rangeStart}-{rangeEnd} / {totalCount}
+              </Text>
+              <View style={{ flexDirection: "row", gap: 10 }}>
+                <AppButton
+                  title="Previous"
+                  icon="chevron-back-outline"
+                  variant="secondary"
+                  disabled={currentPage <= 1 || searching}
+                  onPress={() => goToPage(currentPage - 1)}
+                  style={{ flex: 1 }}
+                />
+                <AppButton
+                  title="Next"
+                  icon="chevron-forward-outline"
+                  disabled={currentPage >= totalPages || searching}
+                  onPress={() => goToPage(currentPage + 1)}
+                  style={{ flex: 1 }}
+                />
               </View>
-            ) : null}
+            </View>
           </View>
         ) : (
           <EmptyState
-            title={query.trim() || datePreset !== "all" ? "No matching patient" : "No patients yet"}
+            title={hasFilters ? "No matching patient" : "No patients yet"}
             message={
-              query.trim() || datePreset !== "all"
-                ? "Try another search or date filter."
+              hasFilters
+                ? "No patient matched this search. Add patient only after checking spelling or phone number."
                 : "Register the first patient to start building clinic history."
             }
-            icon={query.trim() || datePreset !== "all" ? "search-outline" : "person-add-outline"}
+            icon={hasFilters ? "search-outline" : "person-add-outline"}
           />
         )}
       </SectionCard>
