@@ -43,6 +43,13 @@ type DateRange = {
   label: string;
 };
 
+type ClinicScopedRow = {
+  clinic_id?: string | null;
+  patient_id?: string | null;
+  id?: string | null;
+  created_at?: string | null;
+};
+
 function startOfToday() {
   const date = new Date();
   date.setHours(0, 0, 0, 0);
@@ -109,6 +116,22 @@ async function safeRows<T>(
   }
 }
 
+function sameClinic<T extends ClinicScopedRow>(rows: T[], clinicId: string) {
+  return rows.filter((row) => row.clinic_id === clinicId);
+}
+
+function sameClinicPatientRows<T extends ClinicScopedRow>(
+  rows: T[],
+  clinicId: string,
+  patientMap: Map<string, any>
+) {
+  return rows.filter((row) => {
+    if (row.clinic_id !== clinicId) return false;
+    if (!row.patient_id) return false;
+    return patientMap.has(row.patient_id);
+  });
+}
+
 function dateText(value?: string | null) {
   if (!value) return "";
   const date = new Date(value);
@@ -130,14 +153,14 @@ function roleLabel(role?: string | null) {
 }
 
 function patientLabel(row?: { patient_code?: string | null; name?: string | null; phone?: string | null }) {
-  if (!row) return "Unknown patient";
+  if (!row) return "Patient";
   const code = row.patient_code ? `${row.patient_code} - ` : "";
   const phone = row.phone ? ` (${row.phone})` : "";
   return `${code}${row.name || "Patient"}${phone}`;
 }
 
 function staffLabel(row?: { name?: string | null; role?: string | null }) {
-  if (!row) return "Unknown staff";
+  if (!row) return "Clinic staff";
   return `${row.name || "Staff"}${row.role ? ` - ${roleLabel(row.role)}` : ""}`;
 }
 
@@ -163,16 +186,17 @@ export async function buildClinicActivityReport(rangeKey: ActivityRangeKey): Pro
   const profile = await getCurrentProfile();
   if (!profile?.clinic_id) throw new Error("Clinic profile not found");
 
+  const clinicId = profile.clinic_id;
   const range = getActivityDateRange(rangeKey);
   const limit = rangeKey === "all" ? 120 : 60;
 
-  const [patientsAll, staffAll] = await Promise.all([
+  const [patientMapRows, staffMapRows] = await Promise.all([
     safeRows<any>(
       "Activity patients map",
       supabase
         .from("patients")
-        .select("id,patient_code,name,phone")
-        .eq("clinic_id", profile.clinic_id)
+        .select("id,clinic_id,patient_code,name,phone")
+        .eq("clinic_id", clinicId)
         .order("created_at", { ascending: false })
         .limit(3000)
     ),
@@ -180,20 +204,22 @@ export async function buildClinicActivityReport(rangeKey: ActivityRangeKey): Pro
       "Activity staff map",
       supabase
         .from("profiles")
-        .select("id,name,role,email,active,created_at")
-        .eq("clinic_id", profile.clinic_id)
+        .select("id,clinic_id,name,role,email,active,created_at")
+        .eq("clinic_id", clinicId)
         .order("created_at", { ascending: false })
     ),
   ]);
 
-  const patientMap = new Map<string, any>(patientsAll.map((row) => [row.id, row]));
-  const staffMap = new Map<string, any>(staffAll.map((row) => [row.id, row]));
+  const currentClinicPatients = sameClinic(patientMapRows, clinicId);
+  const currentClinicStaff = sameClinic(staffMapRows, clinicId);
+  const patientMap = new Map<string, any>(currentClinicPatients.map((row) => [row.id, row]));
+  const staffMap = new Map<string, any>(currentClinicStaff.map((row) => [row.id, row]));
 
   const patientQuery = applyDateRange(
     supabase
       .from("patients")
-      .select("id,patient_code,name,phone,created_at")
-      .eq("clinic_id", profile.clinic_id)
+      .select("id,clinic_id,patient_code,name,phone,created_at")
+      .eq("clinic_id", clinicId)
       .order("created_at", { ascending: false })
       .limit(limit),
     "created_at",
@@ -203,8 +229,8 @@ export async function buildClinicActivityReport(rangeKey: ActivityRangeKey): Pro
   const visitQuery = applyDateRange(
     supabase
       .from("patient_visits")
-      .select("patient_id,doctor_id,chief_complaint,doctor_notes,visit_date,created_at")
-      .eq("clinic_id", profile.clinic_id)
+      .select("clinic_id,patient_id,doctor_id,chief_complaint,doctor_notes,visit_date,created_at")
+      .eq("clinic_id", clinicId)
       .order("created_at", { ascending: false })
       .limit(limit),
     "created_at",
@@ -214,8 +240,8 @@ export async function buildClinicActivityReport(rangeKey: ActivityRangeKey): Pro
   const paymentQuery = applyDateRange(
     supabase
       .from("payments")
-      .select("patient_id,amount,payment_method,payment_category,collected_by,notes,created_at")
-      .eq("clinic_id", profile.clinic_id)
+      .select("clinic_id,patient_id,amount,payment_method,payment_category,collected_by,notes,created_at")
+      .eq("clinic_id", clinicId)
       .order("created_at", { ascending: false })
       .limit(limit),
     "created_at",
@@ -225,8 +251,8 @@ export async function buildClinicActivityReport(rangeKey: ActivityRangeKey): Pro
   const fileQuery = applyDateRange(
     supabase
       .from("files")
-      .select("patient_id,file_type,file_name,uploaded_by,created_at")
-      .eq("clinic_id", profile.clinic_id)
+      .select("clinic_id,patient_id,file_type,file_name,uploaded_by,created_at")
+      .eq("clinic_id", clinicId)
       .order("created_at", { ascending: false })
       .limit(limit),
     "created_at",
@@ -236,8 +262,8 @@ export async function buildClinicActivityReport(rangeKey: ActivityRangeKey): Pro
   const appointmentQuery = applyDateRange(
     supabase
       .from("appointments")
-      .select("patient_id,doctor_id,appointment_time,status,notes,created_at")
-      .eq("clinic_id", profile.clinic_id)
+      .select("clinic_id,patient_id,doctor_id,appointment_time,status,notes,created_at")
+      .eq("clinic_id", clinicId)
       .order("created_at", { ascending: false })
       .limit(limit),
     "created_at",
@@ -247,8 +273,8 @@ export async function buildClinicActivityReport(rangeKey: ActivityRangeKey): Pro
   const medicationQuery = applyDateRange(
     supabase
       .from("patient_medications")
-      .select("patient_id,medication_name,dosage,frequency,duration,prescribed_by,created_at")
-      .eq("clinic_id", profile.clinic_id)
+      .select("clinic_id,patient_id,medication_name,dosage,frequency,duration,prescribed_by,created_at")
+      .eq("clinic_id", clinicId)
       .order("created_at", { ascending: false })
       .limit(limit),
     "created_at",
@@ -258,8 +284,8 @@ export async function buildClinicActivityReport(rangeKey: ActivityRangeKey): Pro
   const auditQuery = applyDateRange(
     supabase
       .from("patient_audit_logs")
-      .select("patient_id,changed_by,field_name,old_value,new_value,reason,created_at")
-      .eq("clinic_id", profile.clinic_id)
+      .select("clinic_id,patient_id,changed_by,field_name,old_value,new_value,reason,created_at")
+      .eq("clinic_id", clinicId)
       .order("created_at", { ascending: false })
       .limit(limit),
     "created_at",
@@ -269,15 +295,15 @@ export async function buildClinicActivityReport(rangeKey: ActivityRangeKey): Pro
   const staffQuery = applyDateRange(
     supabase
       .from("profiles")
-      .select("id,name,role,email,active,created_at")
-      .eq("clinic_id", profile.clinic_id)
+      .select("id,clinic_id,name,role,email,active,created_at")
+      .eq("clinic_id", clinicId)
       .order("created_at", { ascending: false })
       .limit(limit),
     "created_at",
     range
   );
 
-  const [patients, visits, payments, files, appointments, medications, audits, staff] = await Promise.all([
+  const [patientRows, visitRows, paymentRows, fileRows, appointmentRows, medicationRows, auditRows, staffRows] = await Promise.all([
     safeRows<any>("Patients", patientQuery),
     safeRows<any>("Visits", visitQuery),
     safeRows<any>("Payments", paymentQuery),
@@ -287,6 +313,15 @@ export async function buildClinicActivityReport(rangeKey: ActivityRangeKey): Pro
     safeRows<any>("Patient edits", auditQuery, { optional: true }),
     safeRows<any>("Staff", staffQuery),
   ]);
+
+  const patients = sameClinic(patientRows, clinicId);
+  const visits = sameClinicPatientRows(visitRows, clinicId, patientMap);
+  const payments = sameClinicPatientRows(paymentRows, clinicId, patientMap);
+  const files = sameClinicPatientRows(fileRows, clinicId, patientMap);
+  const appointments = sameClinicPatientRows(appointmentRows, clinicId, patientMap);
+  const medications = sameClinicPatientRows(medicationRows, clinicId, patientMap);
+  const audits = sameClinicPatientRows(auditRows, clinicId, patientMap);
+  const staff = sameClinic(staffRows, clinicId);
 
   const items: ClinicActivityItem[] = [
     ...patients.map((row, index) => ({
