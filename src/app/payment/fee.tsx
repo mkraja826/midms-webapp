@@ -10,10 +10,6 @@ import { SectionCard } from "@/components/SectionCard";
 import { StatusBadge } from "@/components/StatusBadge";
 import { SuccessNotice } from "@/components/SuccessNotice";
 import { colors } from "@/constants/colors";
-import {
-  DEFAULT_CLINIC_FEATURE_SETTINGS,
-  getClinicFeatureSettings,
-} from "@/lib/clinicOptions";
 import { getPatients, Patient, PaymentCategory, supabase } from "@/lib/supabase";
 
 type FeeType = PaymentCategory | "other";
@@ -67,7 +63,6 @@ export default function ReceptionFeeScreen() {
   const incomingType = (FEE_TYPES.some((item) => item.key === params.fee_type) ? params.fee_type : "op_fee") as FeeType;
 
   const [feeType, setFeeType] = useState<FeeType>(incomingType);
-  const [features, setFeatures] = useState(DEFAULT_CLINIC_FEATURE_SETTINGS);
   const [patients, setPatients] = useState<Patient[]>([]);
   const [patientSearch, setPatientSearch] = useState("");
   const [selectedPatientId, setSelectedPatientId] = useState("");
@@ -80,11 +75,6 @@ export default function ReceptionFeeScreen() {
 
   const config = getFeeConfig(feeType);
 
-  const visibleFeeTypes = useMemo(
-    () => FEE_TYPES.filter((item) => features.enable_medication_module || item.key !== "medication_fee"),
-    [features.enable_medication_module]
-  );
-
   function changeFeeType(next: FeeType) {
     setFeeType(next);
     setAmount(getDefaultAmount(next));
@@ -95,21 +85,8 @@ export default function ReceptionFeeScreen() {
   async function loadPatients() {
     try {
       setLoadingPatients(true);
-
-      const [rows, featureSettings] = await Promise.all([
-        getPatients(),
-        getClinicFeatureSettings().catch((error) => {
-          console.warn("Fee optional features load failed:", error);
-          return DEFAULT_CLINIC_FEATURE_SETTINGS;
-        }),
-      ]);
-
+      const rows = await getPatients();
       setPatients(rows);
-      setFeatures(featureSettings);
-
-      if (!featureSettings.enable_medication_module && feeType === "medication_fee") {
-        changeFeeType("treatment_fee");
-      }
     } catch (error) {
       Alert.alert("Patients load failed", getErrorMessage(error));
     } finally {
@@ -149,11 +126,6 @@ export default function ReceptionFeeScreen() {
   }
 
   async function collectFee() {
-    if (!features.enable_medication_module && feeType === "medication_fee") {
-      Alert.alert("Medication disabled", "Clinic owner has turned off medication fee collection.");
-      return;
-    }
-
     if (!selectedPatientId) {
       Alert.alert("Patient missing", "Select patient first.");
       return;
@@ -197,8 +169,7 @@ export default function ReceptionFeeScreen() {
       <View style={{ gap: 6 }}>
         <Text style={{ color: colors.text, fontSize: 30, fontWeight: "900" }}>Reception Fees</Text>
         <Text style={{ color: colors.muted, fontSize: 15, lineHeight: 21 }}>
-          Collect OP, X-ray, treatment, or other clinic fees with correct patient and payment method.
-          {features.enable_medication_module ? " Medication collection is enabled by owner." : " Medication collection is hidden by owner setting."}
+          Collect OP, X-ray, medication, treatment, or other clinic fees with correct patient and payment method.
         </Text>
       </View>
 
@@ -206,7 +177,7 @@ export default function ReceptionFeeScreen() {
 
       <SectionCard title="Fee Type" subtitle="Choose the correct fee category so owner revenue reports stay clear.">
         <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 10 }}>
-          {visibleFeeTypes.map((item) => (
+          {FEE_TYPES.map((item) => (
             <FeeTypeCard key={item.key} title={item.title} subtitle={item.subtitle} icon={item.icon} selected={feeType === item.key} onPress={() => changeFeeType(item.key)} />
           ))}
         </View>
