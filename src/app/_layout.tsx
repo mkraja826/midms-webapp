@@ -1,9 +1,11 @@
-import { Stack } from "expo-router";
+import { Stack, router, usePathname } from "expo-router";
 import { StatusBar } from "expo-status-bar";
+import { useEffect, type ReactNode } from "react";
 import { ActivityIndicator, Image, StyleSheet, Text, View } from "react-native";
 import { AuthProvider, useAuth } from "@/lib/auth";
 import { colors } from "@/constants/colors";
 import { isSupabaseConfigured } from "@/lib/supabase";
+import { getClinicSubscription, getSubscriptionAccess } from "@/lib/subscription";
 
 const appLogo = require("../../assets/icon.png");
 
@@ -26,6 +28,49 @@ function ConfigurationErrorScreen() {
       </Text>
     </View>
   );
+}
+
+function isSubscriptionOpenPath(pathname: string) {
+  return (
+    pathname === "/settings/subscription" ||
+    pathname === "/login" ||
+    pathname === "/onboarding" ||
+    pathname.startsWith("/auth") ||
+    pathname.startsWith("/settings/privacy") ||
+    pathname.startsWith("/settings/terms") ||
+    pathname.startsWith("/settings/delete-account") ||
+    pathname.startsWith("/settings/report-issue")
+  );
+}
+
+function SubscriptionGate({ children }: { children: ReactNode }) {
+  const { loading, session, profile } = useAuth();
+  const pathname = usePathname();
+
+  useEffect(() => {
+    let mounted = true;
+
+    async function checkClinicAccess() {
+      if (loading || !session || !profile?.clinic_id || isSubscriptionOpenPath(pathname)) return;
+
+      const subscription = await getClinicSubscription();
+      const access = getSubscriptionAccess(subscription);
+
+      if (mounted && access.blocked) {
+        router.replace("/settings/subscription?locked=1" as never);
+      }
+    }
+
+    checkClinicAccess().catch((error) => {
+      console.warn("Subscription gate failed:", error instanceof Error ? error.message : error);
+    });
+
+    return () => {
+      mounted = false;
+    };
+  }, [loading, session?.user?.id, profile?.clinic_id, pathname]);
+
+  return <>{children}</>;
 }
 
 function RootStack() {
@@ -54,7 +99,7 @@ function RootStack() {
   }
 
   return (
-    <>
+    <SubscriptionGate>
       <StatusBar style="dark" />
       <Stack
         screenOptions={{
@@ -101,7 +146,7 @@ function RootStack() {
         <Stack.Screen name="staff/index" options={{ headerShown: true, title: "Staff Management" }} />
         <Stack.Screen name="staff/add" options={{ headerShown: true, title: "Add Staff" }} />
       </Stack>
-    </>
+    </SubscriptionGate>
   );
 }
 
