@@ -1,4 +1,4 @@
-﻿import { router } from "expo-router";
+import { router } from "expo-router";
 import { ScrollView, Text, View } from "react-native";
 import { AppButton } from "@/components/AppButton";
 import { SectionCard } from "@/components/SectionCard";
@@ -13,10 +13,17 @@ export default function LegalAccountScreen() {
             DMS Play Store compliance
           </Text>
           <Text style={{ color: colors.muted, lineHeight: 21 }}>
-            Access the app privacy information, terms and conditions, and account/data deletion request options.
+            Access app privacy information, terms and conditions, support, report issue, and account/data deletion request options.
           </Text>
         </View>
       </SectionCard>
+
+      <AppButton
+        title="Report Issue / Support"
+        variant="primary"
+        icon="help-buoy-outline"
+        onPress={() => router.push("/settings/report-issue" as never)}
+      />
 
       <AppButton
         title="Privacy Help"
