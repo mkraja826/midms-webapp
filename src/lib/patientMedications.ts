@@ -34,16 +34,17 @@ export async function getMedicationSuggestions(search = "") {
   let query = supabase
     .from("medication_catalog")
     .select("id,name,normalized_name,usage_count,last_used_at")
-    .eq("clinic_id", profile.clinic_id)
-    .order("usage_count", { ascending: false })
-    .order("last_used_at", { ascending: false })
-    .limit(20);
+    .eq("clinic_id", profile.clinic_id);
 
   if (term) {
     query = query.ilike("name", `%${term}%`);
   }
 
-  const { data, error } = await query;
+  const { data, error } = await query
+    .order("usage_count", { ascending: false })
+    .order("last_used_at", { ascending: false })
+    .limit(20);
+
   if (error) throw error;
   return (data || []) as MedicationSuggestion[];
 }
@@ -55,13 +56,11 @@ export async function getRecentPatientMedications(patientId?: string) {
   let query = supabase
     .from("patient_medications")
     .select("*, patients(id,name,phone,patient_code)")
-    .eq("clinic_id", profile.clinic_id)
-    .order("created_at", { ascending: false })
-    .limit(30);
+    .eq("clinic_id", profile.clinic_id);
 
   if (patientId) query = query.eq("patient_id", patientId);
 
-  const { data, error } = await query;
+  const { data, error } = await query.order("created_at", { ascending: false }).limit(30);
   if (error) throw error;
   return (data || []) as PatientMedicationEntry[];
 }
