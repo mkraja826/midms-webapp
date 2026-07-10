@@ -1,5 +1,5 @@
 {
-  "name": "dms-mobile-app",
+  "name": "midms-webapp",
   "version": "1.1.0",
   "private": true,
   "main": "expo-router/entry",
@@ -8,6 +8,8 @@
     "android": "expo run:android",
     "ios": "expo run:ios",
     "web": "expo start --web",
+    "build:web": "expo export --platform web",
+    "preview:web": "npx serve dist",
     "typecheck": "tsc --noEmit",
     "build:android": "eas build --platform android --profile production",
     "build:android:apk": "eas build --platform android --profile preview",
