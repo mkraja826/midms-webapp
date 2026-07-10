@@ -1,4 +1,4 @@
-﻿import { useState } from "react";
+import { useState } from "react";
 import { Ionicons } from "@expo/vector-icons";
 import { router } from "expo-router";
 import {
@@ -14,12 +14,14 @@ import { AppButton } from "@/components/AppButton";
 import { AppInput } from "@/components/AppInput";
 import { colors } from "@/constants/colors";
 import { useAuth } from "@/lib/auth";
-import { supabase } from "@/lib/supabase";
+
+type SignupType = "clinic" | "employee";
 
 export default function LoginScreen() {
-  const { signIn, signUpOwner } = useAuth();
+  const { signIn, signUpOwner, signUpStaff } = useAuth();
 
   const [mode, setMode] = useState<"login" | "signup">("login");
+  const [signupType, setSignupType] = useState<SignupType>("clinic");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
 
@@ -42,10 +44,17 @@ export default function LoginScreen() {
       if (mode === "login") {
         await signIn(email, password);
       } else {
-        await signUpOwner(email, password);
+        if (signupType === "clinic") {
+          await signUpOwner(email, password);
+        } else {
+          await signUpStaff(email, password);
+        }
+
         Alert.alert(
           "Verify your email",
-          "We sent a verification link. Verify your email, then login and create the clinic workspace."
+          signupType === "clinic"
+            ? "We sent a verification link. Verify your email, then login and create the clinic workspace."
+            : "We sent a verification link. Verify your email, then login and join your clinic using the invite code."
         );
         setMode("login");
         setPassword("");
@@ -59,6 +68,54 @@ export default function LoginScreen() {
       setLoading(false);
     }
   }
+
+  function SignupChoice({
+    type,
+    title,
+    subtitle,
+    icon,
+  }: {
+    type: SignupType;
+    title: string;
+    subtitle: string;
+    icon: keyof typeof Ionicons.glyphMap;
+  }) {
+    const selected = signupType === type;
+
+    return (
+      <Pressable
+        onPress={() => setSignupType(type)}
+        style={{
+          flex: 1,
+          borderRadius: 18,
+          padding: 12,
+          gap: 8,
+          borderWidth: 1,
+          borderColor: selected ? colors.primary : colors.border,
+          backgroundColor: selected ? colors.primarySoft : colors.background,
+        }}
+      >
+        <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+          <Ionicons name={icon} size={20} color={colors.primary} />
+          <Text style={{ color: colors.text, fontWeight: "900", flex: 1 }}>{title}</Text>
+          <Ionicons
+            name={selected ? "checkmark-circle" : "ellipse-outline"}
+            size={19}
+            color={selected ? colors.primary : colors.muted}
+          />
+        </View>
+        <Text style={{ color: colors.muted, fontSize: 12, lineHeight: 17 }}>
+          {subtitle}
+        </Text>
+      </Pressable>
+    );
+  }
+
+  const signupTitle = signupType === "clinic" ? "Create Clinic Account" : "Create Employee Account";
+  const signupSubtitle =
+    signupType === "clinic"
+      ? "Create the first owner account. After email verification, you can create the clinic and start the free 3-month trial."
+      : "Create a staff account. After email verification, join your clinic using the invite code from the owner.";
 
   return (
     <KeyboardAvoidingView
@@ -93,7 +150,7 @@ export default function LoginScreen() {
           </View>
 
           <Text style={{ color: colors.primary, fontSize: 18, fontWeight: "900" }}>
-            DMS
+            MiDMS
           </Text>
 
           <Text
@@ -104,7 +161,7 @@ export default function LoginScreen() {
               textAlign: "center",
             }}
           >
-            {mode === "login" ? "Clinic Login" : "Create Owner Account"}
+            {mode === "login" ? "Clinic Login" : signupTitle}
           </Text>
 
           <Text
@@ -117,8 +174,8 @@ export default function LoginScreen() {
             }}
           >
             {mode === "login"
-              ? "One app for head doctors, working doctors, and receptionists."
-              : "Create the first head doctor account for a clinic."}
+              ? "One app for clinic owners, working doctors, and receptionists."
+              : signupSubtitle}
           </Text>
         </View>
 
@@ -132,6 +189,28 @@ export default function LoginScreen() {
             borderColor: colors.border,
           }}
         >
+          {mode === "signup" ? (
+            <View style={{ gap: 10 }}>
+              <Text style={{ color: colors.text, fontWeight: "900" }}>
+                Account type
+              </Text>
+              <View style={{ flexDirection: "row", gap: 10 }}>
+                <SignupChoice
+                  type="clinic"
+                  title="Clinic"
+                  icon="business-outline"
+                  subtitle="Create clinic profile after login"
+                />
+                <SignupChoice
+                  type="employee"
+                  title="Employee"
+                  icon="people-outline"
+                  subtitle="Join using staff invite code"
+                />
+              </View>
+            </View>
+          ) : null}
+
           <AppInput
             label="Email"
             value={email}
@@ -158,7 +237,7 @@ export default function LoginScreen() {
           />
 
           <AppButton
-            title={mode === "login" ? "Create owner account" : "Back to login"}
+            title={mode === "login" ? "Create new account" : "Back to login"}
             icon={mode === "login" ? "person-add-outline" : "arrow-back-outline"}
             variant="secondary"
             onPress={() => {
@@ -177,10 +256,9 @@ export default function LoginScreen() {
         </View>
 
         <Text style={{ color: colors.muted, fontSize: 12, textAlign: "center", lineHeight: 18 }}>
-          MVP 3-level access: Head Doctor â†’ Working Doctor â†’ Receptionist
+          Clinic / Owner → Employee / Staff access with invite code
         </Text>
       </ScrollView>
     </KeyboardAvoidingView>
   );
 }
-
