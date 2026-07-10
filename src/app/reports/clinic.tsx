@@ -117,6 +117,25 @@ export default function ClinicReportScreen() {
         </View>
       </SectionCard>
 
+      <SectionCard title="Owner Export" subtitle="Export patient, visit, payment, appointment, staff, file and tablet data in owner-friendly CSV text.">
+        <View style={{ gap: 10 }}>
+          <View style={{ padding: 14, borderRadius: 20, backgroundColor: colors.primarySoft, borderWidth: 1, borderColor: colors.border, gap: 6 }}>
+            <Text style={{ color: colors.text, fontWeight: "900", fontSize: 16 }}>
+              Human-readable export
+            </Text>
+            <Text style={{ color: colors.muted, lineHeight: 20 }}>
+              Uses patient names, phone numbers, patient codes, staff names, dates and amounts. Internal UUIDs stay hidden.
+            </Text>
+          </View>
+
+          <AppButton
+            title="Open Owner Export"
+            icon="document-text-outline"
+            onPress={() => router.push("/reports/export" as never)}
+          />
+        </View>
+      </SectionCard>
+
       <SectionCard title="Closing Checklist" subtitle="Use this every evening before leaving the clinic.">
         <View style={{ gap: 10 }}>
           {[
@@ -141,14 +160,14 @@ export default function ClinicReportScreen() {
       >
         <EmptyState
           title="No technical IDs in exports"
-          message="When export is enabled, it should use patient names, phone numbers, patient codes, visit dates, staff names, and amounts. Internal database IDs, UUIDs, clinic IDs, file IDs, and user IDs should stay hidden."
+          message="Exports use patient names, phone numbers, patient codes, visit dates, staff names, and amounts. Internal database IDs, UUIDs, clinic IDs, file IDs, and user IDs stay hidden."
           icon="shield-checkmark-outline"
         />
       </SectionCard>
 
       <View style={{ flexDirection: "row", gap: 10 }}>
         <AppButton title="Refresh" icon="refresh-outline" variant="secondary" onPress={load} loading={loading} style={{ flex: 1 }} />
-        <AppButton title="Back" icon="arrow-back-outline" variant="ghost" onPress={() => router.back()} style={{ flex: 1 }} />
+        <AppButton title="Dashboard" icon="home-outline" variant="ghost" onPress={() => router.replace("/(head)/dashboard" as never)} style={{ flex: 1 }} />
       </View>
     </Screen>
   );
