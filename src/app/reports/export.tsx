@@ -1,7 +1,7 @@
 import { Ionicons } from "@expo/vector-icons";
 import { router } from "expo-router";
-import { useEffect, useMemo, useState } from "react";
-import { Alert, Linking, Platform, Pressable, Share, Text, View } from "react-native";
+import { useEffect, useState } from "react";
+import { Alert, Platform, Pressable, Text, View } from "react-native";
 import { AppButton } from "@/components/AppButton";
 import { EmptyState } from "@/components/EmptyState";
 import { Screen } from "@/components/Screen";
@@ -56,14 +56,7 @@ export default function OwnerExportScreen() {
   const [range, setRange] = useState<ExportRangeKey>("today");
   const [report, setReport] = useState<OwnerExportReport | null>(null);
   const [loading, setLoading] = useState(true);
-  const [sharing, setSharing] = useState(false);
   const [downloadingExcel, setDownloadingExcel] = useState(false);
-
-  const preview = useMemo(() => {
-    if (!report) return "";
-    const lines = report.exportText.split("\n");
-    return lines.slice(0, 260).join("\n");
-  }, [report]);
 
   async function load(nextRange = range) {
     try {
@@ -87,45 +80,19 @@ export default function OwnerExportScreen() {
     try {
       setDownloadingExcel(true);
 
-      if (canDownloadExcelOnWeb()) {
-        downloadExcelOnWeb(report);
+      if (!canDownloadExcelOnWeb()) {
+        Alert.alert(
+          "Open in web browser",
+          "Excel sheet download is available from the web dashboard. Open this screen in browser and tap Download Excel Sheet."
+        );
         return;
       }
 
-      await Share.share({
-        title: report.excelFileName,
-        message: report.exportText,
-      });
-      Alert.alert(
-        "Excel download is web-ready",
-        "On browser, this downloads an Excel-compatible .xls file. On Android app, shared text is used until native file sharing is added."
-      );
+      downloadExcelOnWeb(report);
     } catch (error) {
       Alert.alert("Excel export failed", errorMessage(error));
     } finally {
       setDownloadingExcel(false);
-    }
-  }
-
-  async function shareExport() {
-    if (!report) return;
-
-    try {
-      setSharing(true);
-      await Share.share({
-        title: report.title,
-        message: report.exportText,
-      });
-    } catch (error) {
-      try {
-        const subject = encodeURIComponent(report.title);
-        const body = encodeURIComponent(report.exportText.slice(0, 12000));
-        await Linking.openURL(`mailto:?subject=${subject}&body=${body}`);
-      } catch {
-        Alert.alert("Share failed", errorMessage(error));
-      }
-    } finally {
-      setSharing(false);
     }
   }
 
@@ -136,11 +103,11 @@ export default function OwnerExportScreen() {
           Owner Export
         </Text>
         <Text style={{ color: colors.muted, fontSize: 15, lineHeight: 21 }}>
-          Human-readable clinic export for owner review. Internal database IDs are hidden.
+          Download clinic data as an owner-friendly Excel sheet. Internal database IDs are hidden.
         </Text>
       </View>
 
-      <SectionCard title="Export Range" subtitle="Choose what owner wants to review or share.">
+      <SectionCard title="Export Range" subtitle="Choose what owner wants to download.">
         <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 10 }}>
           {RANGE_OPTIONS.map((item) => {
             const selected = range === item.key;
@@ -214,26 +181,6 @@ export default function OwnerExportScreen() {
             />
             <Text selectable style={{ color: colors.muted, lineHeight: 20 }}>
               File: {report.excelFileName}
-            </Text>
-          </SectionCard>
-
-          <SectionCard title="Share / Copy Export" subtitle="Use Share for WhatsApp/email, or long-press text to copy selected data.">
-            <AppButton
-              title="Share Export Text"
-              icon="share-social-outline"
-              onPress={shareExport}
-              loading={sharing || loading}
-              loadingTitle="Preparing export..."
-            />
-            <Text style={{ color: colors.muted, lineHeight: 20 }}>
-              For very large exports, share may open only part of the text. The full preview below remains selectable.
-            </Text>
-          </SectionCard>
-
-          <SectionCard title="CSV Preview" subtitle="Selectable owner-friendly CSV. No UUIDs or technical IDs shown.">
-            <Text selectable style={{ color: colors.text, lineHeight: 20, fontSize: 12 }}>
-              {preview}
-              {preview !== report.exportText ? "\n\n...Preview shortened on screen. Use Share Export Text for full text." : ""}
             </Text>
           </SectionCard>
         </>
