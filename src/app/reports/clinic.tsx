@@ -117,14 +117,14 @@ export default function ClinicReportScreen() {
         </View>
       </SectionCard>
 
-      <SectionCard title="Owner Tools" subtitle="Review follow-ups, verify payments, audit activity and export records.">
+      <SectionCard title="Owner Tools" subtitle="Review follow-ups, staff work, payments, activity and exports.">
         <View style={{ gap: 10 }}>
           <View style={{ padding: 14, borderRadius: 20, backgroundColor: colors.primarySoft, borderWidth: 1, borderColor: colors.border, gap: 6 }}>
             <Text style={{ color: colors.text, fontWeight: "900", fontSize: 16 }}>
-              Follow-up review + payment review + activity + Excel export
+              Follow-up + staff performance + payment review + activity + Excel
             </Text>
             <Text style={{ color: colors.muted, lineHeight: 20 }}>
-              Verify due follow-ups, collections by method, staff actions and owner-friendly export data.
+              Track due follow-ups, staff work, collections, staff actions and owner-friendly export data.
             </Text>
           </View>
 
@@ -136,15 +136,22 @@ export default function ClinicReportScreen() {
               style={{ flex: 1 }}
             />
             <AppButton
+              title="Staff Work"
+              icon="people-circle-outline"
+              variant="secondary"
+              onPress={() => router.push("/reports/staff-performance" as never)}
+              style={{ flex: 1 }}
+            />
+          </View>
+
+          <View style={{ flexDirection: "row", gap: 10 }}>
+            <AppButton
               title="Payment Review"
               icon="card-outline"
               variant="secondary"
               onPress={() => router.push("/reports/payments" as never)}
               style={{ flex: 1 }}
             />
-          </View>
-
-          <View style={{ flexDirection: "row", gap: 10 }}>
             <AppButton
               title="Activity Log"
               icon="pulse-outline"
@@ -152,14 +159,14 @@ export default function ClinicReportScreen() {
               onPress={() => router.push("/reports/activity" as never)}
               style={{ flex: 1 }}
             />
-            <AppButton
-              title="Excel Export"
-              icon="download-outline"
-              variant="secondary"
-              onPress={() => router.push("/reports/export" as never)}
-              style={{ flex: 1 }}
-            />
           </View>
+
+          <AppButton
+            title="Excel Export"
+            icon="download-outline"
+            variant="secondary"
+            onPress={() => router.push("/reports/export" as never)}
+          />
         </View>
       </SectionCard>
 
@@ -170,8 +177,8 @@ export default function ClinicReportScreen() {
             "Doctor queue completed",
             "Pending payments reviewed",
             "Follow-up review checked",
+            "Staff performance reviewed",
             "Prescriptions/X-rays uploaded",
-            "Staff activity reviewed if needed",
           ].map((item) => (
             <View key={item} style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
               <Ionicons name="checkmark-circle-outline" size={21} color={colors.success} />
@@ -187,7 +194,7 @@ export default function ClinicReportScreen() {
       >
         <EmptyState
           title="No technical IDs in owner tools"
-          message="Exports and activity views use patient names, phone numbers, patient codes, visit dates, staff names, and amounts. Internal database IDs, UUIDs, clinic IDs, file IDs, and user IDs stay hidden."
+          message="Exports and owner views use patient names, phone numbers, patient codes, visit dates, staff names, and amounts. Internal database IDs, UUIDs, clinic IDs, file IDs, and user IDs stay hidden."
           icon="shield-checkmark-outline"
         />
       </SectionCard>
