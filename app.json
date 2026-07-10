@@ -1,7 +1,7 @@
 {
   "expo": {
-    "name": "MiDMS",
-    "slug": "dmsdms",
+    "name": "MiDMS Web",
+    "slug": "midms-webapp",
     "scheme": "dms",
     "version": "1.1.0",
     "orientation": "portrait",
@@ -40,6 +40,15 @@
       ],
       "expo-font"
     ],
+    "web": {
+      "bundler": "metro",
+      "output": "static",
+      "favicon": "./assets/icon.png",
+      "name": "MiDMS",
+      "shortName": "MiDMS",
+      "themeColor": "#F6FAFB",
+      "backgroundColor": "#F6FAFB"
+    },
     "android": {
       "package": "com.dms.clinic",
       "versionCode": 2,
