@@ -9,7 +9,7 @@ import { SectionCard } from "@/components/SectionCard";
 import { StatusBadge } from "@/components/StatusBadge";
 import { colors } from "@/constants/colors";
 import { useAuth } from "@/lib/auth";
-import { getRoleLabel } from "@/lib/supabase";
+import { getDashboardPath, getRoleLabel } from "@/lib/supabase";
 
 const SUPPORT_EMAIL = "karthikraja826@gmail.com";
 
@@ -47,6 +47,7 @@ export default function ReportIssueScreen() {
   const categoryLabel = ISSUE_CATEGORIES.find((item) => item.key === category)?.label ?? "Issue";
   const appVersion = Constants.expoConfig?.version ?? "unknown";
   const userEmail = profile?.email || session?.user?.email || "not available";
+  const homePath = getDashboardPath(profile?.role ?? "receptionist");
 
   const supportMessage = useMemo(() => {
     return [
@@ -210,10 +211,10 @@ export default function ReportIssueScreen() {
       </SectionCard>
 
       <AppButton
-        title="Back"
+        title="Back to Dashboard"
         icon="arrow-back-outline"
         variant="ghost"
-        onPress={() => router.back()}
+        onPress={() => router.replace(homePath as never)}
       />
     </Screen>
   );
