@@ -117,18 +117,24 @@ export default function ClinicReportScreen() {
         </View>
       </SectionCard>
 
-      <SectionCard title="Owner Tools" subtitle="Review activity and export records without exposing technical IDs.">
+      <SectionCard title="Owner Tools" subtitle="Review activity, verify payments and export records without exposing technical IDs.">
         <View style={{ gap: 10 }}>
           <View style={{ padding: 14, borderRadius: 20, backgroundColor: colors.primarySoft, borderWidth: 1, borderColor: colors.border, gap: 6 }}>
             <Text style={{ color: colors.text, fontWeight: "900", fontSize: 16 }}>
-              Activity + Excel export
+              Payment review + activity + Excel export
             </Text>
             <Text style={{ color: colors.muted, lineHeight: 20 }}>
-              Activity log shows staff actions. Export downloads Excel-compatible owner data using patient names, staff names, dates and amounts.
+              Verify collections by method, category and staff. Activity log shows staff actions. Export downloads owner data.
             </Text>
           </View>
 
           <View style={{ flexDirection: "row", gap: 10 }}>
+            <AppButton
+              title="Payment Review"
+              icon="card-outline"
+              onPress={() => router.push("/reports/payments" as never)}
+              style={{ flex: 1 }}
+            />
             <AppButton
               title="Activity Log"
               icon="pulse-outline"
@@ -136,13 +142,14 @@ export default function ClinicReportScreen() {
               onPress={() => router.push("/reports/activity" as never)}
               style={{ flex: 1 }}
             />
-            <AppButton
-              title="Excel Export"
-              icon="download-outline"
-              onPress={() => router.push("/reports/export" as never)}
-              style={{ flex: 1 }}
-            />
           </View>
+
+          <AppButton
+            title="Excel Export"
+            icon="download-outline"
+            variant="secondary"
+            onPress={() => router.push("/reports/export" as never)}
+          />
         </View>
       </SectionCard>
 
