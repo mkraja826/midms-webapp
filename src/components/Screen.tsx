@@ -1,4 +1,4 @@
-import { ReactNode } from "react";
+import { ReactNode, useEffect, useRef } from "react";
 import { KeyboardAvoidingView, Platform, RefreshControl, ScrollView, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { StatusBar } from "expo-status-bar";
@@ -9,18 +9,31 @@ export function Screen({
   scroll = true,
   refreshing = false,
   onRefresh,
+  scrollToTopKey,
 }: {
   children: ReactNode;
   scroll?: boolean;
   refreshing?: boolean;
   onRefresh?: () => void;
+  scrollToTopKey?: string | number | null;
 }) {
+  const scrollRef = useRef<ScrollView | null>(null);
   const contentPadding = {
     paddingHorizontal: 16,
     paddingTop: 14,
     paddingBottom: 40,
     gap: 16,
   };
+
+  useEffect(() => {
+    if (scrollToTopKey === undefined) return;
+
+    const timeout = setTimeout(() => {
+      scrollRef.current?.scrollTo({ y: 0, animated: false });
+    }, 0);
+
+    return () => clearTimeout(timeout);
+  }, [scrollToTopKey]);
 
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: colors.background }} edges={["top", "left", "right"]}>
@@ -31,6 +44,7 @@ export function Screen({
       >
         {scroll ? (
           <ScrollView
+            ref={scrollRef}
             keyboardShouldPersistTaps="handled"
             showsVerticalScrollIndicator={false}
             contentInsetAdjustmentBehavior="automatic"
