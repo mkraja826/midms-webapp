@@ -117,14 +117,14 @@ export default function ClinicReportScreen() {
         </View>
       </SectionCard>
 
-      <SectionCard title="Owner Tools" subtitle="Review follow-ups, staff work, payments, activity and exports.">
+      <SectionCard title="Owner Tools" subtitle="Review follow-ups, treatments, staff work, payments, activity and exports.">
         <View style={{ gap: 10 }}>
           <View style={{ padding: 14, borderRadius: 20, backgroundColor: colors.primarySoft, borderWidth: 1, borderColor: colors.border, gap: 6 }}>
             <Text style={{ color: colors.text, fontWeight: "900", fontSize: 16 }}>
-              Follow-up + staff performance + payment review + activity + Excel
+              Follow-up + treatment review + staff performance + payment review + activity + Excel
             </Text>
             <Text style={{ color: colors.muted, lineHeight: 20 }}>
-              Track due follow-ups, staff work, collections, staff actions and owner-friendly export data.
+              Track due follow-ups, open treatments, staff work, collections, staff actions and owner-friendly export data.
             </Text>
           </View>
 
@@ -136,15 +136,22 @@ export default function ClinicReportScreen() {
               style={{ flex: 1 }}
             />
             <AppButton
+              title="Treatments"
+              icon="hammer-outline"
+              variant="secondary"
+              onPress={() => router.push("/reports/treatments" as never)}
+              style={{ flex: 1 }}
+            />
+          </View>
+
+          <View style={{ flexDirection: "row", gap: 10 }}>
+            <AppButton
               title="Staff Work"
               icon="people-circle-outline"
               variant="secondary"
               onPress={() => router.push("/reports/staff-performance" as never)}
               style={{ flex: 1 }}
             />
-          </View>
-
-          <View style={{ flexDirection: "row", gap: 10 }}>
             <AppButton
               title="Payment Review"
               icon="card-outline"
@@ -152,6 +159,9 @@ export default function ClinicReportScreen() {
               onPress={() => router.push("/reports/payments" as never)}
               style={{ flex: 1 }}
             />
+          </View>
+
+          <View style={{ flexDirection: "row", gap: 10 }}>
             <AppButton
               title="Activity Log"
               icon="pulse-outline"
@@ -159,14 +169,14 @@ export default function ClinicReportScreen() {
               onPress={() => router.push("/reports/activity" as never)}
               style={{ flex: 1 }}
             />
+            <AppButton
+              title="Excel Export"
+              icon="download-outline"
+              variant="secondary"
+              onPress={() => router.push("/reports/export" as never)}
+              style={{ flex: 1 }}
+            />
           </View>
-
-          <AppButton
-            title="Excel Export"
-            icon="download-outline"
-            variant="secondary"
-            onPress={() => router.push("/reports/export" as never)}
-          />
         </View>
       </SectionCard>
 
@@ -177,8 +187,8 @@ export default function ClinicReportScreen() {
             "Doctor queue completed",
             "Pending payments reviewed",
             "Follow-up review checked",
+            "Treatment review checked",
             "Staff performance reviewed",
-            "Prescriptions/X-rays uploaded",
           ].map((item) => (
             <View key={item} style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
               <Ionicons name="checkmark-circle-outline" size={21} color={colors.success} />
