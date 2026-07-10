@@ -1,6 +1,6 @@
 import { Ionicons } from "@expo/vector-icons";
-import { router } from "expo-router";
-import { useMemo, useState } from "react";
+import { router, useLocalSearchParams } from "expo-router";
+import { useEffect, useMemo, useState } from "react";
 import { Alert, Pressable, Text, View } from "react-native";
 import { AppButton } from "@/components/AppButton";
 import { Screen } from "@/components/Screen";
@@ -8,14 +8,21 @@ import { SectionCard } from "@/components/SectionCard";
 import { StatusBadge } from "@/components/StatusBadge";
 import { colors } from "@/constants/colors";
 import { useAuth } from "@/lib/auth";
+import { getDashboardPath } from "@/lib/supabase";
+import {
+  ClinicSubscription,
+  getClinicSubscription,
+  getSubscriptionAccess,
+  getSubscriptionDisplay,
+} from "@/lib/subscription";
 
 type BillingPlan = "monthly" | "yearly";
 
-const MONTHLY_AMOUNT = 299;
+const MONTHLY_AMOUNT = 799;
 const YEARLY_AMOUNT = MONTHLY_AMOUNT * 12;
 
 function money(value: number) {
-  return `Rs. ${value.toLocaleString("en-IN")}`;
+  return `₹${value.toLocaleString("en-IN")}`;
 }
 
 function PlanOption({
@@ -109,15 +116,22 @@ function FeatureRow({ icon, label }: { icon: keyof typeof Ionicons.glyphMap; lab
 }
 
 export default function SubscriptionScreen() {
+  const params = useLocalSearchParams<{ locked?: string }>();
   const { profile } = useAuth();
   const [plan, setPlan] = useState<BillingPlan>("monthly");
+  const [subscription, setSubscription] = useState<ClinicSubscription | null>(null);
+  const [loading, setLoading] = useState(true);
+
+  const locked = params.locked === "1";
+  const subscriptionInfo = getSubscriptionDisplay(subscription);
+  const access = getSubscriptionAccess(subscription);
 
   const summary = useMemo(() => {
     if (plan === "monthly") {
       return {
         title: "Monthly billing",
         amount: money(MONTHLY_AMOUNT),
-        note: "Billed every month",
+        note: "Billed every month after activation",
       };
     }
 
@@ -128,31 +142,86 @@ export default function SubscriptionScreen() {
     };
   }, [plan]);
 
+  async function load() {
+    try {
+      setLoading(true);
+      const data = await getClinicSubscription();
+      setSubscription(data);
+    } catch (error) {
+      Alert.alert("Subscription load failed", error instanceof Error ? error.message : "Please try again.");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  useEffect(() => {
+    load();
+  }, [profile?.clinic_id]);
+
+  function goDashboard() {
+    if (profile?.role) {
+      router.replace(getDashboardPath(profile.role) as never);
+      return;
+    }
+
+    router.replace("/" as never);
+  }
+
   function requestActivation() {
     Alert.alert(
-      "Plan activation request ready",
-      `${summary.title} selected for ${profile?.name ?? "this clinic"}.\n\nPayment gateway is not connected yet. Developer/admin must confirm collection for ${summary.amount}.`
+      access.blocked ? "Renewal request ready" : "Plan activation request ready",
+      `${summary.title} selected for ${profile?.name ?? "this clinic"}.\n\nAmount: ${summary.amount}\n\nPayment gateway is not connected yet. Owner/admin must confirm collection manually, then update subscription status in Supabase.`
     );
   }
 
   return (
-    <Screen>
+    <Screen refreshing={loading} onRefresh={load}>
       <View style={{ gap: 8 }}>
         <Text style={{ color: colors.text, fontSize: 30, fontWeight: "900" }}>
           Subscription
         </Text>
         <Text style={{ color: colors.muted, fontSize: 15, lineHeight: 21 }}>
-          Review clinic plan, included features, and activation request before enabling live billing.
+          Review clinic trial, renewal status, and plan activation before enabling live billing.
         </Text>
       </View>
 
-      <SectionCard title="Current Plan" subtitle="Shows the plan currently selected for this clinic workspace.">
+      {locked || access.blocked ? (
+        <SectionCard title="Clinic Access Paused" subtitle="Renewal is required before staff can continue normal clinic work.">
+          <View
+            style={{
+              borderRadius: 22,
+              padding: 14,
+              backgroundColor: colors.dangerSoft,
+              borderWidth: 1,
+              borderColor: "#FECACA",
+              gap: 10,
+            }}
+          >
+            <StatusBadge label={access.statusLabel} tone="danger" />
+            <Text style={{ color: colors.text, fontWeight: "900", fontSize: 18 }}>
+              {subscriptionInfo.title}
+            </Text>
+            <Text style={{ color: colors.muted, lineHeight: 21 }}>
+              {access.reason}
+            </Text>
+          </View>
+        </SectionCard>
+      ) : null}
+
+      <SectionCard title="Current Status" subtitle="Live status from clinic subscription settings.">
         <View
           style={{
             borderRadius: 26,
             padding: 16,
             gap: 14,
-            backgroundColor: colors.primary,
+            backgroundColor:
+              subscriptionInfo.tone === "danger"
+                ? colors.dangerSoft
+                : subscriptionInfo.tone === "warning"
+                ? colors.warningSoft
+                : colors.successSoft,
+            borderWidth: 1,
+            borderColor: colors.border,
           }}
         >
           <View style={{ flexDirection: "row", alignItems: "center", gap: 12 }}>
@@ -169,19 +238,19 @@ export default function SubscriptionScreen() {
               <Ionicons name="shield-checkmark-outline" size={25} color={colors.primary} />
             </View>
             <View style={{ flex: 1 }}>
-              <Text style={{ color: colors.white, fontSize: 20, fontWeight: "900" }}>
-                DMS Clinic Pro
+              <Text style={{ color: colors.text, fontSize: 19, fontWeight: "900" }}>
+                {loading ? "Checking plan..." : subscriptionInfo.title}
               </Text>
-              <Text style={{ color: colors.primarySoft, marginTop: 3 }}>
-                {money(MONTHLY_AMOUNT)} per month
+              <Text style={{ color: colors.muted, marginTop: 3, lineHeight: 20 }}>
+                {loading ? "Loading subscription status." : subscriptionInfo.subtitle}
               </Text>
             </View>
-            <StatusBadge label="Active plan" tone="success" />
+            <StatusBadge label={access.statusLabel} tone={subscriptionInfo.tone} />
           </View>
         </View>
       </SectionCard>
 
-      <SectionCard title="Choose Billing" subtitle="Select monthly or yearly billing before requesting activation.">
+      <SectionCard title="Choose Billing" subtitle="Select monthly or yearly billing before requesting activation or renewal.">
         <PlanOption
           active={plan === "monthly"}
           title="Monthly"
@@ -193,14 +262,14 @@ export default function SubscriptionScreen() {
         <PlanOption
           active={plan === "yearly"}
           title="Yearly"
-          subtitle="One annual invoice"
+          subtitle="One annual payment"
           price={`${money(YEARLY_AMOUNT)} / year`}
-          badge="Rs. 299/mo"
+          badge="12 months"
           onPress={() => setPlan("yearly")}
         />
       </SectionCard>
 
-      <SectionCard title="Included" subtitle="Core clinic tools covered under the selected DMS plan.">
+      <SectionCard title="Included" subtitle="Core clinic tools covered under the selected MiDMS plan.">
         <FeatureRow icon="people-outline" label="Unlimited patient search and clinical history" />
         <FeatureRow icon="cloud-upload-outline" label="Photo, prescription, report and X-ray uploads" />
         <FeatureRow icon="cash-outline" label="OP, X-ray, medication and pending payment tracking" />
@@ -226,14 +295,15 @@ export default function SubscriptionScreen() {
 
       <View style={{ flexDirection: "row", gap: 10 }}>
         <AppButton
-          title="Back"
-          icon="arrow-back-outline"
-          variant="ghost"
-          onPress={() => router.back()}
+          title={access.blocked ? "Refresh Status" : "Dashboard"}
+          icon={access.blocked ? "refresh-outline" : "home-outline"}
+          variant="secondary"
+          onPress={access.blocked ? load : goDashboard}
+          loading={loading}
           style={{ flex: 1 }}
         />
         <AppButton
-          title="Request Plan Activation"
+          title={access.blocked ? "Request Renewal" : "Request Activation"}
           icon="card-outline"
           onPress={requestActivation}
           style={{ flex: 1 }}
