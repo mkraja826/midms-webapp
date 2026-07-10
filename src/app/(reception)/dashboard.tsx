@@ -210,11 +210,23 @@ export default function ReceptionDashboard() {
               <StatusBadge label={next.status || "Waiting"} tone="warning" />
             </View>
 
-            <AppButton
-              title="Open Patient"
-              icon="person-circle-outline"
-              onPress={() => router.push(`/patient/${next.patient_id}` as never)}
-            />
+            <View style={{ flexDirection: "row", gap: 10 }}>
+              <AppButton
+                title="Open Patient"
+                icon="person-circle-outline"
+                onPress={() => router.push(`/patient/${next.patient_id}` as never)}
+                style={{ flex: 1 }}
+              />
+              {features.enable_prescription_medications ? (
+                <AppButton
+                  title="Add Tablets"
+                  icon="medical-outline"
+                  variant="secondary"
+                  onPress={() => router.push({ pathname: "/patient/medications", params: { patient_id: next.patient_id } } as never)}
+                  style={{ flex: 1 }}
+                />
+              ) : null}
+            </View>
           </View>
         </SectionCard>
       ) : null}
@@ -229,22 +241,20 @@ export default function ReceptionDashboard() {
       <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 10 }}>
         <StatCard label="OP Fees" value={loading ? "..." : money(summary?.op_fee_revenue_today)} icon="receipt-outline" tone="success" />
         <StatCard label="X-ray" value={loading ? "..." : money(summary?.xray_revenue_today)} icon="scan-outline" />
-        {features.enable_medication_module ? (
-          <StatCard label="Medication" value={loading ? "..." : money(summary?.medication_revenue_today)} icon="medical-outline" />
-        ) : null}
+        <StatCard label="Medication" value={loading ? "..." : money(summary?.medication_revenue_today)} icon="medical-outline" />
         <StatCard label="Treatment" value={loading ? "..." : money(summary?.treatment_revenue_today)} icon="hammer-outline" tone="success" />
         <StatCard label="Pending Paid" value={loading ? "..." : money(summary?.pending_collected_today)} icon="checkmark-circle-outline" tone="success" />
         <StatCard label="Other" value={loading ? "..." : money(summary?.other_revenue_today)} icon="wallet-outline" />
       </View>
 
-      <SectionCard title="Quick Desk" subtitle="Daily reception actions for check-in, fees, appointments, and reminders.">
+      <SectionCard title="Quick Desk" subtitle="Daily reception actions for check-in, fees, appointments, reminders, and optional prescriptions.">
         <ActionCard title="Book Appointment" subtitle="For WhatsApp/call/online enquiries" icon="calendar-number-outline" onPress={() => router.push("/appointment/book" as never)} />
         <ActionCard title="Add Old Patient" subtitle="Enter previous clinic records and old pending balance" icon="archive-outline" onPress={() => router.push("/patient/add-old" as never)} />
         <ActionCard title="Search Patient" subtitle="Open patient history or collect fee" icon="search-outline" onPress={() => router.push("/patient" as never)} />
-        {features.enable_medication_module ? (
-          <ActionCard title="Medication Fee" subtitle="Collect medicine amount only when owner enables it" icon="medical-outline" onPress={() => router.push({ pathname: "/payment/fee", params: { fee_type: "medication_fee" } } as never)} />
+        <ActionCard title="Medication / Treatment Fee" subtitle="Collect medicine, treatment, or other fee" icon="cash-outline" onPress={() => router.push({ pathname: "/payment/fee", params: { fee_type: "medication_fee" } } as never)} />
+        {features.enable_prescription_medications ? (
+          <ActionCard title="Add Prescribed Tablets" subtitle="Enter tablets prescribed by doctor; repeated medicines show for selection" icon="medical-outline" onPress={() => router.push("/patient/medications" as never)} />
         ) : null}
-        <ActionCard title="Treatment / Other Fee" subtitle="Collect treatment or clinic-defined fees" icon="cash-outline" onPress={() => router.push({ pathname: "/payment/fee", params: { fee_type: "treatment_fee" } } as never)} />
         <ActionCard title="Gallery" subtitle="View X-rays, prescriptions, reports and photos" icon="images-outline" onPress={() => router.push("/gallery" as never)} />
         <ActionCard title="Collect Pending Payment" subtitle="Old due or treatment balance" icon="wallet-outline" onPress={() => router.push("/patient/payment" as never)} />
         <ActionCard title="Reminders" subtitle="Follow-ups due and pending payments" icon="notifications-outline" onPress={() => router.push("/reminders" as never)} />
@@ -259,6 +269,7 @@ export default function ReceptionDashboard() {
                 key={item.id}
                 item={item}
                 showPhoto={features.enable_patient_photos}
+                showMedication={features.enable_prescription_medications}
                 onPress={() => router.push(`/patient/${item.patient_id}` as never)}
               />
             ))}
@@ -276,7 +287,17 @@ export default function ReceptionDashboard() {
   );
 }
 
-function AppointmentItem({ item, onPress, showPhoto }: { item: AppointmentRow; onPress: () => void; showPhoto: boolean }) {
+function AppointmentItem({
+  item,
+  onPress,
+  showPhoto,
+  showMedication,
+}: {
+  item: AppointmentRow;
+  onPress: () => void;
+  showPhoto: boolean;
+  showMedication: boolean;
+}) {
   return (
     <Pressable
       onPress={onPress}
@@ -302,6 +323,23 @@ function AppointmentItem({ item, onPress, showPhoto }: { item: AppointmentRow; o
           {item.patients?.phone ? ` • ${item.patients.phone}` : ""}
         </Text>
       </View>
+
+      {showMedication ? (
+        <Pressable
+          onPress={() => router.push({ pathname: "/patient/medications", params: { patient_id: item.patient_id } } as never)}
+          hitSlop={8}
+          style={{
+            width: 38,
+            height: 38,
+            borderRadius: 999,
+            backgroundColor: colors.primarySoft,
+            alignItems: "center",
+            justifyContent: "center",
+          }}
+        >
+          <Ionicons name="medical-outline" size={18} color={colors.primary} />
+        </Pressable>
+      ) : null}
 
       <StatusBadge label={item.status || "Waiting"} tone={tone(item.status) as any} />
       <Ionicons name="chevron-forward" size={18} color={colors.muted} />
