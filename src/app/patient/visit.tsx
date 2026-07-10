@@ -9,9 +9,12 @@ import { Screen } from "@/components/Screen";
 import { SectionCard } from "@/components/SectionCard";
 import { StatusBadge } from "@/components/StatusBadge";
 import { colors } from "@/constants/colors";
-import { createAppointment, createInvoice, createVisit, getPatients, Patient, supabase } from "@/lib/supabase";
+import { createAppointment, createInvoice, createVisit, getCurrentProfile, getPatients, supabase } from "@/lib/supabase";
+import type { Patient, Profile } from "@/lib/supabase";
 
 type ComplaintKey = "Pain" | "Swelling" | "Cap issue" | "Wisdom tooth" | "Broken tooth" | "Review" | "Other";
+
+type DoctorOption = Pick<Profile, "id" | "name" | "role">;
 
 type Slot = {
   label: string;
@@ -111,6 +114,12 @@ function formatSelectedDate(date: Date, slot: Slot) {
   });
 }
 
+function doctorRoleLabel(role?: string | null) {
+  if (role === "owner" || role === "head_doctor") return "Head Doctor";
+  if (role === "working_doctor" || role === "doctor") return "Doctor";
+  return role || "Doctor";
+}
+
 export default function AddVisitScreen() {
   const params = useLocalSearchParams<{ patient_id?: string }>();
   const incomingPatientId = typeof params.patient_id === "string" ? params.patient_id : "";
@@ -121,7 +130,9 @@ export default function AddVisitScreen() {
   }, [dateOptions]);
 
   const [patients, setPatients] = useState<Patient[]>([]);
+  const [doctors, setDoctors] = useState<DoctorOption[]>([]);
   const [selectedPatientId, setSelectedPatientId] = useState(incomingPatientId);
+  const [selectedDoctorId, setSelectedDoctorId] = useState("");
   const [patientSearch, setPatientSearch] = useState("");
   const [selectedComplaints, setSelectedComplaints] = useState<ComplaintKey[]>([]);
   const [customComplaint, setCustomComplaint] = useState("");
@@ -135,6 +146,7 @@ export default function AddVisitScreen() {
   const [selectedDateKey, setSelectedDateKey] = useState(firstDateWithFutureSlot.key);
   const [selectedTimeIndex, setSelectedTimeIndex] = useState(0);
   const [loadingPatients, setLoadingPatients] = useState(true);
+  const [loadingDoctors, setLoadingDoctors] = useState(true);
   const [saving, setSaving] = useState(false);
 
   async function loadPatients() {
@@ -153,8 +165,50 @@ export default function AddVisitScreen() {
     }
   }
 
+  async function loadDoctors() {
+    try {
+      setLoadingDoctors(true);
+      const profile = await getCurrentProfile();
+
+      if (!profile?.clinic_id) {
+        setDoctors([]);
+        setSelectedDoctorId("");
+        return;
+      }
+
+      const { data, error } = await supabase
+        .from("profiles")
+        .select("id,name,role")
+        .eq("clinic_id", profile.clinic_id)
+        .eq("active", true)
+        .in("role", ["owner", "head_doctor", "working_doctor", "doctor"])
+        .order("name", { ascending: true });
+
+      if (error) throw error;
+
+      const rows = (data || []) as DoctorOption[];
+      setDoctors(rows);
+      setSelectedDoctorId((current) => {
+        if (current && rows.some((doctor) => doctor.id === current)) return current;
+        const currentUserDoctor = rows.find((doctor) => doctor.id === profile.id);
+        return currentUserDoctor?.id || rows[0]?.id || "";
+      });
+    } catch (error) {
+      console.warn("Doctors load failed", error instanceof Error ? error.message : error);
+      Alert.alert("Doctors load failed", "Doctor list could not be loaded. Try again.");
+      setDoctors([]);
+      setSelectedDoctorId("");
+    } finally {
+      setLoadingDoctors(false);
+    }
+  }
+
+  async function loadScreenData() {
+    await Promise.all([loadPatients(), loadDoctors()]);
+  }
+
   useEffect(() => {
-    loadPatients();
+    loadScreenData();
   }, [incomingPatientId]);
 
   useEffect(() => {
@@ -202,6 +256,11 @@ export default function AddVisitScreen() {
   const selectedPatient = useMemo(
     () => patients.find((patient) => patient.id === selectedPatientId) || null,
     [patients, selectedPatientId]
+  );
+
+  const selectedDoctor = useMemo(
+    () => doctors.find((doctor) => doctor.id === selectedDoctorId) || null,
+    [doctors, selectedDoctorId]
   );
 
   const filteredPatients = useMemo(() => {
@@ -271,6 +330,11 @@ export default function AddVisitScreen() {
       return;
     }
 
+    if (!selectedDoctorId) {
+      Alert.alert("Doctor missing", "Select which doctor treated the patient.");
+      return;
+    }
+
     if (!complaintSummary.trim()) {
       Alert.alert("Complaint missing", "Select one complaint group or type in Other.");
       return;
@@ -305,6 +369,13 @@ export default function AddVisitScreen() {
         treatment_category: treatmentCategory.trim() || undefined,
       });
 
+      const { error: doctorUpdateError } = await supabase
+        .from("patient_visits")
+        .update({ doctor_id: selectedDoctorId })
+        .eq("id", visit.id);
+
+      if (doctorUpdateError) throw doctorUpdateError;
+
       if (cost > 0) {
         await createInvoice({
           patient_id: selectedPatientId,
@@ -317,8 +388,9 @@ export default function AddVisitScreen() {
       if (followupDateTime) {
         await createAppointment({
           patient_id: selectedPatientId,
+          doctor_id: selectedDoctorId,
           appointment_time: followupDateTime.toISOString(),
-          notes: `Follow-up for: ${complaintSummary}`,
+          notes: `Follow-up for: ${complaintSummary}${selectedDoctor ? ` • Treated by ${selectedDoctor.name}` : ""}`,
         });
       }
 
@@ -328,7 +400,7 @@ export default function AddVisitScreen() {
 
       Alert.alert(
         "Visit saved",
-        "Visit saved and patient removed from waiting queue. Reception can collect medication fee if needed.",
+        `Visit saved under ${selectedDoctor?.name || "selected doctor"} and patient removed from waiting queue.`,
         [{ text: "Open Patient", onPress: () => router.replace(`/patient/${selectedPatientId}` as never) }]
       );
     } catch (error) {
@@ -339,11 +411,11 @@ export default function AddVisitScreen() {
   }
 
   return (
-    <Screen refreshing={loadingPatients} onRefresh={loadPatients}>
+    <Screen refreshing={loadingPatients || loadingDoctors} onRefresh={loadScreenData}>
       <View style={{ gap: 6 }}>
         <Text style={{ color: colors.text, fontSize: 30, fontWeight: "900" }}>Add Visit</Text>
         <Text style={{ color: colors.muted, fontSize: 15, lineHeight: 21 }}>
-          Select complaint, add treatment/payment if needed, and complete the patient from waiting queue.
+          Select patient, select treated doctor, add complaint/treatment, and complete the waiting queue.
         </Text>
       </View>
 
@@ -434,6 +506,60 @@ export default function AddVisitScreen() {
               <EmptyState title="No patients found" message="Reception should check-in/register patient first." icon="search-outline" />
             )}
           </View>
+        )}
+      </SectionCard>
+
+      <SectionCard title="Treated By" subtitle="Reception can select the doctor when entering visit from oral instructions.">
+        {loadingDoctors ? (
+          <Text style={{ color: colors.muted }}>Loading doctors...</Text>
+        ) : doctors.length ? (
+          <View style={{ gap: 10 }}>
+            {doctors.map((doctor) => {
+              const selected = selectedDoctorId === doctor.id;
+
+              return (
+                <Pressable
+                  key={doctor.id}
+                  onPress={() => setSelectedDoctorId(doctor.id)}
+                  style={{
+                    minHeight: 62,
+                    borderRadius: 18,
+                    borderWidth: 1,
+                    borderColor: selected ? colors.primary : colors.border,
+                    backgroundColor: selected ? colors.primarySoft : colors.background,
+                    padding: 12,
+                    flexDirection: "row",
+                    alignItems: "center",
+                    gap: 12,
+                  }}
+                >
+                  <View
+                    style={{
+                      width: 42,
+                      height: 42,
+                      borderRadius: 15,
+                      backgroundColor: selected ? colors.primary : colors.surfaceSoft,
+                      alignItems: "center",
+                      justifyContent: "center",
+                    }}
+                  >
+                    <Ionicons name={selected ? "checkmark-outline" : "medical-outline"} size={21} color={selected ? colors.white : colors.primary} />
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <Text style={{ color: colors.text, fontWeight: "900", fontSize: 16 }}>{doctor.name || "Doctor"}</Text>
+                    <Text style={{ color: colors.muted, marginTop: 2 }}>{doctorRoleLabel(doctor.role)}</Text>
+                  </View>
+                  {selected ? <StatusBadge label="Treating" tone="success" /> : null}
+                </Pressable>
+              );
+            })}
+          </View>
+        ) : (
+          <EmptyState
+            title="No doctor found"
+            message="Add an owner/head doctor or working doctor in Staff before saving visits from reception."
+            icon="medical-outline"
+          />
         )}
       </SectionCard>
 
