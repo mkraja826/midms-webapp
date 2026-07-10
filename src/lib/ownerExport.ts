@@ -22,6 +22,8 @@ export type OwnerExportReport = {
   };
   sections: OwnerExportSection[];
   exportText: string;
+  excelHtml: string;
+  excelFileName: string;
 };
 
 type DateRange = {
@@ -134,6 +136,134 @@ function section(title: string, headers: string[], rows: unknown[][]): OwnerExpo
   };
 }
 
+function htmlValue(value: unknown) {
+  if (value === null || value === undefined) return "";
+  return String(value)
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+}
+
+function csvToRows(csv: string) {
+  return csv
+    .trim()
+    .split("\n")
+    .map((line) => {
+      const values: string[] = [];
+      let current = "";
+      let quoted = false;
+
+      for (let index = 0; index < line.length; index += 1) {
+        const char = line[index];
+        const next = line[index + 1];
+
+        if (char === '"' && quoted && next === '"') {
+          current += '"';
+          index += 1;
+          continue;
+        }
+
+        if (char === '"') {
+          quoted = !quoted;
+          continue;
+        }
+
+        if (char === "," && !quoted) {
+          values.push(current);
+          current = "";
+          continue;
+        }
+
+        current += char;
+      }
+
+      values.push(current);
+      return values;
+    });
+}
+
+function buildExcelHtml(input: {
+  title: string;
+  rangeLabel: string;
+  generatedAt: string;
+  summary: OwnerExportReport["summary"];
+  sections: OwnerExportSection[];
+}) {
+  const summaryRows = [
+    ["Range", input.rangeLabel],
+    ["Generated", input.generatedAt],
+    ["Patients", input.summary.patients],
+    ["Visits", input.summary.visits],
+    ["Payments", input.summary.payments],
+    ["Revenue", `Rs. ${Math.round(input.summary.revenue).toLocaleString("en-IN")}`],
+    ["Pending", `Rs. ${Math.round(input.summary.pending).toLocaleString("en-IN")}`],
+    ["Appointments", input.summary.appointments],
+  ];
+
+  const summaryTable = `
+    <table>
+      <tr><th colspan="2">Summary</th></tr>
+      ${summaryRows.map((row) => `<tr><td>${htmlValue(row[0])}</td><td>${htmlValue(row[1])}</td></tr>`).join("")}
+    </table>
+  `;
+
+  const sectionTables = input.sections
+    .map((item) => {
+      const rows = csvToRows(item.csv);
+      const headers = rows[0] || [];
+      const body = rows.slice(1);
+
+      return `
+        <h2>${htmlValue(item.title)} (${item.rowCount})</h2>
+        <table>
+          <thead>
+            <tr>${headers.map((header) => `<th>${htmlValue(header)}</th>`).join("")}</tr>
+          </thead>
+          <tbody>
+            ${
+              body.length
+                ? body
+                    .map((row) => `<tr>${row.map((cell) => `<td>${htmlValue(cell)}</td>`).join("")}</tr>`)
+                    .join("")
+                : `<tr><td colspan="${Math.max(headers.length, 1)}">No records</td></tr>`
+            }
+          </tbody>
+        </table>
+      `;
+    })
+    .join("<br />");
+
+  return `
+<html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:x="urn:schemas-microsoft-com:office:excel" xmlns="http://www.w3.org/TR/REC-html40">
+<head>
+  <meta charset="UTF-8" />
+  <!--[if gte mso 9]><xml><x:ExcelWorkbook><x:ExcelWorksheets><x:ExcelWorksheet><x:Name>MiDMS Export</x:Name><x:WorksheetOptions><x:DisplayGridlines/></x:WorksheetOptions></x:ExcelWorksheet></x:ExcelWorksheets></x:ExcelWorkbook></xml><![endif]-->
+  <style>
+    body { font-family: Arial, sans-serif; }
+    h1 { font-size: 20px; margin-bottom: 4px; }
+    h2 { font-size: 16px; margin-top: 22px; margin-bottom: 8px; }
+    p { color: #4b5563; }
+    table { border-collapse: collapse; margin-bottom: 14px; width: 100%; }
+    th { background: #e0f2fe; color: #0f172a; font-weight: 700; }
+    th, td { border: 1px solid #94a3b8; padding: 8px; font-size: 12px; mso-number-format:"\\@"; }
+  </style>
+</head>
+<body>
+  <h1>${htmlValue(input.title)}</h1>
+  <p>Internal IDs are hidden. Export uses patient names, phone numbers, dates, staff names, and amounts.</p>
+  ${summaryTable}
+  ${sectionTables}
+</body>
+</html>
+  `.trim();
+}
+
+function safeFilePart(value: string) {
+  return value.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "") || "export";
+}
+
 export async function buildOwnerExport(rangeKey: ExportRangeKey): Promise<OwnerExportReport> {
   const profile = await getCurrentProfile();
   if (!profile?.clinic_id) throw new Error("Clinic profile not found");
@@ -210,8 +340,6 @@ export async function buildOwnerExport(rangeKey: ExportRangeKey): Promise<OwnerE
     range
   );
 
-  // Real uploaded files are saved in public.files by uploadPatientFile().
-  // Do not query public.patient_files because that table does not exist in this project.
   const filesQuery = applyDateRange(
     supabase
       .from("files")
@@ -365,6 +493,9 @@ export async function buildOwnerExport(rangeKey: ExportRangeKey): Promise<OwnerE
     ]),
   ].join("\n");
 
+  const excelHtml = buildExcelHtml({ title, rangeLabel: range.label, generatedAt, summary, sections });
+  const excelFileName = `midms-owner-export-${safeFilePart(range.label)}-${new Date().toISOString().slice(0, 10)}.xls`;
+
   return {
     title,
     rangeLabel: range.label,
@@ -372,5 +503,7 @@ export async function buildOwnerExport(rangeKey: ExportRangeKey): Promise<OwnerE
     summary,
     sections,
     exportText,
+    excelHtml,
+    excelFileName,
   };
 }
