@@ -1,6 +1,7 @@
 import { router, useLocalSearchParams } from "expo-router";
+import * as ImagePicker from "expo-image-picker";
 import { useEffect, useState } from "react";
-import { Alert, Text, View } from "react-native";
+import { Alert, Image, Pressable, Text, View } from "react-native";
 import { AppButton } from "@/components/AppButton";
 import { AppInput } from "@/components/AppInput";
 import { EmptyState } from "@/components/EmptyState";
@@ -8,11 +9,18 @@ import { Screen } from "@/components/Screen";
 import { SectionCard } from "@/components/SectionCard";
 import { colors } from "@/constants/colors";
 import {
+  DEFAULT_CLINIC_FEATURE_SETTINGS,
+  getClinicFeatureSettings,
+} from "@/lib/clinicOptions";
+import { uploadPatientProfilePhoto } from "@/lib/patientProfilePhoto";
+import {
   getPatientById,
   Patient,
   searchPatients,
   updatePatientWithAudit,
 } from "@/lib/supabase";
+
+type PatientWithPhoto = Patient & { photo_url?: string | null };
 
 function ageNumber(value: string) {
   const parsed = Number(value.replace(/[^0-9]/g, ""));
@@ -23,7 +31,9 @@ export default function EditPatientScreen() {
   const params = useLocalSearchParams<{ patient_id?: string }>();
   const patientId = typeof params.patient_id === "string" ? params.patient_id : "";
 
-  const [patient, setPatient] = useState<Patient | null>(null);
+  const [patient, setPatient] = useState<PatientWithPhoto | null>(null);
+  const [features, setFeatures] = useState(DEFAULT_CLINIC_FEATURE_SETTINGS);
+  const [photoUri, setPhotoUri] = useState<string | null>(null);
   const [form, setForm] = useState({
     name: "",
     phone: "",
@@ -39,14 +49,42 @@ export default function EditPatientScreen() {
     setForm((current) => ({ ...current, [key]: value }));
   }
 
+  async function pickPatientPhoto() {
+    const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
+
+    if (!permission.granted) {
+      Alert.alert("Gallery permission needed", "Allow gallery access to select patient photo.");
+      return;
+    }
+
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ImagePicker.MediaTypeOptions.Images,
+      quality: 0.8,
+      allowsEditing: true,
+      aspect: [1, 1],
+    });
+
+    if (result.canceled) return;
+
+    setPhotoUri(result.assets[0].uri);
+  }
+
   async function load() {
     if (!patientId) return;
 
     try {
       setLoading(true);
-      const data = await getPatientById(patientId);
-      const current = data.patient as Patient;
+      const [data, featureSettings] = await Promise.all([
+        getPatientById(patientId),
+        getClinicFeatureSettings().catch((error) => {
+          console.warn("Patient edit optional features load failed:", error);
+          return DEFAULT_CLINIC_FEATURE_SETTINGS;
+        }),
+      ]);
+      const current = data.patient as PatientWithPhoto;
+      setFeatures(featureSettings);
       setPatient(current);
+      setPhotoUri(null);
       setForm({
         name: current.name ?? "",
         phone: current.phone ?? "",
@@ -116,6 +154,10 @@ export default function EditPatientScreen() {
         form.reason.trim()
       );
 
+      if (features.enable_patient_photos && photoUri) {
+        await uploadPatientProfilePhoto(patient.id, photoUri);
+      }
+
       Alert.alert("Patient updated", "Patient details were saved.", [
         { text: "Open Profile", onPress: () => router.replace(`/patient/${patient.id}` as never) },
       ]);
@@ -142,6 +184,8 @@ export default function EditPatientScreen() {
     );
   }
 
+  const photoPreview = photoUri || patient.photo_url || "";
+
   return (
     <Screen refreshing={loading} onRefresh={load}>
       <View style={{ gap: 6 }}>
@@ -152,6 +196,41 @@ export default function EditPatientScreen() {
           Correct patient details carefully. Changes are saved with audit reason for owner review.
         </Text>
       </View>
+
+      {features.enable_patient_photos ? (
+        <SectionCard title="Patient Photo" subtitle="Optional profile photo controlled by clinic owner setting.">
+          <View style={{ alignItems: "center", gap: 10 }}>
+            <Pressable
+              onPress={pickPatientPhoto}
+              style={{
+                width: 112,
+                height: 112,
+                borderRadius: 38,
+                backgroundColor: colors.primarySoft,
+                borderWidth: 1,
+                borderColor: colors.border,
+                overflow: "hidden",
+                alignItems: "center",
+                justifyContent: "center",
+              }}
+            >
+              {photoPreview ? (
+                <Image source={{ uri: photoPreview }} style={{ width: "100%", height: "100%" }} resizeMode="cover" />
+              ) : (
+                <Text style={{ color: colors.primary, fontWeight: "900", textAlign: "center" }}>
+                  Add Photo
+                </Text>
+              )}
+            </Pressable>
+            <AppButton
+              title={photoPreview ? "Change Photo" : "Select Photo"}
+              icon="image-outline"
+              variant="secondary"
+              onPress={pickPatientPhoto}
+            />
+          </View>
+        </SectionCard>
+      ) : null}
 
       <SectionCard title="Patient Details" subtitle="Update only confirmed details. Add reason when changing phone, age, or address.">
         <AppInput label="Name" placeholder="Patient full name" value={form.name} onChangeText={(value) => setField("name", value)} />
