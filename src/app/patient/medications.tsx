@@ -9,6 +9,7 @@ import { Screen } from "@/components/Screen";
 import { SectionCard } from "@/components/SectionCard";
 import { StatusBadge } from "@/components/StatusBadge";
 import { colors } from "@/constants/colors";
+import { useAuth } from "@/lib/auth";
 import {
   DEFAULT_CLINIC_FEATURE_SETTINGS,
   getClinicFeatureSettings,
@@ -20,7 +21,7 @@ import {
   PatientMedicationEntry,
   savePatientMedication,
 } from "@/lib/patientMedications";
-import { getPatients, Patient } from "@/lib/supabase";
+import { getDashboardPath, getPatients, Patient } from "@/lib/supabase";
 
 function formatDate(value: string) {
   return new Date(value).toLocaleString([], {
@@ -41,6 +42,7 @@ function errorMessage(error: unknown) {
 }
 
 export default function PatientMedicationsScreen() {
+  const { profile } = useAuth();
   const params = useLocalSearchParams<{ patient_id?: string }>();
   const incomingPatientId = typeof params.patient_id === "string" ? params.patient_id : "";
 
@@ -60,6 +62,8 @@ export default function PatientMedicationsScreen() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
 
+  const homePath = getDashboardPath(profile?.role ?? "receptionist");
+
   const selectedPatient = useMemo(
     () => patients.find((patient) => patient.id === selectedPatientId) || null,
     [patients, selectedPatientId]
@@ -78,6 +82,15 @@ export default function PatientMedicationsScreen() {
       )
       .slice(0, 12);
   }, [patientSearch, patients]);
+
+  function exitScreen() {
+    if (selectedPatientId) {
+      router.replace(`/patient/${selectedPatientId}` as never);
+      return;
+    }
+
+    router.replace(homePath as never);
+  }
 
   async function load() {
     try {
@@ -197,7 +210,7 @@ export default function PatientMedicationsScreen() {
           />
         </SectionCard>
 
-        <AppButton title="Back" icon="arrow-back-outline" variant="ghost" onPress={() => router.back()} />
+        <AppButton title="Back" icon="arrow-back-outline" variant="ghost" onPress={exitScreen} />
       </Screen>
     );
   }
@@ -336,7 +349,7 @@ export default function PatientMedicationsScreen() {
         )}
       </SectionCard>
 
-      <AppButton title="Back" icon="arrow-back-outline" variant="ghost" onPress={() => router.back()} />
+      <AppButton title="Back" icon="arrow-back-outline" variant="ghost" onPress={exitScreen} />
     </Screen>
   );
 }
