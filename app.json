@@ -49,6 +49,7 @@
         "backgroundColor": "#F6FAFB"
       },
       "permissions": [
+        "com.android.vending.BILLING",
         "android.permission.CAMERA",
         "android.permission.READ_MEDIA_IMAGES",
         "android.permission.READ_EXTERNAL_STORAGE"
