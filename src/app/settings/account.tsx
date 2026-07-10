@@ -14,6 +14,7 @@ import {
   getClinicFeatureSettings,
   updateClinicFeatureSettings,
 } from "@/lib/clinicOptions";
+import { getDashboardPath } from "@/lib/supabase";
 
 export default function AccountSettingsScreen() {
   const { profile } = useAuth();
@@ -22,6 +23,7 @@ export default function AccountSettingsScreen() {
   const [saving, setSaving] = useState(false);
 
   const canManage = canManageClinicFeatureSettings(profile);
+  const homePath = getDashboardPath(profile?.role ?? "receptionist");
 
   async function load() {
     try {
@@ -82,7 +84,7 @@ export default function AccountSettingsScreen() {
           />
         </SectionCard>
 
-        <AppButton title="Back" icon="arrow-back-outline" variant="ghost" onPress={() => router.back()} />
+        <AppButton title="Back to Dashboard" icon="arrow-back-outline" variant="ghost" onPress={() => router.replace(homePath as never)} />
       </Screen>
     );
   }
@@ -131,7 +133,7 @@ export default function AccountSettingsScreen() {
         </Text>
       </SectionCard>
 
-      <AppButton title="Back" icon="arrow-back-outline" variant="ghost" onPress={() => router.back()} />
+      <AppButton title="Back to Dashboard" icon="arrow-back-outline" variant="ghost" onPress={() => router.replace(homePath as never)} />
     </Screen>
   );
 }
