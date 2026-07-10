@@ -1,7 +1,7 @@
 import { Ionicons } from "@expo/vector-icons";
 import { router } from "expo-router";
 import { useEffect, useMemo, useState } from "react";
-import { Alert, Linking, Pressable, Share, Text, View } from "react-native";
+import { Alert, Linking, Platform, Pressable, Share, Text, View } from "react-native";
 import { AppButton } from "@/components/AppButton";
 import { EmptyState } from "@/components/EmptyState";
 import { Screen } from "@/components/Screen";
@@ -30,11 +30,34 @@ function errorMessage(error: unknown) {
   return "Please try again.";
 }
 
+function canDownloadExcelOnWeb() {
+  const globalAny = globalThis as any;
+  return Platform.OS === "web" && Boolean(globalAny.document && globalAny.Blob && globalAny.URL);
+}
+
+function downloadExcelOnWeb(report: OwnerExportReport) {
+  const globalAny = globalThis as any;
+  const blob = new globalAny.Blob([report.excelHtml], {
+    type: "application/vnd.ms-excel;charset=utf-8;",
+  });
+  const url = globalAny.URL.createObjectURL(blob);
+  const anchor = globalAny.document.createElement("a");
+
+  anchor.href = url;
+  anchor.download = report.excelFileName;
+  anchor.style.display = "none";
+  globalAny.document.body.appendChild(anchor);
+  anchor.click();
+  globalAny.document.body.removeChild(anchor);
+  globalAny.URL.revokeObjectURL(url);
+}
+
 export default function OwnerExportScreen() {
   const [range, setRange] = useState<ExportRangeKey>("today");
   const [report, setReport] = useState<OwnerExportReport | null>(null);
   const [loading, setLoading] = useState(true);
   const [sharing, setSharing] = useState(false);
+  const [downloadingExcel, setDownloadingExcel] = useState(false);
 
   const preview = useMemo(() => {
     if (!report) return "";
@@ -57,6 +80,32 @@ export default function OwnerExportScreen() {
   useEffect(() => {
     load(range);
   }, [range]);
+
+  async function downloadExcelSheet() {
+    if (!report) return;
+
+    try {
+      setDownloadingExcel(true);
+
+      if (canDownloadExcelOnWeb()) {
+        downloadExcelOnWeb(report);
+        return;
+      }
+
+      await Share.share({
+        title: report.excelFileName,
+        message: report.exportText,
+      });
+      Alert.alert(
+        "Excel download is web-ready",
+        "On browser, this downloads an Excel-compatible .xls file. On Android app, shared text is used until native file sharing is added."
+      );
+    } catch (error) {
+      Alert.alert("Excel export failed", errorMessage(error));
+    } finally {
+      setDownloadingExcel(false);
+    }
+  }
 
   async function shareExport() {
     if (!report) return;
@@ -153,6 +202,19 @@ export default function OwnerExportScreen() {
                 </View>
               ))}
             </View>
+          </SectionCard>
+
+          <SectionCard title="Excel Sheet" subtitle="Downloads an Excel-compatible .xls file in web browser.">
+            <AppButton
+              title="Download Excel Sheet"
+              icon="download-outline"
+              onPress={downloadExcelSheet}
+              loading={downloadingExcel || loading}
+              loadingTitle="Preparing Excel..."
+            />
+            <Text selectable style={{ color: colors.muted, lineHeight: 20 }}>
+              File: {report.excelFileName}
+            </Text>
           </SectionCard>
 
           <SectionCard title="Share / Copy Export" subtitle="Use Share for WhatsApp/email, or long-press text to copy selected data.">
