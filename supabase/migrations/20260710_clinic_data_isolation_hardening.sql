@@ -82,6 +82,7 @@ select public.apply_dms_clinic_isolation_policy('charges');
 select public.apply_dms_clinic_isolation_policy('patient_audit_logs');
 select public.apply_dms_clinic_isolation_policy('patient_medications');
 select public.apply_dms_clinic_isolation_policy('clinic_subscriptions');
+select public.apply_dms_clinic_isolation_policy('clinic_subscription_payments');
 
 -- medical_history is linked through patient_id, so isolate through the patient's clinic.
 do $$
