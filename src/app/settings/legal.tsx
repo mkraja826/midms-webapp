@@ -1,10 +1,15 @@
-﻿import { router } from "expo-router";
+import { router } from "expo-router";
 import { ScrollView, Text, View } from "react-native";
 import { AppButton } from "@/components/AppButton";
 import { SectionCard } from "@/components/SectionCard";
 import { colors } from "@/constants/colors";
+import { useAuth } from "@/lib/auth";
+import { getDashboardPath } from "@/lib/supabase";
 
 export default function LegalAccountScreen() {
+  const { profile } = useAuth();
+  const homePath = getDashboardPath(profile?.role ?? "receptionist");
+
   return (
     <ScrollView contentInsetAdjustmentBehavior="automatic" contentContainerStyle={{ padding: 16, gap: 16 }}>
       <SectionCard title="Legal & Account" subtitle="Privacy, terms, support, optional features, and account deletion.">
@@ -54,10 +59,10 @@ export default function LegalAccountScreen() {
       />
 
       <AppButton
-        title="Back"
+        title="Back to Dashboard"
         variant="secondary"
         icon="arrow-back-outline"
-        onPress={() => router.back()}
+        onPress={() => router.replace(homePath as never)}
       />
     </ScrollView>
   );
