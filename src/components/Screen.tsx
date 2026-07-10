@@ -26,6 +26,14 @@ export function Screen({
   };
 
   useEffect(() => {
+    const timeout = setTimeout(() => {
+      scrollRef.current?.scrollTo({ y: 0, animated: false });
+    }, 0);
+
+    return () => clearTimeout(timeout);
+  }, []);
+
+  useEffect(() => {
     if (scrollToTopKey === undefined) return;
 
     const timeout = setTimeout(() => {
