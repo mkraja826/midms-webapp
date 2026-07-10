@@ -1,14 +1,7 @@
 import { Ionicons } from "@expo/vector-icons";
 import { router } from "expo-router";
 import { useEffect, useMemo, useState } from "react";
-import {
-  Alert,
-  Linking,
-  Pressable,
-  Text,
-  TextInput,
-  View,
-} from "react-native";
+import { Alert, Linking, Pressable, Text, TextInput, View } from "react-native";
 import { AppButton } from "@/components/AppButton";
 import { EmptyState } from "@/components/EmptyState";
 import { Screen } from "@/components/Screen";
@@ -19,6 +12,8 @@ import { colors } from "@/constants/colors";
 import { supabase } from "@/lib/supabase";
 
 type ReminderFilter = "overdue" | "today" | "tomorrow" | "upcoming";
+type Tone = "success" | "warning" | "danger" | "primary";
+type IconName = keyof typeof Ionicons.glyphMap;
 
 type FollowupReminder = {
   appointment_id: string;
@@ -54,7 +49,7 @@ type Summary = {
   completed_count: number;
 };
 
-const FILTERS: { key: ReminderFilter; label: string; icon: keyof typeof Ionicons.glyphMap }[] = [
+const FILTERS: { key: ReminderFilter; label: string; icon: IconName }[] = [
   { key: "overdue", label: "Overdue", icon: "alert-circle-outline" },
   { key: "today", label: "Today", icon: "today-outline" },
   { key: "tomorrow", label: "Tomorrow", icon: "calendar-outline" },
@@ -107,21 +102,27 @@ function isNearFollowup(item: FollowupReminder) {
   return minutes !== null && minutes >= 0 && minutes <= 120;
 }
 
-function urgencyTone(item: FollowupReminder): "success" | "warning" | "danger" | "primary" {
+function reminderTone(item: FollowupReminder): Tone {
   const minutes = minutesUntil(item.appointment_time);
 
   if (item.reminder_state === "overdue" || (minutes !== null && minutes < 0)) return "danger";
   if (minutes !== null && minutes <= 120) return "warning";
   if (item.reminder_state === "tomorrow") return "success";
-
   return "primary";
 }
 
-function stateTone(state?: string): "success" | "warning" | "danger" | "primary" {
+function stateTone(state?: string): Tone {
   if (state === "overdue") return "danger";
   if (state === "today") return "warning";
   if (state === "tomorrow") return "success";
   return "primary";
+}
+
+function cleanIndianPhone(phone?: string | null) {
+  const digits = String(phone || "").replace(/[^0-9]/g, "");
+  if (!digits) return "";
+  if (digits.length === 10) return `91${digits}`;
+  return digits;
 }
 
 function getErrorMessage(error: unknown) {
@@ -156,11 +157,9 @@ async function withTimeout<T>(promise: PromiseLike<T>, timeoutMs = 12000): Promi
 export default function RemindersScreen() {
   const [filter, setFilter] = useState<ReminderFilter>("today");
   const [search, setSearch] = useState("");
-
   const [summary, setSummary] = useState<Summary | null>(null);
   const [followups, setFollowups] = useState<FollowupReminder[]>([]);
   const [pendingPatients, setPendingPatients] = useState<PendingPatient[]>([]);
-
   const [loading, setLoading] = useState(true);
   const [markingId, setMarkingId] = useState<string | null>(null);
 
@@ -189,10 +188,7 @@ export default function RemindersScreen() {
       if (followupsRes.error) throw followupsRes.error;
       if (pendingRes.error) throw pendingRes.error;
 
-      const summaryRow = Array.isArray(summaryRes.data)
-        ? summaryRes.data[0]
-        : summaryRes.data;
-
+      const summaryRow = Array.isArray(summaryRes.data) ? summaryRes.data[0] : summaryRes.data;
       setSummary((summaryRow || null) as Summary | null);
       setFollowups((followupsRes.data || []) as FollowupReminder[]);
       setPendingPatients((pendingRes.data || []) as PendingPatient[]);
@@ -225,7 +221,6 @@ export default function RemindersScreen() {
       );
 
       if (error) throw error;
-
       await load(filter, search);
     } catch (error) {
       Alert.alert("Update failed", getErrorMessage(error));
@@ -245,16 +240,6 @@ export default function RemindersScreen() {
     } catch {
       Alert.alert("Call unavailable", "This device cannot open phone calls now.");
     }
-  }
-
-  function cleanIndianPhone(phone?: string | null) {
-    const digits = String(phone || "").replace(/[^0-9]/g, "");
-
-    if (!digits) return "";
-
-    if (digits.length === 10) return `91${digits}`;
-
-    return digits;
   }
 
   async function whatsappPatient(phone?: string | null, message?: string) {
@@ -303,10 +288,7 @@ export default function RemindersScreen() {
     [sortedFollowups]
   );
 
-  const totalFollowupAlerts = useMemo(
-    () => Number(summary?.followups_today || 0) + Number(summary?.followups_overdue || 0),
-    [summary]
-  );
+  const totalFollowupAlerts = Number(summary?.followups_today || 0) + Number(summary?.followups_overdue || 0);
 
   return (
     <Screen refreshing={loading} onRefresh={() => load(filter, search)}>
@@ -314,40 +296,16 @@ export default function RemindersScreen() {
         <Text style={{ color: colors.text, fontSize: 30, fontWeight: "900" }}>
           Reminders
         </Text>
-
         <Text style={{ color: colors.muted, fontSize: 15, lineHeight: 21 }}>
           Follow-up reminders, near appointment timing, WhatsApp reminders, and due payment reminders in one place.
         </Text>
       </View>
 
       <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 10 }}>
-        <StatCard
-          label="Due Today"
-          value={loading ? "..." : summary?.followups_today ?? 0}
-          icon="today-outline"
-          tone="warning"
-        />
-
-        <StatCard
-          label="Near Time"
-          value={loading ? "..." : nearFollowups.length}
-          icon="alarm-outline"
-          tone="warning"
-        />
-
-        <StatCard
-          label="Overdue"
-          value={loading ? "..." : summary?.followups_overdue ?? 0}
-          icon="alert-circle-outline"
-          tone="danger"
-        />
-
-        <StatCard
-          label="Due Amount"
-          value={loading ? "..." : money(summary?.pending_amount)}
-          icon="cash-outline"
-          tone="success"
-        />
+        <StatCard label="Due Today" value={loading ? "..." : summary?.followups_today ?? 0} icon="today-outline" tone="warning" />
+        <StatCard label="Near Time" value={loading ? "..." : nearFollowups.length} icon="alarm-outline" tone="warning" />
+        <StatCard label="Overdue" value={loading ? "..." : summary?.followups_overdue ?? 0} icon="alert-circle-outline" tone="danger" />
+        <StatCard label="Due Amount" value={loading ? "..." : money(summary?.pending_amount)} icon="cash-outline" tone="success" />
       </View>
 
       <SectionCard>
@@ -370,16 +328,10 @@ export default function RemindersScreen() {
             onChangeText={setSearch}
             placeholder="Search patient name, phone, or ID"
             placeholderTextColor={colors.muted}
-            style={{
-              flex: 1,
-              minHeight: 54,
-              color: colors.text,
-              fontSize: 16,
-            }}
             returnKeyType="search"
             onSubmitEditing={() => load(filter, search)}
+            style={{ flex: 1, minHeight: 54, color: colors.text, fontSize: 16 }}
           />
-
           <Pressable onPress={() => load(filter, search)}>
             <Ionicons name="arrow-forward-circle" size={27} color={colors.primary} />
           </Pressable>
@@ -388,7 +340,6 @@ export default function RemindersScreen() {
         <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8 }}>
           {FILTERS.map((item) => {
             const selected = filter === item.key;
-
             return (
               <Pressable
                 key={item.key}
@@ -405,18 +356,8 @@ export default function RemindersScreen() {
                   gap: 6,
                 }}
               >
-                <Ionicons
-                  name={item.icon}
-                  size={16}
-                  color={selected ? colors.white : colors.primary}
-                />
-                <Text
-                  style={{
-                    color: selected ? colors.white : colors.text,
-                    fontWeight: "900",
-                    fontSize: 13,
-                  }}
-                >
+                <Ionicons name={item.icon} size={16} color={selected ? colors.white : colors.primary} />
+                <Text style={{ color: selected ? colors.white : colors.text, fontWeight: "900", fontSize: 13 }}>
                   {item.label}
                 </Text>
               </Pressable>
@@ -425,21 +366,8 @@ export default function RemindersScreen() {
         </View>
 
         <View style={{ flexDirection: "row", gap: 10 }}>
-          <AppButton
-            title="Refresh"
-            icon="refresh-outline"
-            variant="secondary"
-            onPress={() => load(filter, search)}
-            loading={loading}
-            style={{ flex: 1 }}
-          />
-
-          <AppButton
-            title="Collect Due"
-            icon="wallet-outline"
-            onPress={() => router.push("/patient/payment" as never)}
-            style={{ flex: 1 }}
-          />
+          <AppButton title="Refresh" icon="refresh-outline" variant="secondary" onPress={() => load(filter, search)} loading={loading} style={{ flex: 1 }} />
+          <AppButton title="Collect Due" icon="wallet-outline" onPress={() => router.push("/patient/payment" as never)} style={{ flex: 1 }} />
         </View>
       </SectionCard>
 
@@ -473,16 +401,12 @@ export default function RemindersScreen() {
                 >
                   <Ionicons name="alarm-outline" size={22} color={colors.warning} />
                 </View>
-
                 <View style={{ flex: 1 }}>
-                  <Text style={{ color: colors.text, fontSize: 16, fontWeight: "900" }}>
-                    {item.patient_name}
-                  </Text>
+                  <Text style={{ color: colors.text, fontSize: 16, fontWeight: "900" }}>{item.patient_name}</Text>
                   <Text style={{ color: colors.muted, marginTop: 2 }}>
                     {formatTime(item.appointment_time)} • {item.patient_phone || "No phone"}
                   </Text>
                 </View>
-
                 <StatusBadge label={timeHint(item)} tone="warning" />
               </Pressable>
             ))}
@@ -502,13 +426,9 @@ export default function RemindersScreen() {
               gap: 6,
             }}
           >
-            <Text style={{ color: colors.text, fontSize: 18, fontWeight: "900" }}>
-              Attention needed
-            </Text>
-
+            <Text style={{ color: colors.text, fontSize: 18, fontWeight: "900" }}>Attention needed</Text>
             <Text style={{ color: colors.muted, lineHeight: 20 }}>
-              You have {summary?.followups_today || 0} follow-up(s) today and {" "}
-              {summary?.followups_overdue || 0} overdue follow-up(s).
+              You have {summary?.followups_today || 0} follow-up(s) today and {summary?.followups_overdue || 0} overdue follow-up(s).
             </Text>
           </View>
         </SectionCard>
@@ -537,10 +457,7 @@ export default function RemindersScreen() {
                       width: 48,
                       height: 48,
                       borderRadius: 18,
-                      backgroundColor:
-                        item.reminder_state === "overdue"
-                          ? colors.dangerSoft
-                          : colors.warningSoft,
+                      backgroundColor: item.reminder_state === "overdue" ? colors.dangerSoft : colors.warningSoft,
                       alignItems: "center",
                       justifyContent: "center",
                     }}
@@ -553,89 +470,44 @@ export default function RemindersScreen() {
                   </View>
 
                   <View style={{ flex: 1 }}>
-                    <Text style={{ color: colors.text, fontSize: 16, fontWeight: "900" }}>
-                      {item.patient_name}
-                    </Text>
-
+                    <Text style={{ color: colors.text, fontSize: 16, fontWeight: "900" }}>{item.patient_name}</Text>
                     <Text style={{ color: colors.muted, marginTop: 2 }}>
-                      {item.patient_phone || "No phone"}
-                      {item.patient_code ? ` • ${item.patient_code}` : ""}
+                      {item.patient_phone || "No phone"}{item.patient_code ? ` • ${item.patient_code}` : ""}
                     </Text>
-
                     <Text style={{ color: colors.muted, marginTop: 2 }}>
                       {formatDateTime(item.appointment_time)} • {timeHint(item)}
                     </Text>
                   </View>
 
                   <View style={{ alignItems: "flex-end", gap: 6 }}>
-                    <StatusBadge label={timeHint(item)} tone={urgencyTone(item)} />
+                    <StatusBadge label={timeHint(item)} tone={reminderTone(item)} />
                     <StatusBadge label={item.reminder_status || "pending"} />
                   </View>
                 </View>
 
-                {item.notes ? (
-                  <Text style={{ color: colors.muted, lineHeight: 19 }}>
-                    {item.notes}
-                  </Text>
-                ) : null}
+                {item.notes ? <Text style={{ color: colors.muted, lineHeight: 19 }}>{item.notes}</Text> : null}
 
                 <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8 }}>
-                  <MiniButton
-                    label="Call"
-                    icon="call-outline"
-                    onPress={() => callPatient(item.patient_phone)}
-                  />
-
+                  <MiniButton label="Call" icon="call-outline" onPress={() => callPatient(item.patient_phone)} />
                   <MiniButton
                     label="WhatsApp"
                     icon="logo-whatsapp"
                     loading={markingId === item.appointment_id}
                     onPress={async () => {
-                      const opened = await whatsappPatient(
-                        item.patient_phone,
-                        buildFollowupReminderMessage(item)
-                      );
-
+                      const opened = await whatsappPatient(item.patient_phone, buildFollowupReminderMessage(item));
                       if (opened) await markAppointment(item.appointment_id, "message_sent");
                     }}
                   />
-
-                  <MiniButton
-                    label="Confirmed"
-                    icon="thumbs-up-outline"
-                    loading={markingId === item.appointment_id}
-                    onPress={() => markAppointment(item.appointment_id, "patient_confirmed")}
-                  />
-
-                  <MiniButton
-                    label="No Reach"
-                    icon="call-outline"
-                    loading={markingId === item.appointment_id}
-                    onPress={() => markAppointment(item.appointment_id, "not_reachable")}
-                  />
-
-                  <MiniButton
-                    label="Patient"
-                    icon="person-outline"
-                    onPress={() => router.push(`/patient/${item.patient_id}` as never)}
-                  />
-
-                  <MiniButton
-                    label="Done"
-                    icon="checkmark-done-outline"
-                    loading={markingId === item.appointment_id}
-                    onPress={() => markAppointment(item.appointment_id, "completed")}
-                  />
+                  <MiniButton label="Confirmed" icon="thumbs-up-outline" loading={markingId === item.appointment_id} onPress={() => markAppointment(item.appointment_id, "patient_confirmed")} />
+                  <MiniButton label="No Reach" icon="call-outline" loading={markingId === item.appointment_id} onPress={() => markAppointment(item.appointment_id, "not_reachable")} />
+                  <MiniButton label="Patient" icon="person-outline" onPress={() => router.push(`/patient/${item.patient_id}` as never)} />
+                  <MiniButton label="Done" icon="checkmark-done-outline" loading={markingId === item.appointment_id} onPress={() => markAppointment(item.appointment_id, "completed")} />
                 </View>
               </View>
             ))}
           </View>
         ) : (
-          <EmptyState
-            title="No follow-up reminders"
-            message="Follow-up appointments from Add Visit and Book Appointment will appear here."
-            icon="notifications-off-outline"
-          />
+          <EmptyState title="No follow-up reminders" message="Follow-up appointments from Add Visit and Book Appointment will appear here." icon="notifications-off-outline" />
         )}
       </SectionCard>
 
@@ -669,26 +541,17 @@ export default function RemindersScreen() {
                   >
                     <Ionicons name="wallet-outline" size={22} color={colors.warning} />
                   </View>
-
                   <View style={{ flex: 1 }}>
-                    <Text style={{ color: colors.text, fontWeight: "900", fontSize: 16 }}>
-                      {patient.patient_name}
-                    </Text>
-
+                    <Text style={{ color: colors.text, fontWeight: "900", fontSize: 16 }}>{patient.patient_name}</Text>
                     <Text style={{ color: colors.muted, marginTop: 2 }}>
-                      {patient.patient_phone || "No phone"}
-                      {patient.patient_code ? ` • ${patient.patient_code}` : ""}
+                      {patient.patient_phone || "No phone"}{patient.patient_code ? ` • ${patient.patient_code}` : ""}
                     </Text>
-
                     <Text style={{ color: colors.muted, marginTop: 2, fontSize: 12 }}>
                       {patient.invoice_count} pending invoice{patient.invoice_count === 1 ? "" : "s"}
                     </Text>
                   </View>
-
                   <View style={{ alignItems: "flex-end", gap: 4 }}>
-                    <Text style={{ color: colors.warning, fontWeight: "900", fontSize: 17 }}>
-                      {money(patient.pending_amount)}
-                    </Text>
+                    <Text style={{ color: colors.warning, fontWeight: "900", fontSize: 17 }}>{money(patient.pending_amount)}</Text>
                     <StatusBadge label="pending" tone="warning" />
                   </View>
                 </View>
@@ -697,7 +560,9 @@ export default function RemindersScreen() {
                   <MiniButton
                     label="WhatsApp"
                     icon="logo-whatsapp"
-                    onPress={() => whatsappPatient(patient.patient_phone, buildDueReminderMessage(patient))}
+                    onPress={async () => {
+                      await whatsappPatient(patient.patient_phone, buildDueReminderMessage(patient));
+                    }}
                   />
                   <MiniButton
                     label="Collect"
@@ -709,30 +574,17 @@ export default function RemindersScreen() {
                       } as never)
                     }
                   />
-                  <MiniButton
-                    label="Patient"
-                    icon="person-outline"
-                    onPress={() => router.push(`/patient/${patient.patient_id}` as never)}
-                  />
+                  <MiniButton label="Patient" icon="person-outline" onPress={() => router.push(`/patient/${patient.patient_id}` as never)} />
                 </View>
               </View>
             ))}
           </View>
         ) : (
-          <EmptyState
-            title="No payment dues"
-            message="Patients with pending invoice amount will appear here."
-            icon="checkmark-done-outline"
-          />
+          <EmptyState title="No payment dues" message="Patients with pending invoice amount will appear here." icon="checkmark-done-outline" />
         )}
       </SectionCard>
 
-      <AppButton
-        title="Back"
-        icon="arrow-back-outline"
-        variant="ghost"
-        onPress={() => router.back()}
-      />
+      <AppButton title="Back" icon="arrow-back-outline" variant="ghost" onPress={() => router.back()} />
     </Screen>
   );
 }
@@ -744,7 +596,7 @@ function MiniButton({
   loading = false,
 }: {
   label: string;
-  icon: keyof typeof Ionicons.glyphMap;
+  icon: IconName;
   onPress: () => void | Promise<void>;
   loading?: boolean;
 }) {
@@ -766,9 +618,7 @@ function MiniButton({
       }}
     >
       <Ionicons name={icon} size={15} color={colors.primary} />
-      <Text style={{ color: colors.text, fontWeight: "900", fontSize: 12 }}>
-        {loading ? "..." : label}
-      </Text>
+      <Text style={{ color: colors.text, fontWeight: "900", fontSize: 12 }}>{loading ? "..." : label}</Text>
     </Pressable>
   );
 }
