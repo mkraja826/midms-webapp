@@ -2,6 +2,7 @@ import { router } from "expo-router";
 import { useEffect, useState } from "react";
 import { Alert, Switch, Text, View } from "react-native";
 import { AppButton } from "@/components/AppButton";
+import { AppInput } from "@/components/AppInput";
 import { EmptyState } from "@/components/EmptyState";
 import { Screen } from "@/components/Screen";
 import { SectionCard } from "@/components/SectionCard";
@@ -9,6 +10,7 @@ import { colors } from "@/constants/colors";
 import { useAuth } from "@/lib/auth";
 import {
   canManageClinicFeatureSettings,
+  cleanClinicOpFee,
   ClinicFeatureSettings,
   DEFAULT_CLINIC_FEATURE_SETTINGS,
   getClinicFeatureSettings,
@@ -16,9 +18,20 @@ import {
 } from "@/lib/clinicOptions";
 import { getDashboardPath } from "@/lib/supabase";
 
+function money(value: string | number) {
+  return `₹${Math.round(Number(value || 0)).toLocaleString("en-IN")}`;
+}
+
+function toNumber(value: string) {
+  const cleaned = value.replace(/[^0-9.]/g, "");
+  const number = Number(cleaned);
+  return Number.isFinite(number) ? number : 0;
+}
+
 export default function AccountSettingsScreen() {
   const { profile } = useAuth();
   const [settings, setSettings] = useState<ClinicFeatureSettings>(DEFAULT_CLINIC_FEATURE_SETTINGS);
+  const [opFeeAmount, setOpFeeAmount] = useState(String(DEFAULT_CLINIC_FEATURE_SETTINGS.op_fee_amount));
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
 
@@ -30,10 +43,11 @@ export default function AccountSettingsScreen() {
       setLoading(true);
       const data = await getClinicFeatureSettings();
       setSettings(data);
+      setOpFeeAmount(String(data.op_fee_amount));
     } catch (error) {
       Alert.alert(
         "Settings load failed",
-        error instanceof Error ? error.message : "Please run the optional feature SQL migration and try again."
+        error instanceof Error ? error.message : "Please run the clinic settings SQL migration and try again."
       );
     } finally {
       setLoading(false);
@@ -49,11 +63,22 @@ export default function AccountSettingsScreen() {
   }
 
   async function save() {
+    const cleanedOpFee = cleanClinicOpFee(toNumber(opFeeAmount));
+
+    if (cleanedOpFee <= 0) {
+      Alert.alert("Invalid OP fee", "OP fee must be greater than zero.");
+      return;
+    }
+
     try {
       setSaving(true);
-      const updated = await updateClinicFeatureSettings(settings);
+      const updated = await updateClinicFeatureSettings({
+        ...settings,
+        op_fee_amount: cleanedOpFee,
+      });
       setSettings(updated);
-      Alert.alert("Settings saved", "Clinic optional features were updated for staff dashboards.");
+      setOpFeeAmount(String(updated.op_fee_amount));
+      Alert.alert("Settings saved", "Clinic OP fee and optional features were updated for staff dashboards.");
     } catch (error) {
       Alert.alert(
         "Save failed",
@@ -72,14 +97,14 @@ export default function AccountSettingsScreen() {
             Account Settings
           </Text>
           <Text style={{ color: colors.muted, fontSize: 15, lineHeight: 21 }}>
-            Optional clinic features are controlled by the clinic owner only.
+            Clinic account settings are controlled by the clinic owner only.
           </Text>
         </View>
 
         <SectionCard>
           <EmptyState
             title="Owner access only"
-            message="Ask the clinic owner or head doctor to turn optional features on or off."
+            message="Ask the clinic owner or head doctor to change OP fee, patient photos, or prescribed tablets settings."
             icon="lock-closed-outline"
           />
         </SectionCard>
@@ -96,9 +121,26 @@ export default function AccountSettingsScreen() {
           Account Settings
         </Text>
         <Text style={{ color: colors.muted, fontSize: 15, lineHeight: 21 }}>
-          Clinic owner can turn optional modules on or off. Staff dashboards will follow these choices.
+          Clinic owner can set the clinic OP fee and turn optional modules on or off.
         </Text>
       </View>
+
+      <SectionCard title="Clinic OP Fee" subtitle="This becomes the default amount for quick check-in and OP fee collection.">
+        <View style={{ padding: 16, borderRadius: 24, backgroundColor: colors.successSoft, borderWidth: 1, borderColor: colors.border, alignItems: "center", gap: 6 }}>
+          <Text style={{ color: colors.muted, fontWeight: "800" }}>Current OP Fee</Text>
+          <Text style={{ color: colors.text, fontSize: 42, fontWeight: "900" }}>{money(opFeeAmount)}</Text>
+          <Text style={{ color: colors.success, fontWeight: "900" }}>Used by reception desk</Text>
+        </View>
+
+        <AppInput
+          label="OP Fee Amount"
+          value={opFeeAmount}
+          onChangeText={setOpFeeAmount}
+          keyboardType="numeric"
+          placeholder="300"
+          helper="Example: 300, 500, 700. Reception can still edit per patient if needed."
+        />
+      </SectionCard>
 
       <SectionCard title="Optional Clinic Features" subtitle="Keep these off unless the clinic really wants to use them.">
         <FeatureSwitch
@@ -116,7 +158,7 @@ export default function AccountSettingsScreen() {
         />
 
         <AppButton
-          title="Save Optional Features"
+          title="Save Clinic Settings"
           icon="save-outline"
           onPress={save}
           loading={saving || loading}
@@ -125,6 +167,8 @@ export default function AccountSettingsScreen() {
 
       <SectionCard title="Current Behavior">
         <Text style={{ color: colors.muted, lineHeight: 21 }}>
+          OP fee default: {money(settings.op_fee_amount)}
+          {"\n"}
           Patient photos: {settings.enable_patient_photos ? "ON" : "OFF"}
           {"\n"}
           Prescribed tablets section: {settings.enable_prescription_medications ? "ON" : "OFF"}
