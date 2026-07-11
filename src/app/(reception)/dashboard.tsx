@@ -263,6 +263,7 @@ export default function ReceptionDashboard() {
         <ActionCard title="Book Appointment" subtitle="For WhatsApp/call/online enquiries" icon="calendar-number-outline" onPress={() => router.push("/appointment/book" as never)} />
         <ActionCard title="Add Old Patient" subtitle="Enter previous clinic records and old pending balance" icon="archive-outline" onPress={() => router.push("/patient/add-old" as never)} />
         <ActionCard title="Search Patient" subtitle="Open patient history or collect fee" icon="search-outline" onPress={() => router.push("/patient" as never)} />
+        <ActionCard title="Ongoing Treatments" subtitle="Open planned, ongoing and outstanding work" icon="construct-outline" onPress={() => router.push("/treatments/ongoing" as never)} />
         <ActionCard title="Medication / Treatment Fee" subtitle="Collect medicine, treatment, or other fee" icon="cash-outline" onPress={() => router.push({ pathname: "/payment/fee", params: { fee_type: "medication_fee" } } as never)} />
         {features.enable_prescription_medications ? (
           <ActionCard title="Add Prescribed Tablets" subtitle="Enter tablets prescribed by doctor; repeated medicines show for selection" icon="medical-outline" onPress={() => router.push("/patient/medications" as never)} />
@@ -270,6 +271,7 @@ export default function ReceptionDashboard() {
         <ActionCard title="Gallery" subtitle="View X-rays, prescriptions, reports and photos" icon="images-outline" onPress={() => router.push("/gallery" as never)} />
         <ActionCard title="Collect Pending Payment" subtitle="Old due or treatment balance" icon="wallet-outline" onPress={() => router.push("/patient/payment" as never)} />
         <ActionCard title="Reminders" subtitle="Follow-ups due and pending payments" icon="notifications-outline" onPress={() => router.push("/reminders" as never)} />
+        <ActionCard title="Legal & Account" subtitle="Logout, privacy, support and account options" icon="shield-checkmark-outline" onPress={() => router.push("/settings/legal" as never)} />
         <ActionCard title="Change Password" subtitle="Update your login password" icon="key-outline" onPress={() => router.push("/settings/change-password" as never)} />
       </SectionCard>
 
