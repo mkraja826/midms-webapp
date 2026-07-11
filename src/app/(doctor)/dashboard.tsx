@@ -26,7 +26,7 @@ function isWaitingStatus(status?: string | null) {
 }
 
 export default function DoctorDashboard() {
-  const { profile, signOut } = useAuth();
+  const { profile } = useAuth();
   const [stats, setStats] = useState<DashboardStats | null>(null);
   const [summary, setSummary] = useState<any>(null);
   const [loading, setLoading] = useState(true);
@@ -49,14 +49,6 @@ export default function DoctorDashboard() {
   useEffect(() => {
     load();
   }, []);
-
-  async function logout() {
-    try {
-      await signOut();
-    } catch (error) {
-      Alert.alert("Logout failed", error instanceof Error ? error.message : "Please try again.");
-    }
-  }
 
   const appointments = useMemo(() => stats?.todayAppointmentList ?? [], [stats?.todayAppointmentList]);
   const waiting = appointments.filter((item: AppointmentRow) => isWaitingStatus(item.status));
@@ -201,12 +193,6 @@ export default function DoctorDashboard() {
           <EmptyState title="No waiting patients" message="Reception check-ins will appear here." icon="checkmark-done-outline" />
         )}
       </SectionCard>
-
-      <View style={{ flexDirection: "row", gap: 10 }}>
-        <AppButton title="Refresh" icon="refresh-outline" variant="secondary" onPress={load} loading={loading} style={{ flex: 1 }} />
-        <AppButton title="Logout" icon="log-out-outline" variant="ghost" onPress={logout} style={{ flex: 1 }} />
-      </View>
     </Screen>
   );
 }
-
