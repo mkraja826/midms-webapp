@@ -41,7 +41,6 @@ export default function OngoingTreatmentsPage() {
         allowStatusUpdates={allowStatusUpdates}
         doctorOnly={doctorOnly}
         limit={50}
-        showHeader={false}
       />
 
       <View style={{ flexDirection: "row", gap: 10 }}>
