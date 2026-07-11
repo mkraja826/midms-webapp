@@ -197,7 +197,7 @@ function QuickAction({
 }
 
 export default function HeadDashboard() {
-  const { profile, signOut } = useAuth();
+  const { profile } = useAuth();
   const [stats, setStats] = useState<DashboardStats | null>(null);
   const [summary, setSummary] = useState<any>(null);
   const [subscription, setSubscription] = useState<ClinicSubscription | null>(null);
@@ -224,14 +224,6 @@ export default function HeadDashboard() {
   useEffect(() => {
     load();
   }, []);
-
-  async function logout() {
-    try {
-      await signOut();
-    } catch (error) {
-      Alert.alert("Logout failed", error instanceof Error ? error.message : "Please try again.");
-    }
-  }
 
   const appointments = useMemo(() => stats?.todayAppointmentList ?? [], [stats?.todayAppointmentList]);
   const waiting = appointments.filter((item: AppointmentRow) => isWaitingStatus(item.status));
@@ -355,6 +347,7 @@ export default function HeadDashboard() {
           <QuickAction title="Book Appointment" icon="calendar-number-outline" onPress={() => router.push("/appointment/book" as never)} />
           <QuickAction title="Reminders" icon="notifications-outline" onPress={() => router.push("/reminders" as never)} />
           <QuickAction title="Staff" icon="people-circle-outline" onPress={() => router.push("/staff" as never)} />
+          <QuickAction title="Ongoing Treatments" icon="construct-outline" onPress={() => router.push("/treatments/ongoing" as never)} />
           <QuickAction title="Legal & Account" icon="shield-checkmark-outline" onPress={() => router.push("/settings/legal" as never)} />
         </View>
       </SectionCard>
@@ -417,11 +410,6 @@ export default function HeadDashboard() {
           <EmptyState title="No waiting patients" message="Reception check-ins will appear here." icon="checkmark-done-outline" />
         )}
       </SectionCard>
-
-      <View style={{ flexDirection: "row", gap: 10 }}>
-        <AppButton title="Refresh" icon="refresh-outline" variant="secondary" onPress={load} loading={loading} style={{ flex: 1 }} />
-        <AppButton title="Logout" icon="log-out-outline" variant="ghost" onPress={logout} style={{ flex: 1 }} />
-      </View>
     </Screen>
   );
 }
