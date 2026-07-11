@@ -72,7 +72,7 @@ function tone(status?: string | null) {
 }
 
 export default function ReceptionDashboard() {
-  const { profile, signOut } = useAuth();
+  const { profile } = useAuth();
   const [stats, setStats] = useState<DashboardStats | null>(null);
   const [summary, setSummary] = useState<any>(null);
   const [features, setFeatures] = useState<ClinicFeatureSettings>(DEFAULT_CLINIC_FEATURE_SETTINGS);
@@ -118,14 +118,6 @@ export default function ReceptionDashboard() {
   useEffect(() => {
     load();
   }, []);
-
-  async function logout() {
-    try {
-      await signOut();
-    } catch (error) {
-      Alert.alert("Logout failed", error instanceof Error ? error.message : "Please try again.");
-    }
-  }
 
   const appointments = useMemo<AppointmentRow[]>(
     () => ((stats?.todayAppointmentList ?? []) as AppointmentRow[]),
@@ -298,11 +290,6 @@ export default function ReceptionDashboard() {
           <EmptyState title="No waiting patients" message="Use Quick Check-in to send patient to doctor queue." icon="people-outline" />
         )}
       </SectionCard>
-
-      <View style={{ flexDirection: "row", gap: 10 }}>
-        <AppButton title="Refresh" icon="refresh-outline" variant="secondary" onPress={load} loading={loading} style={{ flex: 1 }} />
-        <AppButton title="Logout" icon="log-out-outline" variant="ghost" onPress={logout} style={{ flex: 1 }} />
-      </View>
     </Screen>
   );
 }
