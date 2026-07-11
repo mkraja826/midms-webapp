@@ -1,5 +1,5 @@
 import { router } from "expo-router";
-import { ScrollView, Text, View } from "react-native";
+import { Alert, ScrollView, Text, View } from "react-native";
 import { AppButton } from "@/components/AppButton";
 import { SectionCard } from "@/components/SectionCard";
 import { colors } from "@/constants/colors";
@@ -7,8 +7,26 @@ import { useAuth } from "@/lib/auth";
 import { getDashboardPath } from "@/lib/supabase";
 
 export default function LegalAccountScreen() {
-  const { profile } = useAuth();
+  const { profile, signOut } = useAuth();
   const homePath = getDashboardPath(profile?.role ?? "receptionist");
+
+  function confirmLogout() {
+    Alert.alert("Logout", "Sign out from this device?", [
+      { text: "Cancel", style: "cancel" },
+      {
+        text: "Logout",
+        style: "destructive",
+        onPress: async () => {
+          try {
+            await signOut();
+            router.replace("/login" as never);
+          } catch (error) {
+            Alert.alert("Logout failed", error instanceof Error ? error.message : "Please try again.");
+          }
+        },
+      },
+    ]);
+  }
 
   return (
     <ScrollView contentInsetAdjustmentBehavior="automatic" contentContainerStyle={{ padding: 16, gap: 16 }}>
@@ -49,6 +67,13 @@ export default function LegalAccountScreen() {
         variant="secondary"
         icon="document-text-outline"
         onPress={() => router.push("/settings/terms" as never)}
+      />
+
+      <AppButton
+        title="Logout"
+        variant="secondary"
+        icon="log-out-outline"
+        onPress={confirmLogout}
       />
 
       <AppButton
