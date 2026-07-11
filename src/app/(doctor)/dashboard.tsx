@@ -130,11 +130,13 @@ export default function DoctorDashboard() {
 
       <SectionCard title="Doctor Actions" subtitle="Fast actions used during active patient treatment.">
         <ActionCard title="Search Patient" subtitle="Open previous history before treatment" icon="search-outline" onPress={() => router.push("/patient" as never)} />
+        <ActionCard title="Ongoing Treatments" subtitle="Open planned, ongoing and outstanding work" icon="construct-outline" onPress={() => router.push("/treatments/ongoing" as never)} />
         <ActionCard title="Follow-up Reminders" subtitle="Today and overdue review patients" icon="notifications-outline" onPress={() => router.push("/reminders" as never)} />
         <ActionCard title="Add Visit Manually" subtitle="If patient is not in queue" icon="create-outline" onPress={() => router.push("/patient/visit" as never)} />
         <ActionCard title="Upload X-ray / Prescription" subtitle="Select patient, choose type, upload, done" icon="cloud-upload-outline" onPress={() => router.push("/patient/upload" as never)} />
         <ActionCard title="Gallery" subtitle="Quickly view all clinical files" icon="images-outline" onPress={() => router.push("/gallery" as never)} />
         <ActionCard title="Book Follow-up" subtitle="For review appointment" icon="calendar-number-outline" onPress={() => router.push("/appointment/book" as never)} />
+        <ActionCard title="Legal & Account" subtitle="Logout, privacy, support and account options" icon="shield-checkmark-outline" onPress={() => router.push("/settings/legal" as never)} />
         <ActionCard title="Change Password" subtitle="Update your login password" icon="key-outline" onPress={() => router.push("/settings/change-password" as never)} />
       </SectionCard>
 
