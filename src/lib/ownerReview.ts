@@ -47,18 +47,11 @@ export type WaivedOpFeeReview = {
   waived_by_name: string | null;
 };
 
-export type UnknownStaffReview = {
-  label: string;
-  count: number;
-  subtitle: string;
-};
-
 export type OwnerReviewReport = {
   cards: OwnerReviewCard[];
   missedFollowups: MissedFollowupReview[];
   paidActiveTreatments: PaidActiveTreatmentReview[];
   waivedOpFees: WaivedOpFeeReview[];
-  unknownStaff: UnknownStaffReview[];
   patientEditsCount: number;
 };
 
@@ -93,17 +86,6 @@ function indexById<T extends { id: string }>(rows: T[]) {
   return new Map(rows.map((row) => [row.id, row]));
 }
 
-async function countRows(table: string, clinicId: string, column: string) {
-  const { count, error } = await supabase
-    .from(table)
-    .select("id", { count: "exact", head: true })
-    .eq("clinic_id", clinicId)
-    .is(column, null);
-
-  if (error) return 0;
-  return count ?? 0;
-}
-
 export async function getOwnerReviewReport(): Promise<OwnerReviewReport> {
   const profile = await getCurrentProfile();
   if (!profile?.clinic_id) throw new Error("Clinic profile not found");
@@ -112,7 +94,7 @@ export async function getOwnerReviewReport(): Promise<OwnerReviewReport> {
   const now = new Date().toISOString();
   const todayStart = startOfToday();
 
-  const [appointmentsResult, visitsResult, treatmentsResult, invoicesResult, waivedResult, editsResult, unknownPayments, unknownAppointments, unknownPatients, unknownInvoices] = await Promise.all([
+  const [appointmentsResult, visitsResult, treatmentsResult, invoicesResult, waivedResult, editsResult] = await Promise.all([
     supabase
       .from("appointments")
       .select("id,patient_id,appointment_time,notes,status")
@@ -158,10 +140,6 @@ export async function getOwnerReviewReport(): Promise<OwnerReviewReport> {
       .select("id", { count: "exact", head: true })
       .eq("clinic_id", clinicId)
       .gte("created_at", todayStart),
-    countRows("payments", clinicId, "collected_by"),
-    countRows("appointments", clinicId, "created_by"),
-    countRows("patients", clinicId, "created_by"),
-    countRows("invoices", clinicId, "created_by"),
   ]);
 
   if (appointmentsResult.error) throw appointmentsResult.error;
@@ -271,14 +249,6 @@ export async function getOwnerReviewReport(): Promise<OwnerReviewReport> {
     };
   });
 
-  const unknownStaff: UnknownStaffReview[] = [
-    { label: "Payments without collector", count: unknownPayments, subtitle: "Old payment rows where staff could not be safely identified." },
-    { label: "Appointments without creator", count: unknownAppointments, subtitle: "Old appointments before creator tracking existed." },
-    { label: "Patients without creator", count: unknownPatients, subtitle: "Old patient records before staff tracking existed." },
-    { label: "Invoices without creator", count: unknownInvoices, subtitle: "Old invoice rows before creator tracking existed." },
-  ];
-
-  const unknownStaffTotal = unknownStaff.reduce((sum, item) => sum + item.count, 0);
   const patientEditsCount = editsResult.count ?? 0;
 
   const cards: OwnerReviewCard[] = [
@@ -310,15 +280,6 @@ export async function getOwnerReviewReport(): Promise<OwnerReviewReport> {
       action: "Open Payments",
     },
     {
-      key: "unknown-staff",
-      title: "Unknown Staff Rows",
-      count: unknownStaffTotal,
-      subtitle: unknownStaffTotal ? "Mostly old pilot records before tracking existed." : "All tracked rows have staff attribution.",
-      tone: unknownStaffTotal ? "warning" : "success",
-      route: "/reports/activity",
-      action: "Open Activity",
-    },
-    {
       key: "patient-edits",
       title: "Patient Edits Today",
       count: patientEditsCount,
@@ -334,7 +295,6 @@ export async function getOwnerReviewReport(): Promise<OwnerReviewReport> {
     missedFollowups,
     paidActiveTreatments,
     waivedOpFees,
-    unknownStaff,
     patientEditsCount,
   };
 }
