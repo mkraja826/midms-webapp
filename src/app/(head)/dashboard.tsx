@@ -339,7 +339,7 @@ export default function HeadDashboard() {
         <MiniStat label="Total Patients" value={loading ? "..." : stats?.totalPatients ?? 0} icon="person-outline" />
       </View>
 
-      <SectionCard title="Quick Actions" subtitle="Most-used owner controls. Review Board catches missed follow-ups, OP waivers and staff mistakes.">
+      <SectionCard title="Quick Actions" subtitle="Most-used owner controls. Review Board catches missed follow-ups, OP waivers and patient detail edits.">
         <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 10, justifyContent: "space-between" }}>
           <QuickAction primary title="Owner Review" icon="clipboard-outline" onPress={() => router.push("/reports/owner-review" as never)} />
           <QuickAction title="Clinic Report" icon="analytics-outline" onPress={() => router.push("/reports/clinic" as never)} />
