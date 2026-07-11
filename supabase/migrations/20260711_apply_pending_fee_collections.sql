@@ -2,7 +2,9 @@
 -- Collecting a fee should first close existing pending invoices for the same patient/category.
 -- This prevents pending dues from remaining open when the receptionist collects an old balance.
 
-create or replace function public.collect_reception_fee(
+drop function if exists public.collect_reception_fee(uuid, text, numeric, text, text);
+
+create function public.collect_reception_fee(
   p_patient_id uuid,
   p_fee_type text,
   p_amount numeric,
