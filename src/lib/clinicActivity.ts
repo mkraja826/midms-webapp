@@ -159,9 +159,9 @@ function patientLabel(row?: { patient_code?: string | null; name?: string | null
   return `${code}${row.name || "Patient"}${phone}`;
 }
 
-function staffLabel(row?: { name?: string | null; role?: string | null }) {
-  if (!row) return "Clinic staff";
-  return `${row.name || "Staff"}${row.role ? ` - ${roleLabel(row.role)}` : ""}`;
+function staffLabel(row?: { name?: string | null; role?: string | null }, fallback = "Staff unknown") {
+  if (!row) return fallback;
+  return `${row.name || fallback}${row.role ? ` - ${roleLabel(row.role)}` : ""}`;
 }
 
 function paymentCategoryLabel(value?: string | null) {
@@ -218,7 +218,7 @@ export async function buildClinicActivityReport(rangeKey: ActivityRangeKey): Pro
   const patientQuery = applyDateRange(
     supabase
       .from("patients")
-      .select("id,clinic_id,patient_code,name,phone,created_at")
+      .select("id,clinic_id,patient_code,name,phone,created_by,created_at")
       .eq("clinic_id", clinicId)
       .order("created_at", { ascending: false })
       .limit(limit),
@@ -262,7 +262,7 @@ export async function buildClinicActivityReport(rangeKey: ActivityRangeKey): Pro
   const appointmentQuery = applyDateRange(
     supabase
       .from("appointments")
-      .select("clinic_id,patient_id,doctor_id,appointment_time,status,notes,created_at")
+      .select("clinic_id,patient_id,doctor_id,created_by,appointment_time,status,notes,created_at")
       .eq("clinic_id", clinicId)
       .order("created_at", { ascending: false })
       .limit(limit),
@@ -330,6 +330,7 @@ export async function buildClinicActivityReport(rangeKey: ActivityRangeKey): Pro
       title: "Patient registered",
       subtitle: `${patientLabel(row)} was added to clinic records.`,
       patient: patientLabel(row),
+      staff: staffLabel(staffMap.get(row.created_by), "Registration staff unknown"),
       createdAt: row.created_at,
       tone: "primary" as const,
     })),
@@ -339,7 +340,7 @@ export async function buildClinicActivityReport(rangeKey: ActivityRangeKey): Pro
       title: "Visit completed",
       subtitle: `${patientLabel(patientMap.get(row.patient_id))} • ${row.chief_complaint || "Visit notes added"}`,
       patient: patientLabel(patientMap.get(row.patient_id)),
-      staff: staffLabel(staffMap.get(row.doctor_id)),
+      staff: staffLabel(staffMap.get(row.doctor_id), "Treating doctor unknown"),
       createdAt: row.created_at || row.visit_date,
       tone: "success" as const,
     })),
@@ -349,7 +350,7 @@ export async function buildClinicActivityReport(rangeKey: ActivityRangeKey): Pro
       title: `${paymentCategoryLabel(row.payment_category)} collected`,
       subtitle: `₹${Math.round(moneyNumber(row.amount)).toLocaleString("en-IN")} • ${row.payment_method || "Payment"} • ${patientLabel(patientMap.get(row.patient_id))}`,
       patient: patientLabel(patientMap.get(row.patient_id)),
-      staff: staffLabel(staffMap.get(row.collected_by)),
+      staff: staffLabel(staffMap.get(row.collected_by), "Collection staff unknown"),
       amount: moneyNumber(row.amount),
       createdAt: row.created_at,
       tone: "success" as const,
@@ -360,7 +361,7 @@ export async function buildClinicActivityReport(rangeKey: ActivityRangeKey): Pro
       title: "File uploaded",
       subtitle: `${row.file_type || "File"} • ${row.file_name || "Uploaded file"} • ${patientLabel(patientMap.get(row.patient_id))}`,
       patient: patientLabel(patientMap.get(row.patient_id)),
-      staff: staffLabel(staffMap.get(row.uploaded_by)),
+      staff: staffLabel(staffMap.get(row.uploaded_by), "Upload staff unknown"),
       createdAt: row.created_at,
       tone: "primary" as const,
     })),
@@ -370,7 +371,7 @@ export async function buildClinicActivityReport(rangeKey: ActivityRangeKey): Pro
       title: "Appointment booked",
       subtitle: `${patientLabel(patientMap.get(row.patient_id))} • ${dateText(row.appointment_time)} • ${row.status || "scheduled"}`,
       patient: patientLabel(patientMap.get(row.patient_id)),
-      staff: staffLabel(staffMap.get(row.doctor_id)),
+      staff: staffLabel(staffMap.get(row.created_by || row.doctor_id), "Appointment creator unknown"),
       createdAt: row.created_at,
       tone: "warning" as const,
     })),
@@ -380,7 +381,7 @@ export async function buildClinicActivityReport(rangeKey: ActivityRangeKey): Pro
       title: "Prescribed tablet entered",
       subtitle: `${row.medication_name || "Tablet"}${row.dosage ? ` • ${row.dosage}` : ""}${row.duration ? ` • ${row.duration}` : ""}`,
       patient: patientLabel(patientMap.get(row.patient_id)),
-      staff: staffLabel(staffMap.get(row.prescribed_by)),
+      staff: staffLabel(staffMap.get(row.prescribed_by), "Tablet entry staff unknown"),
       createdAt: row.created_at,
       tone: "primary" as const,
     })),
@@ -390,7 +391,7 @@ export async function buildClinicActivityReport(rangeKey: ActivityRangeKey): Pro
       title: "Patient detail edited",
       subtitle: `${patientLabel(patientMap.get(row.patient_id))} • ${row.field_name || "field"} changed${row.reason ? ` • ${row.reason}` : ""}`,
       patient: patientLabel(patientMap.get(row.patient_id)),
-      staff: staffLabel(staffMap.get(row.changed_by)),
+      staff: staffLabel(staffMap.get(row.changed_by), "Edit staff unknown"),
       createdAt: row.created_at,
       tone: "warning" as const,
     })),
