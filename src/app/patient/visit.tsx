@@ -16,6 +16,15 @@ type ComplaintKey = "Pain" | "Swelling" | "Cap issue" | "Wisdom tooth" | "Broken
 
 type DoctorOption = Pick<Profile, "id" | "name" | "role">;
 
+type ActiveTreatment = {
+  id: string;
+  treatment_name: string | null;
+  category: string | null;
+  cost: number | string | null;
+  status: "planned" | "ongoing" | "completed" | "cancelled";
+  created_at: string;
+};
+
 type Slot = {
   label: string;
   hour: number;
@@ -55,13 +64,13 @@ const TIME_SLOTS: Slot[] = [
   { label: "07:30 PM", hour: 19, minute: 30 },
 ];
 
-function toNumber(value: string) {
-  const cleaned = value.replace(/[^0-9.]/g, "");
+function toNumber(value: string | number | null | undefined) {
+  const cleaned = String(value ?? "").replace(/[^0-9.]/g, "");
   const number = Number(cleaned);
   return Number.isFinite(number) ? number : 0;
 }
 
-function formatMoney(value: number) {
+function formatMoney(value: string | number | null | undefined) {
   return `₹${Math.max(0, Math.round(Number(value || 0))).toLocaleString("en-IN")}`;
 }
 
@@ -120,6 +129,12 @@ function doctorRoleLabel(role?: string | null) {
   return role || "Doctor";
 }
 
+function getErrorMessage(error: unknown) {
+  if (error instanceof Error) return error.message;
+  if (typeof error === "object" && error && "message" in error) return String((error as { message?: unknown }).message || "Please try again.");
+  return "Please try again.";
+}
+
 export default function AddVisitScreen() {
   const params = useLocalSearchParams<{ patient_id?: string }>();
   const incomingPatientId = typeof params.patient_id === "string" ? params.patient_id : "";
@@ -141,7 +156,10 @@ export default function AddVisitScreen() {
   const [treatmentCost, setTreatmentCost] = useState("");
   const [paidAmount, setPaidAmount] = useState("");
   const [pendingBalance, setPendingBalance] = useState(0);
+  const [activeTreatments, setActiveTreatments] = useState<ActiveTreatment[]>([]);
+  const [activeTreatmentDue, setActiveTreatmentDue] = useState(0);
   const [loadingPendingBalance, setLoadingPendingBalance] = useState(false);
+  const [loadingActiveTreatments, setLoadingActiveTreatments] = useState(false);
   const [bookFollowup, setBookFollowup] = useState(false);
   const [selectedDateKey, setSelectedDateKey] = useState(firstDateWithFutureSlot.key);
   const [selectedTimeIndex, setSelectedTimeIndex] = useState(0);
@@ -159,7 +177,7 @@ export default function AddVisitScreen() {
         setSelectedPatientId(incomingPatientId);
       }
     } catch (error) {
-      Alert.alert("Patients load failed", error instanceof Error ? error.message : "Please try again.");
+      Alert.alert("Patients load failed", getErrorMessage(error));
     } finally {
       setLoadingPatients(false);
     }
@@ -214,39 +232,68 @@ export default function AddVisitScreen() {
   useEffect(() => {
     let active = true;
 
-    async function loadPendingBalance() {
+    async function loadPatientMoneyAndTreatments() {
       if (!selectedPatientId) {
         setPendingBalance(0);
+        setActiveTreatments([]);
+        setActiveTreatmentDue(0);
         setLoadingPendingBalance(false);
+        setLoadingActiveTreatments(false);
         return;
       }
 
       try {
         setLoadingPendingBalance(true);
-        const { data, error } = await supabase
-          .from("invoices")
-          .select("due_amount")
-          .eq("patient_id", selectedPatientId)
-          .gt("due_amount", 0)
-          .in("status", ["unpaid", "partial"]);
+        setLoadingActiveTreatments(true);
 
-        if (error) throw error;
+        const [invoiceResult, treatmentResult] = await Promise.all([
+          supabase
+            .from("invoices")
+            .select("due_amount,payment_category,status")
+            .eq("patient_id", selectedPatientId)
+            .gt("due_amount", 0)
+            .in("status", ["unpaid", "partial"]),
+          supabase
+            .from("treatments")
+            .select("id,treatment_name,category,cost,status,created_at")
+            .eq("patient_id", selectedPatientId)
+            .in("status", ["planned", "ongoing"])
+            .order("created_at", { ascending: false }),
+        ]);
 
-        const total = (data ?? []).reduce(
+        if (invoiceResult.error) throw invoiceResult.error;
+        if (treatmentResult.error) throw treatmentResult.error;
+
+        const invoices = invoiceResult.data ?? [];
+        const totalDue = invoices.reduce(
           (sum: number, row: { due_amount?: number | string | null }) => sum + Number(row.due_amount || 0),
           0
         );
+        const treatmentDue = invoices
+          .filter((row: { payment_category?: string | null }) => row.payment_category === "treatment_fee")
+          .reduce((sum: number, row: { due_amount?: number | string | null }) => sum + Number(row.due_amount || 0), 0);
 
-        if (active) setPendingBalance(total);
+        if (active) {
+          setPendingBalance(totalDue);
+          setActiveTreatmentDue(treatmentDue);
+          setActiveTreatments((treatmentResult.data || []) as ActiveTreatment[]);
+        }
       } catch (error) {
-        console.warn("Pending balance load failed", error instanceof Error ? error.message : error);
-        if (active) setPendingBalance(0);
+        console.warn("Patient balance/treatment guard load failed", error instanceof Error ? error.message : error);
+        if (active) {
+          setPendingBalance(0);
+          setActiveTreatmentDue(0);
+          setActiveTreatments([]);
+        }
       } finally {
-        if (active) setLoadingPendingBalance(false);
+        if (active) {
+          setLoadingPendingBalance(false);
+          setLoadingActiveTreatments(false);
+        }
       }
     }
 
-    loadPendingBalance();
+    loadPatientMoneyAndTreatments();
 
     return () => {
       active = false;
@@ -265,17 +312,19 @@ export default function AddVisitScreen() {
 
   const filteredPatients = useMemo(() => {
     const term = patientSearch.trim().toLowerCase();
-    if (!term) return patients.slice(0, 12);
+    const rows = !term
+      ? patients.slice(0, 12)
+      : patients
+          .filter((patient) => {
+            return (
+              patient.name.toLowerCase().includes(term) ||
+              (patient.phone || "").toLowerCase().includes(term) ||
+              (patient.patient_code || "").toLowerCase().includes(term)
+            );
+          })
+          .slice(0, 12);
 
-    return patients
-      .filter((patient) => {
-        return (
-          patient.name.toLowerCase().includes(term) ||
-          (patient.phone || "").toLowerCase().includes(term) ||
-          (patient.patient_code || "").toLowerCase().includes(term)
-        );
-      })
-      .slice(0, 12);
+    return rows;
   }, [patientSearch, patients]);
 
   const selectedDate = dateOptions.find((option) => option.key === selectedDateKey) || firstDateWithFutureSlot;
@@ -301,6 +350,8 @@ export default function AddVisitScreen() {
   const treatmentCostValue = toNumber(treatmentCost);
   const paidNowValue = toNumber(paidAmount);
   const balanceAfterVisit = Math.max(pendingBalance + treatmentCostValue - paidNowValue, 0);
+  const hasActiveTreatment = activeTreatments.length > 0;
+  const hasNewTreatmentEntry = Boolean(treatmentName.trim() || treatmentCategory.trim() || treatmentCostValue > 0 || paidNowValue > 0);
 
   const complaintSummary = useMemo(() => {
     const selectedWithoutOther = selectedComplaints.filter((item) => item !== "Other");
@@ -324,7 +375,16 @@ export default function AddVisitScreen() {
     });
   }
 
-  async function saveVisit() {
+  function clearTreatmentFields() {
+    setTreatmentName("");
+    setTreatmentCategory("");
+    setTreatmentCost("");
+    setPaidAmount("");
+  }
+
+  async function saveVisit(options?: { confirmedSeparateTreatment?: boolean; visitOnly?: boolean }) {
+    if (saving) return;
+
     if (!selectedPatientId) {
       Alert.alert("Patient missing", "Select the patient first.");
       return;
@@ -349,9 +409,44 @@ export default function AddVisitScreen() {
 
     const cost = toNumber(treatmentCost);
     const paid = toNumber(paidAmount);
+    const saveVisitOnly = Boolean(options?.visitOnly);
+    const shouldCreateTreatment = !saveVisitOnly && Boolean(treatmentName.trim() || cost > 0);
 
-    if (paid > cost && cost > 0) {
+    if (!saveVisitOnly && paid > 0 && cost <= 0) {
+      Alert.alert("Treatment amount missing", "Enter treatment cost before entering Paid now, or save this as visit note only and collect old pending from Reception Fees.");
+      return;
+    }
+
+    if (!saveVisitOnly && cost > 0 && !treatmentName.trim()) {
+      Alert.alert("Treatment name missing", "Enter treatment name before adding treatment cost.");
+      return;
+    }
+
+    if (!saveVisitOnly && paid > cost && cost > 0) {
       Alert.alert("Invalid payment", "Paid amount cannot be greater than treatment cost.");
+      return;
+    }
+
+    if (hasActiveTreatment && hasNewTreatmentEntry && !options?.confirmedSeparateTreatment) {
+      const first = activeTreatments[0];
+      const details = [
+        `${first?.treatment_name || "Existing treatment"} • ${first?.status || "ongoing"}`,
+        first?.cost ? `Cost: ${formatMoney(first.cost)}` : null,
+        activeTreatmentDue > 0 ? `Treatment pending: ${formatMoney(activeTreatmentDue)}` : "Treatment payment cleared or no due found",
+      ]
+        .filter(Boolean)
+        .join("\n");
+
+      Alert.alert(
+        "Ongoing treatment already exists",
+        `This patient already has active treatment. Do not create duplicate treatment unless doctor confirms it is a different procedure.\n\n${details}`,
+        [
+          { text: "Open Ongoing", onPress: () => router.push("/treatments/ongoing" as never) },
+          { text: "Save Visit Only", onPress: () => void saveVisit({ confirmedSeparateTreatment: true, visitOnly: true }) },
+          { text: "Create Separate", style: "destructive", onPress: () => void saveVisit({ confirmedSeparateTreatment: true }) },
+          { text: "Cancel", style: "cancel" },
+        ]
+      );
       return;
     }
 
@@ -362,11 +457,11 @@ export default function AddVisitScreen() {
         patient_id: selectedPatientId,
         chief_complaint: complaintSummary.trim(),
         diagnosis: undefined,
-        doctor_notes: undefined,
+        doctor_notes: hasActiveTreatment && saveVisitOnly ? "Follow-up visit for existing ongoing treatment." : undefined,
         next_appointment_date: followupDateTime ? followupDateTime.toISOString() : null,
-        treatment_name: treatmentName.trim() || undefined,
-        treatment_cost: cost || undefined,
-        treatment_category: treatmentCategory.trim() || undefined,
+        treatment_name: shouldCreateTreatment ? treatmentName.trim() : undefined,
+        treatment_cost: shouldCreateTreatment ? cost : undefined,
+        treatment_category: shouldCreateTreatment ? treatmentCategory.trim() || undefined : undefined,
       });
 
       const { error: doctorUpdateError } = await supabase
@@ -376,7 +471,7 @@ export default function AddVisitScreen() {
 
       if (doctorUpdateError) throw doctorUpdateError;
 
-      if (cost > 0) {
+      if (shouldCreateTreatment && cost > 0) {
         await createInvoice({
           patient_id: selectedPatientId,
           visit_id: visit.id,
@@ -399,12 +494,14 @@ export default function AddVisitScreen() {
       });
 
       Alert.alert(
-        "Visit saved",
-        `Visit saved under ${selectedDoctor?.name || "selected doctor"} and patient removed from waiting queue.`,
+        saveVisitOnly ? "Visit note saved" : "Visit saved",
+        saveVisitOnly
+          ? "Visit saved without creating a duplicate treatment or invoice. Use Ongoing Treatments to continue/complete the existing treatment."
+          : `Visit saved under ${selectedDoctor?.name || "selected doctor"} and patient removed from waiting queue.`,
         [{ text: "Open Patient", onPress: () => router.replace(`/patient/${selectedPatientId}` as never) }]
       );
     } catch (error) {
-      Alert.alert("Save visit failed", error instanceof Error ? error.message : "Please try again.");
+      Alert.alert("Save visit failed", getErrorMessage(error));
     } finally {
       setSaving(false);
     }
@@ -427,7 +524,7 @@ export default function AddVisitScreen() {
               <View style={{ flex: 1 }}>
                 <Text style={{ color: colors.text, fontSize: 17, fontWeight: "900" }}>{selectedPatient.name}</Text>
                 <Text style={{ color: colors.muted, marginTop: 2 }}>
-                  {selectedPatient.phone || "No phone"}
+                  {selectedPatient.patient_code || "No ID"} • {selectedPatient.phone || "No phone"}
                   {selectedPatient.age ? ` • ${selectedPatient.age} yrs` : ""}
                 </Text>
               </View>
@@ -438,9 +535,7 @@ export default function AddVisitScreen() {
               title="Edit Medical History"
               icon="medkit-outline"
               variant="secondary"
-              onPress={() =>
-                router.push({ pathname: "/patient/medical-history", params: { patient_id: selectedPatient.id } } as never)
-              }
+              onPress={() => router.push({ pathname: "/patient/medical-history", params: { patient_id: selectedPatient.id } } as never)}
             />
 
             {!incomingPatientId ? (
@@ -496,7 +591,10 @@ export default function AddVisitScreen() {
                     </View>
                     <View style={{ flex: 1 }}>
                       <Text style={{ color: colors.text, fontWeight: "900" }}>{patient.name}</Text>
-                      <Text style={{ color: colors.muted, marginTop: 2 }}>{patient.phone || "No phone"}</Text>
+                      <Text style={{ color: colors.muted, marginTop: 2 }}>
+                        {patient.patient_code || "No ID"} • {patient.phone || "No phone"}
+                        {patient.age ? ` • ${patient.age} yrs` : ""}
+                      </Text>
                     </View>
                     <Ionicons name="chevron-forward" size={18} color={colors.muted} />
                   </Pressable>
@@ -508,6 +606,47 @@ export default function AddVisitScreen() {
           </View>
         )}
       </SectionCard>
+
+      {selectedPatient && (loadingActiveTreatments || hasActiveTreatment) ? (
+        <SectionCard title="Ongoing treatment guard" subtitle="Prevents accidental duplicate treatment and duplicate invoice.">
+          {loadingActiveTreatments ? (
+            <Text style={{ color: colors.muted }}>Checking active treatments...</Text>
+          ) : hasActiveTreatment ? (
+            <View style={{ gap: 12 }}>
+              <View style={{ padding: 14, borderRadius: 18, borderWidth: 1, borderColor: colors.warning, backgroundColor: colors.warningSoft, gap: 10 }}>
+                <View style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
+                  <Ionicons name="warning-outline" size={24} color={colors.warning} />
+                  <View style={{ flex: 1 }}>
+                    <Text style={{ color: colors.text, fontWeight: "900", fontSize: 16 }}>This patient already has active treatment</Text>
+                    <Text style={{ color: colors.muted, marginTop: 3, lineHeight: 18 }}>
+                      Use visit note only or open Ongoing Treatments unless doctor confirms this is a separate new procedure.
+                    </Text>
+                  </View>
+                  <StatusBadge label={`${activeTreatments.length} active`} tone="warning" />
+                </View>
+
+                {activeTreatments.slice(0, 2).map((item) => (
+                  <View key={item.id} style={{ padding: 12, borderRadius: 16, backgroundColor: colors.background, borderWidth: 1, borderColor: colors.border }}>
+                    <Text style={{ color: colors.text, fontWeight: "900" }}>{item.treatment_name || "Treatment"}</Text>
+                    <Text style={{ color: colors.muted, marginTop: 3 }}>
+                      {item.status.toUpperCase()} • {formatMoney(item.cost)}{item.category ? ` • ${item.category}` : ""}
+                    </Text>
+                  </View>
+                ))}
+
+                <Text style={{ color: colors.text, fontWeight: "900" }}>
+                  Treatment pending: {formatMoney(activeTreatmentDue)}
+                </Text>
+              </View>
+
+              <View style={{ flexDirection: "row", gap: 10 }}>
+                <AppButton title="Open Ongoing" icon="construct-outline" variant="secondary" onPress={() => router.push("/treatments/ongoing" as never)} style={{ flex: 1 }} />
+                <AppButton title="Clear New Treatment" icon="close-circle-outline" variant="ghost" onPress={clearTreatmentFields} style={{ flex: 1 }} />
+              </View>
+            </View>
+          ) : null}
+        </SectionCard>
+      ) : null}
 
       <SectionCard title="Treated By" subtitle="Reception can select the doctor when entering visit from oral instructions.">
         {loadingDoctors ? (
@@ -605,7 +744,7 @@ export default function AddVisitScreen() {
         ) : null}
       </SectionCard>
 
-      <SectionCard title="Treatment & Billing" subtitle="Optional. Add treatment cost and paid amount only when needed.">
+      <SectionCard title="Treatment & Billing" subtitle={hasActiveTreatment ? "Warning active: add new cost only for a separate new procedure." : "Optional. Add treatment cost and paid amount only when needed."}>
         <AppInput label="Treatment name" value={treatmentName} onChangeText={setTreatmentName} placeholder="RCT, extraction, filling, scaling..." />
         <AppInput label="Treatment category" value={treatmentCategory} onChangeText={setTreatmentCategory} placeholder="Optional category" />
         <AppInput label="Treatment cost" value={treatmentCost} onChangeText={setTreatmentCost} keyboardType="numeric" placeholder="Example: 2500" />
@@ -633,7 +772,7 @@ export default function AddVisitScreen() {
           ) : null}
         </View>
 
-        <AppInput label="Paid now" value={paidAmount} onChangeText={setPaidAmount} keyboardType="numeric" placeholder="Example: 1000" helper="If paid partially, due amount is created automatically." />
+        <AppInput label="Paid now" value={paidAmount} onChangeText={setPaidAmount} keyboardType="numeric" placeholder="Example: 1000" helper="If paid partially, due amount is created automatically. For old pending collection, use Reception Fees." />
       </SectionCard>
 
       <SectionCard title="Follow-up Appointment" subtitle="Optional. Allowed timings: 11:00 AM-1:30 PM and 5:00 PM-7:30 PM only.">
@@ -724,7 +863,7 @@ export default function AddVisitScreen() {
         ) : null}
       </SectionCard>
 
-      <AppButton title="Save Visit & Complete Queue" icon="save-outline" onPress={saveVisit} loading={saving} loadingTitle="Saving visit..." />
+      <AppButton title="Save Visit & Complete Queue" icon="save-outline" onPress={() => saveVisit()} loading={saving} loadingTitle="Saving visit..." />
       <AppButton title="Back" icon="arrow-back-outline" variant="ghost" onPress={() => router.back()} />
     </Screen>
   );
