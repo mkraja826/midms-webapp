@@ -128,6 +128,23 @@ export default function ClinicReportScreen() {
             </Text>
           </View>
 
+          <View style={{ padding: 14, borderRadius: 20, backgroundColor: colors.warningSoft, borderWidth: 1, borderColor: colors.border, gap: 8 }}>
+            <View style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
+              <Ionicons name="shield-checkmark-outline" size={24} color={colors.warning} />
+              <View style={{ flex: 1 }}>
+                <Text style={{ color: colors.text, fontWeight: "900", fontSize: 16 }}>Owner Review Board</Text>
+                <Text style={{ color: colors.muted, marginTop: 2, lineHeight: 19 }}>
+                  One screen for missed follow-ups, paid-but-active treatments, waived OP fees and staff mistake audit.
+                </Text>
+              </View>
+            </View>
+            <AppButton
+              title="Open Review Board"
+              icon="clipboard-outline"
+              onPress={() => router.push("/reports/owner-review" as never)}
+            />
+          </View>
+
           <View style={{ flexDirection: "row", gap: 10 }}>
             <AppButton
               title="Follow-ups"
@@ -185,6 +202,7 @@ export default function ClinicReportScreen() {
           {[
             "Reception OP fees checked",
             "Doctor queue completed",
+            "Owner Review Board checked",
             "Pending payments reviewed",
             "Follow-up review checked",
             "Treatment review checked",
