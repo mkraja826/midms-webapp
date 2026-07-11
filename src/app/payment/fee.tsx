@@ -10,13 +10,14 @@ import { SectionCard } from "@/components/SectionCard";
 import { StatusBadge } from "@/components/StatusBadge";
 import { SuccessNotice } from "@/components/SuccessNotice";
 import { colors } from "@/constants/colors";
+import { DEFAULT_OP_FEE_AMOUNT, getClinicFeatureSettings } from "@/lib/clinicOptions";
 import { getPatients, Patient, PaymentCategory, supabase } from "@/lib/supabase";
 
-type FeeType = PaymentCategory | "other";
+type FeeType = Exclude<PaymentCategory, "pending_collection"> | "other";
 
 const PAYMENT_METHODS = ["Cash", "UPI", "Card"];
 const FEE_TYPES: { key: FeeType; title: string; subtitle: string; icon: keyof typeof Ionicons.glyphMap }[] = [
-  { key: "op_fee", title: "OP Fee", subtitle: "Default Rs. 300", icon: "receipt-outline" },
+  { key: "op_fee", title: "OP Fee", subtitle: "Clinic default OP amount", icon: "receipt-outline" },
   { key: "xray_fee", title: "X-ray Fee", subtitle: "Separate X-ray amount", icon: "scan-outline" },
   { key: "medication_fee", title: "Medication Fee", subtitle: "Medicine amount", icon: "medical-outline" },
   { key: "treatment_fee", title: "Treatment Fee", subtitle: "Procedure payment", icon: "hammer-outline" },
@@ -37,8 +38,8 @@ function getFeeConfig(type: FeeType) {
   return FEE_TYPES.find((item) => item.key === type) || FEE_TYPES[0];
 }
 
-function getDefaultAmount(type: FeeType) {
-  return type === "op_fee" ? "300" : "";
+function getDefaultAmount(type: FeeType, opFeeAmount: number) {
+  return type === "op_fee" ? String(opFeeAmount || DEFAULT_OP_FEE_AMOUNT) : "";
 }
 
 function getDefaultNotes(type: FeeType) {
@@ -62,11 +63,12 @@ export default function ReceptionFeeScreen() {
   const params = useLocalSearchParams<{ fee_type?: string }>();
   const incomingType = (FEE_TYPES.some((item) => item.key === params.fee_type) ? params.fee_type : "op_fee") as FeeType;
 
+  const [clinicOpFee, setClinicOpFee] = useState(DEFAULT_OP_FEE_AMOUNT);
   const [feeType, setFeeType] = useState<FeeType>(incomingType);
   const [patients, setPatients] = useState<Patient[]>([]);
   const [patientSearch, setPatientSearch] = useState("");
   const [selectedPatientId, setSelectedPatientId] = useState("");
-  const [amount, setAmount] = useState(getDefaultAmount(incomingType));
+  const [amount, setAmount] = useState(getDefaultAmount(incomingType, DEFAULT_OP_FEE_AMOUNT));
   const [paymentMethod, setPaymentMethod] = useState("Cash");
   const [notes, setNotes] = useState(getDefaultNotes(incomingType));
   const [successMessage, setSuccessMessage] = useState("");
@@ -77,7 +79,7 @@ export default function ReceptionFeeScreen() {
 
   function changeFeeType(next: FeeType) {
     setFeeType(next);
-    setAmount(getDefaultAmount(next));
+    setAmount(getDefaultAmount(next, clinicOpFee));
     setNotes(getDefaultNotes(next));
     setSuccessMessage("");
   }
@@ -85,8 +87,18 @@ export default function ReceptionFeeScreen() {
   async function loadPatients() {
     try {
       setLoadingPatients(true);
-      const rows = await getPatients();
+      const [rows, clinicSettings] = await Promise.all([
+        getPatients(),
+        getClinicFeatureSettings().catch(() => ({ op_fee_amount: DEFAULT_OP_FEE_AMOUNT })),
+      ]);
+
+      const nextOpFee = Number(clinicSettings.op_fee_amount || DEFAULT_OP_FEE_AMOUNT);
+      setClinicOpFee(nextOpFee);
       setPatients(rows);
+
+      if (feeType === "op_fee") {
+        setAmount(String(nextOpFee));
+      }
     } catch (error) {
       Alert.alert("Patients load failed", getErrorMessage(error));
     } finally {
@@ -120,7 +132,7 @@ export default function ReceptionFeeScreen() {
   function resetForAnother() {
     setSelectedPatientId("");
     setPatientSearch("");
-    setAmount(getDefaultAmount(feeType));
+    setAmount(getDefaultAmount(feeType, clinicOpFee));
     setPaymentMethod("Cash");
     setNotes(getDefaultNotes(feeType));
   }
@@ -245,10 +257,19 @@ export default function ReceptionFeeScreen() {
           <Ionicons name={config.icon} size={34} color={feeType === "op_fee" ? colors.success : colors.primary} />
           <Text style={{ color: colors.muted, fontWeight: "800" }}>{config.title}</Text>
           <Text style={{ color: colors.text, fontSize: 42, fontWeight: "900" }}>{amount ? money(amount) : "Rs. 0"}</Text>
-          <Text style={{ color: feeType === "op_fee" ? colors.success : colors.primary, fontWeight: "900" }}>Counts in today's revenue</Text>
+          <Text style={{ color: feeType === "op_fee" ? colors.success : colors.primary, fontWeight: "900" }}>
+            {feeType === "op_fee" ? `Clinic OP fee default: ${money(clinicOpFee)}` : "Counts in today's revenue"}
+          </Text>
         </View>
 
-        <AppInput label="Amount" value={amount} onChangeText={setAmount} keyboardType="numeric" placeholder={feeType === "op_fee" ? "300" : "Enter amount"} helper={feeType === "op_fee" ? "Default OP fee is Rs. 300." : "Amount may change per patient."} />
+        <AppInput
+          label="Amount"
+          value={amount}
+          onChangeText={setAmount}
+          keyboardType="numeric"
+          placeholder={feeType === "op_fee" ? String(clinicOpFee) : "Enter amount"}
+          helper={feeType === "op_fee" ? "Default comes from owner Account Settings. Reception can edit for this patient." : "Amount may change per patient."}
+        />
 
         <View style={{ flexDirection: "row", gap: 10 }}>
           {PAYMENT_METHODS.map((method) => {
