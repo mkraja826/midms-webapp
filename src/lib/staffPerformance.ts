@@ -229,7 +229,7 @@ export async function buildStaffPerformanceReport(
   const appointmentQuery = applyDateRange(
     supabase
       .from("appointments")
-      .select("patient_id,doctor_id,created_at")
+      .select("patient_id,doctor_id,created_by,created_at")
       .eq("clinic_id", profile.clinic_id)
       .order("created_at", { ascending: false })
       .limit(limit),
@@ -299,7 +299,7 @@ export async function buildStaffPerformanceReport(
   appointments
     .filter((row) => clinicPatientIds.has(row.patient_id))
     .forEach((row) => {
-      const staff = ensureStaff(row.doctor_id);
+      const staff = ensureStaff(row.created_by || row.doctor_id);
       if (!staff) return;
       staff.appointments += 1;
       staff.lastActivityAt = newerDate(staff.lastActivityAt, row.created_at);
