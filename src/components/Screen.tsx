@@ -1,9 +1,9 @@
 import { ReactNode, useEffect, useRef } from "react";
-import { KeyboardAvoidingView, Platform, RefreshControl, ScrollView, View } from "react-native";
+import { KeyboardAvoidingView, Platform, Pressable, RefreshControl, ScrollView, Text, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { StatusBar } from "expo-status-bar";
-import { usePathname } from "expo-router";
-import { OngoingTreatmentsSection } from "@/components/OngoingTreatmentsSection";
+import { Ionicons } from "@expo/vector-icons";
+import { router, usePathname } from "expo-router";
 import { colors } from "@/constants/colors";
 import { useAuth } from "@/lib/auth";
 
@@ -24,8 +24,6 @@ export function Screen({
   const pathname = usePathname();
   const { profile } = useAuth();
   const isDashboard = pathname.includes("/dashboard");
-  const doctorOnly = profile?.role === "doctor" || profile?.role === "working_doctor";
-  const allowTreatmentUpdates = profile?.role !== "receptionist";
   const contentPadding = {
     paddingHorizontal: 16,
     paddingTop: 14,
@@ -54,12 +52,7 @@ export function Screen({
   const content = (
     <>
       {children}
-      {isDashboard && profile?.clinic_id ? (
-        <OngoingTreatmentsSection
-          allowStatusUpdates={allowTreatmentUpdates}
-          doctorOnly={doctorOnly}
-        />
-      ) : null}
+      {isDashboard && profile?.clinic_id ? <OngoingTreatmentsShortcut /> : null}
     </>
   );
 
@@ -99,5 +92,45 @@ export function Screen({
         )}
       </KeyboardAvoidingView>
     </SafeAreaView>
+  );
+}
+
+function OngoingTreatmentsShortcut() {
+  return (
+    <Pressable
+      onPress={() => router.push("/treatments/ongoing" as never)}
+      style={({ pressed }) => ({
+        borderRadius: 20,
+        padding: 14,
+        minHeight: 92,
+        backgroundColor: pressed ? colors.surfaceSoft : colors.background,
+        borderWidth: 1,
+        borderColor: colors.border,
+        flexDirection: "row",
+        alignItems: "center",
+        gap: 12,
+        opacity: pressed ? 0.86 : 1,
+      })}
+    >
+      <View
+        style={{
+          width: 44,
+          height: 44,
+          borderRadius: 16,
+          backgroundColor: colors.primarySoft,
+          alignItems: "center",
+          justifyContent: "center",
+        }}
+      >
+        <Ionicons name="construct-outline" size={22} color={colors.primary} />
+      </View>
+      <View style={{ flex: 1 }}>
+        <Text style={{ color: colors.text, fontWeight: "900", fontSize: 16 }}>Ongoing Treatments</Text>
+        <Text style={{ color: colors.muted, marginTop: 3, lineHeight: 18 }} numberOfLines={2}>
+          Open planned, ongoing, paid and outstanding treatments.
+        </Text>
+      </View>
+      <Ionicons name="chevron-forward" size={20} color={colors.muted} />
+    </Pressable>
   );
 }
