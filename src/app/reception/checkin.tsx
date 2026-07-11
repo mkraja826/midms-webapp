@@ -9,6 +9,7 @@ import { Screen } from "@/components/Screen";
 import { SectionCard } from "@/components/SectionCard";
 import { StatusBadge } from "@/components/StatusBadge";
 import { colors } from "@/constants/colors";
+import { DEFAULT_OP_FEE_AMOUNT, getClinicFeatureSettings } from "@/lib/clinicOptions";
 import { getPatients, Patient, supabase } from "@/lib/supabase";
 
 type Mode = "existing" | "new";
@@ -34,9 +35,7 @@ function getErrorMessage(error: unknown) {
 
   if (typeof error === "object") {
     const err = error as { message?: string; details?: string; hint?: string; code?: string };
-    return [err.message, err.details, err.hint, err.code ? `Code: ${err.code}` : ""]
-      .filter(Boolean)
-      .join("\n");
+    return [err.message, err.details, err.hint, err.code ? `Code: ${err.code}` : ""].filter(Boolean).join("\n");
   }
 
   return "Unknown error";
@@ -54,7 +53,8 @@ export default function ReceptionCheckinScreen() {
   const [gender, setGender] = useState("");
   const [address, setAddress] = useState("");
 
-  const [opAmount, setOpAmount] = useState("300");
+  const [clinicOpFee, setClinicOpFee] = useState(DEFAULT_OP_FEE_AMOUNT);
+  const [opAmount, setOpAmount] = useState(String(DEFAULT_OP_FEE_AMOUNT));
   const [opStatus, setOpStatus] = useState<OpFeeStatus>("paid");
   const [waiverReason, setWaiverReason] = useState("Doctor waived");
   const [paymentMethod, setPaymentMethod] = useState("Cash");
@@ -65,7 +65,14 @@ export default function ReceptionCheckinScreen() {
   async function loadPatients() {
     try {
       setLoadingPatients(true);
-      const rows = await getPatients();
+      const [rows, clinicSettings] = await Promise.all([
+        getPatients(),
+        getClinicFeatureSettings().catch(() => ({ op_fee_amount: DEFAULT_OP_FEE_AMOUNT })),
+      ]);
+
+      const nextOpFee = Math.round(Number(clinicSettings.op_fee_amount || DEFAULT_OP_FEE_AMOUNT));
+      setClinicOpFee(nextOpFee);
+      setOpAmount(String(nextOpFee));
       setPatients(rows);
     } catch (error) {
       Alert.alert("Patients load failed", getErrorMessage(error));
@@ -110,7 +117,7 @@ export default function ReceptionCheckinScreen() {
     setAge("");
     setGender("");
     setAddress("");
-    setOpAmount("300");
+    setOpAmount(String(clinicOpFee));
     setOpStatus("paid");
     setWaiverReason("Doctor waived");
     setPaymentMethod("Cash");
@@ -187,9 +194,7 @@ export default function ReceptionCheckinScreen() {
   return (
     <Screen refreshing={loadingPatients} onRefresh={loadPatients}>
       <View style={{ gap: 6 }}>
-        <Text style={{ color: colors.text, fontSize: 30, fontWeight: "900" }}>
-          Quick Check-in
-        </Text>
+        <Text style={{ color: colors.text, fontSize: 30, fontWeight: "900" }}>Quick Check-in</Text>
         <Text style={{ color: colors.muted, fontSize: 15, lineHeight: 21 }}>
           Register or select patient, handle OP fee, and send to doctor queue.
         </Text>
@@ -275,14 +280,14 @@ export default function ReceptionCheckinScreen() {
         </SectionCard>
       )}
 
-      <SectionCard title="OP Fee" subtitle="Collect, mark pending, or waive the consultation fee before sending to doctor queue.">
+      <SectionCard title="OP Fee" subtitle="Default amount comes from owner Account Settings. Reception can still edit per patient.">
         <View style={{ padding: 16, borderRadius: 24, backgroundColor: opStatus === "waived" ? colors.warningSoft : colors.successSoft, borderWidth: 1, borderColor: colors.border, alignItems: "center", gap: 6 }}>
           <Text style={{ color: colors.muted, fontWeight: "800" }}>OP Fee</Text>
           <Text style={{ color: colors.text, fontSize: 42, fontWeight: "900" }}>
             {opStatus === "waived" ? "Waived" : money(opAmount)}
           </Text>
           <Text style={{ color: opStatus === "waived" ? colors.warning : colors.success, fontWeight: "900" }}>
-            {opStatus === "paid" ? "Adds to today's revenue" : opStatus === "pending" ? "Creates pending OP balance" : "Recorded with waiver reason"}
+            {opStatus === "paid" ? `Clinic default: ${money(clinicOpFee)}` : opStatus === "pending" ? "Creates pending OP balance" : "Recorded with waiver reason"}
           </Text>
         </View>
 
@@ -318,8 +323,8 @@ export default function ReceptionCheckinScreen() {
             value={opAmount}
             onChangeText={setOpAmount}
             keyboardType="numeric"
-            placeholder="300"
-            helper="Default OP fee is Rs. 300, but reception can edit it."
+            placeholder={String(clinicOpFee)}
+            helper="Default comes from owner Account Settings, but reception can edit it for this patient."
           />
         ) : (
           <View style={{ gap: 10 }}>
@@ -415,10 +420,7 @@ function ModeButton({
       }}
     >
       <Ionicons name={icon} size={23} color={selected ? colors.white : colors.primary} />
-      <Text style={{ color: selected ? colors.white : colors.text, fontWeight: "900" }}>
-        {title}
-      </Text>
+      <Text style={{ color: selected ? colors.white : colors.text, fontWeight: "900" }}>{title}</Text>
     </Pressable>
   );
 }
-
