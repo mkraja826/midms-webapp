@@ -134,7 +134,7 @@ export default function ClinicReportScreen() {
               <View style={{ flex: 1 }}>
                 <Text style={{ color: colors.text, fontWeight: "900", fontSize: 16 }}>Owner Review Board</Text>
                 <Text style={{ color: colors.muted, marginTop: 2, lineHeight: 19 }}>
-                  One screen for missed follow-ups, paid-but-active treatments, waived OP fees and staff mistake audit.
+                  One screen for missed follow-ups, paid-but-active treatments, waived OP fees and patient detail edits.
                 </Text>
               </View>
             </View>
