@@ -63,7 +63,7 @@ export default function OwnerReviewBoardScreen() {
       <View style={{ gap: 6 }}>
         <Text style={{ color: colors.text, fontSize: 30, fontWeight: "900" }}>Owner Review Board</Text>
         <Text style={{ color: colors.muted, fontSize: 15, lineHeight: 21 }}>
-          One screen for missed follow-ups, paid active treatments, OP waivers, and staff attribution checks.
+          One screen for missed follow-ups, paid active treatments, OP waivers, and patient detail edits.
         </Text>
       </View>
 
@@ -137,7 +137,7 @@ export default function OwnerReviewBoardScreen() {
                 <Text style={{ color: colors.text, fontWeight: "900" }}>{item.patient_name}</Text>
                 <Text style={{ color: colors.muted }}>{patientMeta(item.patient_code, item.patient_phone)}</Text>
                 <Text style={{ color: colors.warning, fontWeight: "900" }}>Waived {money(item.amount)} • {item.reason || "No reason"}</Text>
-                <Text style={{ color: colors.muted }}>By: {item.waived_by_name || "Unknown staff"}</Text>
+                <Text style={{ color: colors.muted }}>By: {item.waived_by_name || "Staff"}</Text>
               </View>
             ))}
             <AppButton title="Open Payment Review" icon="card-outline" onPress={() => router.push("/reports/payments" as never)} />
@@ -145,22 +145,6 @@ export default function OwnerReviewBoardScreen() {
         ) : (
           <EmptyState title="No OP waivers today" message="No waived OP fee needs owner review today." icon="receipt-outline" />
         )}
-      </SectionCard>
-
-      <SectionCard title="Staff Mistake Audit" subtitle="Old unknown rows are separated from today’s real staff work so owner does not doubt current data.">
-        <View style={{ gap: 10 }}>
-          {report?.unknownStaff.map((item) => (
-            <View key={item.label} style={{ flexDirection: "row", alignItems: "center", gap: 10, padding: 12, borderRadius: 18, backgroundColor: colors.background, borderWidth: 1, borderColor: colors.border }}>
-              <Ionicons name={item.count ? "warning-outline" : "checkmark-circle-outline"} size={21} color={item.count ? colors.warning : colors.success} />
-              <View style={{ flex: 1 }}>
-                <Text style={{ color: colors.text, fontWeight: "900" }}>{item.label}</Text>
-                <Text style={{ color: colors.muted, marginTop: 2 }}>{item.subtitle}</Text>
-              </View>
-              <Text style={{ color: item.count ? colors.warning : colors.success, fontWeight: "900" }}>{item.count}</Text>
-            </View>
-          ))}
-          <AppButton title="Open Activity Log" icon="pulse-outline" variant="secondary" onPress={() => router.push("/reports/activity" as never)} />
-        </View>
       </SectionCard>
 
       <View style={{ flexDirection: "row", gap: 10 }}>
