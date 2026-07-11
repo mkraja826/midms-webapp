@@ -13,6 +13,7 @@ import { createAppointment, createInvoice, createVisit, getCurrentProfile, getPa
 import type { Patient, Profile } from "@/lib/supabase";
 
 type ComplaintKey = "Pain" | "Swelling" | "Cap issue" | "Wisdom tooth" | "Broken tooth" | "Review" | "Other";
+type TreatmentFlow = "undecided" | "ongoing" | "new";
 
 type DoctorOption = Pick<Profile, "id" | "name" | "role">;
 
@@ -158,6 +159,8 @@ export default function AddVisitScreen() {
   const [pendingBalance, setPendingBalance] = useState(0);
   const [activeTreatments, setActiveTreatments] = useState<ActiveTreatment[]>([]);
   const [activeTreatmentDue, setActiveTreatmentDue] = useState(0);
+  const [treatmentFlow, setTreatmentFlow] = useState<TreatmentFlow>("undecided");
+  const [promptedTreatmentKey, setPromptedTreatmentKey] = useState("");
   const [loadingPendingBalance, setLoadingPendingBalance] = useState(false);
   const [loadingActiveTreatments, setLoadingActiveTreatments] = useState(false);
   const [bookFollowup, setBookFollowup] = useState(false);
@@ -228,6 +231,11 @@ export default function AddVisitScreen() {
   useEffect(() => {
     loadScreenData();
   }, [incomingPatientId]);
+
+  useEffect(() => {
+    setTreatmentFlow("undecided");
+    setPromptedTreatmentKey("");
+  }, [selectedPatientId]);
 
   useEffect(() => {
     let active = true;
@@ -351,6 +359,8 @@ export default function AddVisitScreen() {
   const paidNowValue = toNumber(paidAmount);
   const balanceAfterVisit = Math.max(pendingBalance + treatmentCostValue - paidNowValue, 0);
   const hasActiveTreatment = activeTreatments.length > 0;
+  const primaryActiveTreatment = activeTreatments[0] || null;
+  const activeTreatmentKey = `${selectedPatientId}:${activeTreatments.map((item) => item.id).join(",")}`;
   const hasNewTreatmentEntry = Boolean(treatmentName.trim() || treatmentCategory.trim() || treatmentCostValue > 0 || paidNowValue > 0);
 
   const complaintSummary = useMemo(() => {
@@ -382,7 +392,58 @@ export default function AddVisitScreen() {
     setPaidAmount("");
   }
 
-  async function saveVisit(options?: { confirmedSeparateTreatment?: boolean; visitOnly?: boolean }) {
+  function chooseOngoingTreatment() {
+    setTreatmentFlow("ongoing");
+    clearTreatmentFields();
+  }
+
+  function chooseNewTreatment() {
+    setTreatmentFlow("new");
+  }
+
+  function showTreatmentFlowPopup(saveAfterChoice = false) {
+    const first = primaryActiveTreatment;
+    const details = [
+      `${first?.treatment_name || "Existing treatment"} • ${first?.status || "ongoing"}`,
+      first?.cost ? `Cost: ${formatMoney(first.cost)}` : null,
+      activeTreatmentDue > 0 ? `Treatment pending: ${formatMoney(activeTreatmentDue)}` : "Treatment payment cleared or no due found",
+    ]
+      .filter(Boolean)
+      .join("\n");
+
+    Alert.alert(
+      "Ongoing treatment found",
+      `This patient already has active treatment. Choose how today's visit should be saved.\n\n${details}`,
+      [
+        {
+          text: "Ongoing Treatment",
+          onPress: () => {
+            chooseOngoingTreatment();
+            if (saveAfterChoice) void saveVisit({ flow: "ongoing" });
+          },
+        },
+        {
+          text: "New Treatment",
+          style: "destructive",
+          onPress: () => {
+            chooseNewTreatment();
+            if (saveAfterChoice) void saveVisit({ flow: "new", confirmedSeparateTreatment: true });
+          },
+        },
+        { text: "Cancel", style: "cancel" },
+      ]
+    );
+  }
+
+  useEffect(() => {
+    if (!selectedPatientId || loadingActiveTreatments || !hasActiveTreatment) return;
+    if (promptedTreatmentKey === activeTreatmentKey) return;
+
+    setPromptedTreatmentKey(activeTreatmentKey);
+    showTreatmentFlowPopup(false);
+  }, [selectedPatientId, loadingActiveTreatments, hasActiveTreatment, activeTreatmentKey, promptedTreatmentKey]);
+
+  async function saveVisit(options?: { confirmedSeparateTreatment?: boolean; flow?: TreatmentFlow }) {
     if (saving) return;
 
     if (!selectedPatientId) {
@@ -409,44 +470,41 @@ export default function AddVisitScreen() {
 
     const cost = toNumber(treatmentCost);
     const paid = toNumber(paidAmount);
-    const saveVisitOnly = Boolean(options?.visitOnly);
-    const shouldCreateTreatment = !saveVisitOnly && Boolean(treatmentName.trim() || cost > 0);
+    const selectedFlow = hasActiveTreatment ? options?.flow ?? treatmentFlow : "new";
+    const continuingExistingTreatment = hasActiveTreatment && selectedFlow === "ongoing";
+    const creatingSeparateTreatment = hasActiveTreatment && selectedFlow === "new";
+    const shouldCreateTreatment = !continuingExistingTreatment && Boolean(treatmentName.trim() || cost > 0);
 
-    if (!saveVisitOnly && paid > 0 && cost <= 0) {
-      Alert.alert("Treatment amount missing", "Enter treatment cost before entering Paid now, or save this as visit note only and collect old pending from Reception Fees.");
+    if (hasActiveTreatment && selectedFlow === "undecided") {
+      showTreatmentFlowPopup(true);
       return;
     }
 
-    if (!saveVisitOnly && cost > 0 && !treatmentName.trim()) {
+    if (continuingExistingTreatment && paid > 0) {
+      Alert.alert(
+        "Use Reception Fees",
+        "For an existing ongoing treatment payment, collect pending amount from Reception Fees so it is applied to the old pending invoice."
+      );
+      return;
+    }
+
+    if (creatingSeparateTreatment && !shouldCreateTreatment) {
+      Alert.alert("New treatment details missing", "Enter treatment name and cost, or choose Ongoing Treatment to save this visit under the existing treatment.");
+      return;
+    }
+
+    if (!continuingExistingTreatment && paid > 0 && cost <= 0) {
+      Alert.alert("Treatment amount missing", "Enter treatment cost before entering Paid now, or collect old pending from Reception Fees.");
+      return;
+    }
+
+    if (!continuingExistingTreatment && cost > 0 && !treatmentName.trim()) {
       Alert.alert("Treatment name missing", "Enter treatment name before adding treatment cost.");
       return;
     }
 
-    if (!saveVisitOnly && paid > cost && cost > 0) {
+    if (!continuingExistingTreatment && paid > cost && cost > 0) {
       Alert.alert("Invalid payment", "Paid amount cannot be greater than treatment cost.");
-      return;
-    }
-
-    if (hasActiveTreatment && hasNewTreatmentEntry && !options?.confirmedSeparateTreatment) {
-      const first = activeTreatments[0];
-      const details = [
-        `${first?.treatment_name || "Existing treatment"} • ${first?.status || "ongoing"}`,
-        first?.cost ? `Cost: ${formatMoney(first.cost)}` : null,
-        activeTreatmentDue > 0 ? `Treatment pending: ${formatMoney(activeTreatmentDue)}` : "Treatment payment cleared or no due found",
-      ]
-        .filter(Boolean)
-        .join("\n");
-
-      Alert.alert(
-        "Ongoing treatment already exists",
-        `This patient already has active treatment. Do not create duplicate treatment unless doctor confirms it is a different procedure.\n\n${details}`,
-        [
-          { text: "Open Ongoing", onPress: () => router.push("/treatments/ongoing" as never) },
-          { text: "Save Visit Only", onPress: () => void saveVisit({ confirmedSeparateTreatment: true, visitOnly: true }) },
-          { text: "Create Separate", style: "destructive", onPress: () => void saveVisit({ confirmedSeparateTreatment: true }) },
-          { text: "Cancel", style: "cancel" },
-        ]
-      );
       return;
     }
 
@@ -457,7 +515,9 @@ export default function AddVisitScreen() {
         patient_id: selectedPatientId,
         chief_complaint: complaintSummary.trim(),
         diagnosis: undefined,
-        doctor_notes: hasActiveTreatment && saveVisitOnly ? "Follow-up visit for existing ongoing treatment." : undefined,
+        doctor_notes: continuingExistingTreatment
+          ? `Ongoing treatment visit: ${primaryActiveTreatment?.treatment_name || "existing treatment"}. ${followupDateTime ? "Follow-up planned; treatment remains ongoing." : "No follow-up planned; treatment marked completed."}`
+          : undefined,
         next_appointment_date: followupDateTime ? followupDateTime.toISOString() : null,
         treatment_name: shouldCreateTreatment ? treatmentName.trim() : undefined,
         treatment_cost: shouldCreateTreatment ? cost : undefined,
@@ -470,6 +530,16 @@ export default function AddVisitScreen() {
         .eq("id", visit.id);
 
       if (doctorUpdateError) throw doctorUpdateError;
+
+      if (continuingExistingTreatment && primaryActiveTreatment?.id) {
+        const { error: treatmentStatusError } = await supabase
+          .from("treatments")
+          .update({ status: followupDateTime ? "ongoing" : "completed" })
+          .eq("id", primaryActiveTreatment.id)
+          .eq("patient_id", selectedPatientId);
+
+        if (treatmentStatusError) throw treatmentStatusError;
+      }
 
       if (shouldCreateTreatment && cost > 0) {
         await createInvoice({
@@ -485,7 +555,9 @@ export default function AddVisitScreen() {
           patient_id: selectedPatientId,
           doctor_id: selectedDoctorId,
           appointment_time: followupDateTime.toISOString(),
-          notes: `Follow-up for: ${complaintSummary}${selectedDoctor ? ` • Treated by ${selectedDoctor.name}` : ""}`,
+          notes: continuingExistingTreatment
+            ? `Ongoing treatment follow-up: ${primaryActiveTreatment?.treatment_name || complaintSummary}${selectedDoctor ? ` • Treated by ${selectedDoctor.name}` : ""}`
+            : `Follow-up for: ${complaintSummary}${selectedDoctor ? ` • Treated by ${selectedDoctor.name}` : ""}`,
         });
       }
 
@@ -494,9 +566,11 @@ export default function AddVisitScreen() {
       });
 
       Alert.alert(
-        saveVisitOnly ? "Visit note saved" : "Visit saved",
-        saveVisitOnly
-          ? "Visit saved without creating a duplicate treatment or invoice. Use Ongoing Treatments to continue/complete the existing treatment."
+        continuingExistingTreatment ? "Ongoing visit saved" : "Visit saved",
+        continuingExistingTreatment
+          ? followupDateTime
+            ? "Visit saved under the existing treatment. Follow-up added, so treatment remains ongoing."
+            : "Visit saved under the existing treatment. No follow-up added, so treatment is marked completed."
           : `Visit saved under ${selectedDoctor?.name || "selected doctor"} and patient removed from waiting queue.`,
         [{ text: "Open Patient", onPress: () => router.replace(`/patient/${selectedPatientId}` as never) }]
       );
@@ -608,7 +682,7 @@ export default function AddVisitScreen() {
       </SectionCard>
 
       {selectedPatient && (loadingActiveTreatments || hasActiveTreatment) ? (
-        <SectionCard title="Ongoing treatment guard" subtitle="Prevents accidental duplicate treatment and duplicate invoice.">
+        <SectionCard title="Ongoing treatment check" subtitle="Choose whether today is the old treatment or a separate new treatment.">
           {loadingActiveTreatments ? (
             <Text style={{ color: colors.muted }}>Checking active treatments...</Text>
           ) : hasActiveTreatment ? (
@@ -619,7 +693,7 @@ export default function AddVisitScreen() {
                   <View style={{ flex: 1 }}>
                     <Text style={{ color: colors.text, fontWeight: "900", fontSize: 16 }}>This patient already has active treatment</Text>
                     <Text style={{ color: colors.muted, marginTop: 3, lineHeight: 18 }}>
-                      Use visit note only or open Ongoing Treatments unless doctor confirms this is a separate new procedure.
+                      Select Ongoing Treatment for the same procedure. Select New Treatment only when doctor confirms a different procedure.
                     </Text>
                   </View>
                   <StatusBadge label={`${activeTreatments.length} active`} tone="warning" />
@@ -634,15 +708,29 @@ export default function AddVisitScreen() {
                   </View>
                 ))}
 
-                <Text style={{ color: colors.text, fontWeight: "900" }}>
-                  Treatment pending: {formatMoney(activeTreatmentDue)}
+                <Text style={{ color: colors.text, fontWeight: "900" }}>Treatment pending: {formatMoney(activeTreatmentDue)}</Text>
+                <Text style={{ color: colors.muted, fontSize: 12, lineHeight: 18 }}>
+                  Ongoing + no follow-up = marks existing treatment completed. Ongoing + follow-up = keeps it ongoing.
                 </Text>
               </View>
 
               <View style={{ flexDirection: "row", gap: 10 }}>
-                <AppButton title="Open Ongoing" icon="construct-outline" variant="secondary" onPress={() => router.push("/treatments/ongoing" as never)} style={{ flex: 1 }} />
-                <AppButton title="Clear New Treatment" icon="close-circle-outline" variant="ghost" onPress={clearTreatmentFields} style={{ flex: 1 }} />
+                <AppButton
+                  title="Ongoing Treatment"
+                  icon="repeat-outline"
+                  variant={treatmentFlow === "ongoing" ? "primary" : "secondary"}
+                  onPress={chooseOngoingTreatment}
+                  style={{ flex: 1 }}
+                />
+                <AppButton
+                  title="New Treatment"
+                  icon="add-circle-outline"
+                  variant={treatmentFlow === "new" ? "primary" : "secondary"}
+                  onPress={chooseNewTreatment}
+                  style={{ flex: 1 }}
+                />
               </View>
+              <AppButton title="Open Ongoing Treatments" icon="construct-outline" variant="ghost" onPress={() => router.push("/treatments/ongoing" as never)} />
             </View>
           ) : null}
         </SectionCard>
@@ -744,10 +832,30 @@ export default function AddVisitScreen() {
         ) : null}
       </SectionCard>
 
-      <SectionCard title="Treatment & Billing" subtitle={hasActiveTreatment ? "Warning active: add new cost only for a separate new procedure." : "Optional. Add treatment cost and paid amount only when needed."}>
-        <AppInput label="Treatment name" value={treatmentName} onChangeText={setTreatmentName} placeholder="RCT, extraction, filling, scaling..." />
-        <AppInput label="Treatment category" value={treatmentCategory} onChangeText={setTreatmentCategory} placeholder="Optional category" />
-        <AppInput label="Treatment cost" value={treatmentCost} onChangeText={setTreatmentCost} keyboardType="numeric" placeholder="Example: 2500" />
+      <SectionCard
+        title="Treatment & Billing"
+        subtitle={
+          hasActiveTreatment && treatmentFlow === "ongoing"
+            ? "Ongoing selected: no new treatment or invoice will be created from these fields."
+            : hasActiveTreatment
+              ? "New treatment is allowed only when doctor confirms a separate procedure."
+              : "Optional. Add treatment cost and paid amount only when needed."
+        }
+      >
+        {hasActiveTreatment && treatmentFlow === "ongoing" ? (
+          <View style={{ padding: 14, borderRadius: 18, borderWidth: 1, borderColor: colors.success, backgroundColor: colors.successSoft, gap: 6 }}>
+            <Text style={{ color: colors.text, fontWeight: "900" }}>Saving under existing treatment</Text>
+            <Text style={{ color: colors.muted, lineHeight: 18 }}>
+              No duplicate treatment or invoice will be created. Use Reception Fees to collect old pending treatment amount.
+            </Text>
+          </View>
+        ) : (
+          <>
+            <AppInput label="Treatment name" value={treatmentName} onChangeText={setTreatmentName} placeholder="RCT, extraction, filling, scaling..." />
+            <AppInput label="Treatment category" value={treatmentCategory} onChangeText={setTreatmentCategory} placeholder="Optional category" />
+            <AppInput label="Treatment cost" value={treatmentCost} onChangeText={setTreatmentCost} keyboardType="numeric" placeholder="Example: 2500" />
+          </>
+        )}
 
         <View
           style={{
@@ -772,7 +880,9 @@ export default function AddVisitScreen() {
           ) : null}
         </View>
 
-        <AppInput label="Paid now" value={paidAmount} onChangeText={setPaidAmount} keyboardType="numeric" placeholder="Example: 1000" helper="If paid partially, due amount is created automatically. For old pending collection, use Reception Fees." />
+        {!(hasActiveTreatment && treatmentFlow === "ongoing") ? (
+          <AppInput label="Paid now" value={paidAmount} onChangeText={setPaidAmount} keyboardType="numeric" placeholder="Example: 1000" helper="If paid partially, due amount is created automatically. For old pending collection, use Reception Fees." />
+        ) : null}
       </SectionCard>
 
       <SectionCard title="Follow-up Appointment" subtitle="Optional. Allowed timings: 11:00 AM-1:30 PM and 5:00 PM-7:30 PM only.">
@@ -863,7 +973,13 @@ export default function AddVisitScreen() {
         ) : null}
       </SectionCard>
 
-      <AppButton title="Save Visit & Complete Queue" icon="save-outline" onPress={() => saveVisit()} loading={saving} loadingTitle="Saving visit..." />
+      <AppButton
+        title={hasActiveTreatment && treatmentFlow === "ongoing" ? "Save Ongoing Visit" : hasActiveTreatment && treatmentFlow === "new" ? "Save New Treatment Visit" : "Save Visit & Complete Queue"}
+        icon="save-outline"
+        onPress={() => saveVisit()}
+        loading={saving}
+        loadingTitle="Saving visit..."
+      />
       <AppButton title="Back" icon="arrow-back-outline" variant="ghost" onPress={() => router.back()} />
     </Screen>
   );
