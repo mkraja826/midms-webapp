@@ -254,13 +254,6 @@ export default function ClinicalUploadScreen() {
   }
 
   async function pickFromGallery() {
-    const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
-
-    if (!permission.granted) {
-      Alert.alert("Gallery permission needed", "Allow photo permission to upload files.");
-      return;
-    }
-
     const result = await ImagePicker.launchImageLibraryAsync({
       quality: 0.82,
       allowsEditing: false,
