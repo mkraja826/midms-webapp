@@ -43,16 +43,6 @@ export default function ClinicBrandingScreen() {
   }, []);
 
   async function pickLogo() {
-    const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
-
-    if (!permission.granted) {
-      Alert.alert(
-        "Gallery permission needed",
-        "Allow gallery access to select clinic logo."
-      );
-      return;
-    }
-
     const result = await ImagePicker.launchImageLibraryAsync({
       mediaTypes: ImagePicker.MediaTypeOptions.Images,
       quality: 0.9,
