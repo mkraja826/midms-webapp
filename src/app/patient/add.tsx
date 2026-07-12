@@ -56,13 +56,6 @@ export default function AddPatientScreen() {
   }, []);
 
   async function pickPatientPhoto() {
-    const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
-
-    if (!permission.granted) {
-      Alert.alert("Gallery permission needed", "Allow gallery access to select patient photo.");
-      return;
-    }
-
     const result = await ImagePicker.launchImageLibraryAsync({
       mediaTypes: ImagePicker.MediaTypeOptions.Images,
       quality: 0.8,
