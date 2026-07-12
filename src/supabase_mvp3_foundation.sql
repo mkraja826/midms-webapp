@@ -27,7 +27,7 @@ create table if not exists profiles (
 create table if not exists staff_invites (
   id uuid primary key default gen_random_uuid(),
   clinic_id uuid references clinics(id) on delete cascade not null,
-  email text not null,
+  email text,
   name text not null,
   role text not null check (role in ('working_doctor', 'receptionist')),
   invite_code text not null unique,
@@ -35,6 +35,9 @@ create table if not exists staff_invites (
   accepted_at timestamptz,
   created_at timestamptz default now()
 );
+
+alter table staff_invites
+alter column email drop not null;
 
 -- Optional migration from previous crude role names.
 update profiles set role = 'head_doctor' where role = 'owner';
@@ -68,10 +71,12 @@ begin
 end;
 $$;
 
+drop function if exists create_staff_invite(text, text, text);
+
 create or replace function create_staff_invite(
-  staff_name text,
-  staff_email text,
-  staff_role text
+  invitee_name text,
+  invitee_email text default null,
+  invitee_role text default 'working_doctor'
 )
 returns staff_invites
 language plpgsql
@@ -81,6 +86,8 @@ as $$
 declare
   caller profiles;
   new_invite staff_invites;
+  normalized_role text;
+  clean_email text;
   code text;
 begin
   select * into caller from profiles where id = auth.uid() and active = true;
@@ -89,18 +96,20 @@ begin
     raise exception 'Only head doctor can invite staff';
   end if;
 
-  if staff_role = 'doctor' then
-    staff_role := 'working_doctor';
-  end if;
+  normalized_role := case
+    when invitee_role = 'doctor' then 'working_doctor'
+    else invitee_role
+  end;
 
-  if staff_role not in ('working_doctor', 'receptionist') then
+  if normalized_role not in ('working_doctor', 'receptionist') then
     raise exception 'Invalid staff role';
   end if;
 
+  clean_email := nullif(lower(trim(coalesce(invitee_email, ''))), '');
   code := 'DMS-' || upper(substr(replace(gen_random_uuid()::text, '-', ''), 1, 6));
 
   insert into staff_invites(clinic_id, email, name, role, invite_code, invited_by)
-  values (caller.clinic_id, lower(staff_email), staff_name, staff_role, code, caller.id)
+  values (caller.clinic_id, clean_email, trim(invitee_name), normalized_role, code, caller.id)
   returning * into new_invite;
 
   return new_invite;
@@ -128,6 +137,10 @@ begin
 
   if invite.id is null then
     raise exception 'Invalid or already used invite code';
+  end if;
+
+  if invite.email is not null and lower(invite.email) <> lower(coalesce(user_email, '')) then
+    raise exception 'This invite code is assigned to a different email';
   end if;
 
   insert into profiles(id, clinic_id, name, email, role, active)

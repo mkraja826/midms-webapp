@@ -17,7 +17,7 @@ create table if not exists public.profiles (
   clinic_id uuid not null references public.clinics(id) on delete cascade,
   name text not null,
   email text not null,
-  role text not null check (role in ('owner', 'doctor', 'receptionist')),
+  role text not null check (role in ('owner', 'head_doctor', 'doctor', 'working_doctor', 'receptionist')),
   active boolean not null default true,
   created_at timestamptz not null default now()
 );
@@ -25,9 +25,10 @@ create table if not exists public.profiles (
 create table if not exists public.staff_invites (
   id uuid primary key default gen_random_uuid(),
   clinic_id uuid not null references public.clinics(id) on delete cascade,
-  email text not null,
+  email text,
   name text not null,
-  role text not null check (role in ('doctor', 'receptionist')),
+  role text not null check (role in ('doctor', 'working_doctor', 'receptionist')),
+  invite_code text unique,
   invited_by uuid references public.profiles(id) on delete set null,
   accepted_at timestamptz,
   created_at timestamptz not null default now(),
@@ -138,6 +139,7 @@ create table if not exists public.payments (
 create index if not exists patients_clinic_idx on public.patients(clinic_id);
 create index if not exists staff_invites_clinic_idx on public.staff_invites(clinic_id);
 create index if not exists staff_invites_email_idx on public.staff_invites(lower(email));
+create unique index if not exists staff_invites_invite_code_idx on public.staff_invites(invite_code) where invite_code is not null;
 create index if not exists patients_search_idx on public.patients using gin (to_tsvector('simple', coalesce(name, '') || ' ' || coalesce(phone, '')));
 create index if not exists appointments_clinic_time_idx on public.appointments(clinic_id, appointment_time);
 create index if not exists invoices_clinic_due_idx on public.invoices(clinic_id, due_amount);
@@ -180,8 +182,8 @@ set search_path = public
 stable
 as $$
   select case
-    when public.current_role() = 'owner' then true
-    when public.current_role() = 'doctor' and resource in ('appointments', 'visits', 'treatments', 'files') then true
+    when public.current_role() in ('owner', 'head_doctor') then true
+    when public.current_role() in ('doctor', 'working_doctor') and resource in ('appointments', 'visits', 'treatments', 'files') then true
     when public.current_role() = 'receptionist' and resource in ('patients', 'appointments', 'invoices', 'payments') then true
     else false
   end
@@ -271,13 +273,67 @@ begin
 end;
 $$;
 
+create or replace function public.accept_staff_invite_by_code(
+  code text
+)
+returns public.profiles
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  invite public.staff_invites;
+  new_profile public.profiles;
+  user_email text;
+begin
+  if auth.uid() is null then
+    raise exception 'Login required';
+  end if;
+
+  if exists (select 1 from public.profiles where id = auth.uid()) then
+    raise exception 'This user already belongs to a clinic';
+  end if;
+
+  user_email := auth.jwt() ->> 'email';
+
+  select *
+  into invite
+  from public.staff_invites
+  where upper(invite_code) = upper(trim(code))
+    and accepted_at is null
+  order by created_at desc
+  limit 1;
+
+  if invite.id is null then
+    raise exception 'No pending invite found for this code';
+  end if;
+
+  if invite.email is not null and lower(invite.email) <> lower(coalesce(user_email, '')) then
+    raise exception 'This invite code is assigned to a different email';
+  end if;
+
+  insert into public.profiles (id, clinic_id, name, email, role, active)
+  values (auth.uid(), invite.clinic_id, invite.name, coalesce(user_email, invite.email), invite.role, true)
+  returning * into new_profile;
+
+  update public.staff_invites
+  set accepted_at = now()
+  where id = invite.id;
+
+  return new_profile;
+end;
+$$;
+
 grant execute on function public.create_owner_clinic(text, text, text, text, text) to authenticated;
 grant execute on function public.accept_staff_invite() to authenticated;
+grant execute on function public.accept_staff_invite_by_code(text) to authenticated;
+
+drop function if exists public.create_staff_invite(text, text, text);
 
 create or replace function public.create_staff_invite(
-  staff_name text,
-  staff_email text,
-  staff_role text
+  invitee_name text,
+  invitee_email text default null,
+  invitee_role text default 'working_doctor'
 )
 returns public.staff_invites
 language plpgsql
@@ -287,6 +343,9 @@ as $$
 declare
   owner_profile public.profiles;
   saved_invite public.staff_invites;
+  normalized_role text;
+  clean_email text;
+  new_invite_code text;
 begin
   select * into owner_profile
   from public.profiles
@@ -297,31 +356,52 @@ begin
     raise exception 'Profile not found for current user';
   end if;
 
-  if owner_profile.role <> 'owner' then
+  if owner_profile.role not in ('owner', 'head_doctor') then
     raise exception 'Only the clinic owner can invite staff';
   end if;
 
-  if staff_role not in ('doctor', 'receptionist') then
-    raise exception 'Staff role must be doctor or receptionist';
+  normalized_role := case
+    when invitee_role = 'doctor' then 'working_doctor'
+    else invitee_role
+  end;
+
+  if normalized_role not in ('working_doctor', 'receptionist') then
+    raise exception 'Staff role must be working_doctor or receptionist';
   end if;
 
-  if exists (
+  clean_email := nullif(lower(trim(coalesce(invitee_email, ''))), '');
+
+  if clean_email is not null and exists (
     select 1 from public.profiles
     where clinic_id = owner_profile.clinic_id
-      and lower(email) = lower(staff_email)
+      and lower(email) = clean_email
   ) then
     raise exception 'This staff email already belongs to your clinic';
   end if;
 
-  insert into public.staff_invites (clinic_id, email, name, role, invited_by, accepted_at)
-  values (owner_profile.clinic_id, lower(staff_email), staff_name, staff_role, owner_profile.id, null)
-  on conflict (clinic_id, email) do update
-  set name = excluded.name,
-      role = excluded.role,
-      invited_by = excluded.invited_by,
-      accepted_at = null,
-      created_at = now()
-  returning * into saved_invite;
+  loop
+    new_invite_code := 'DMS-' || upper(substr(replace(gen_random_uuid()::text, '-', ''), 1, 6));
+    exit when not exists (
+      select 1 from public.staff_invites where invite_code = new_invite_code
+    );
+  end loop;
+
+  if clean_email is not null then
+    insert into public.staff_invites (clinic_id, email, name, role, invited_by, accepted_at, invite_code)
+    values (owner_profile.clinic_id, clean_email, trim(invitee_name), normalized_role, owner_profile.id, null, new_invite_code)
+    on conflict (clinic_id, email) do update
+    set name = excluded.name,
+        role = excluded.role,
+        invited_by = excluded.invited_by,
+        accepted_at = null,
+        invite_code = excluded.invite_code,
+        created_at = now()
+    returning * into saved_invite;
+  else
+    insert into public.staff_invites (clinic_id, email, name, role, invited_by, accepted_at, invite_code)
+    values (owner_profile.clinic_id, null, trim(invitee_name), normalized_role, owner_profile.id, null, new_invite_code)
+    returning * into saved_invite;
+  end if;
 
   return saved_invite;
 end;
@@ -347,7 +427,7 @@ for select using (id = public.current_clinic_id());
 
 drop policy if exists "owners update clinic" on public.clinics;
 create policy "owners update clinic" on public.clinics
-for update using (id = public.current_clinic_id() and public.current_role() = 'owner');
+for update using (id = public.current_clinic_id() and public.current_role() in ('owner', 'head_doctor'));
 
 drop policy if exists "clinic members read profiles" on public.profiles;
 create policy "clinic members read profiles" on public.profiles
@@ -355,8 +435,8 @@ for select using (clinic_id = public.current_clinic_id());
 
 drop policy if exists "owners manage profiles" on public.profiles;
 create policy "owners manage profiles" on public.profiles
-for all using (clinic_id = public.current_clinic_id() and public.current_role() = 'owner')
-with check (clinic_id = public.current_clinic_id() and public.current_role() = 'owner');
+for all using (clinic_id = public.current_clinic_id() and public.current_role() in ('owner', 'head_doctor'))
+with check (clinic_id = public.current_clinic_id() and public.current_role() in ('owner', 'head_doctor'));
 
 drop policy if exists "users update own profile" on public.profiles;
 create policy "users update own profile" on public.profiles
@@ -364,16 +444,16 @@ for update using (id = auth.uid()) with check (id = auth.uid() and clinic_id = p
 
 drop policy if exists "owners read staff invites" on public.staff_invites;
 create policy "owners read staff invites" on public.staff_invites
-for select using (clinic_id = public.current_clinic_id() and public.current_role() = 'owner');
+for select using (clinic_id = public.current_clinic_id() and public.current_role() in ('owner', 'head_doctor'));
 
 drop policy if exists "owners create staff invites" on public.staff_invites;
 create policy "owners create staff invites" on public.staff_invites
-for insert with check (clinic_id = public.current_clinic_id() and public.current_role() = 'owner');
+for insert with check (clinic_id = public.current_clinic_id() and public.current_role() in ('owner', 'head_doctor'));
 
 drop policy if exists "owners update staff invites" on public.staff_invites;
 create policy "owners update staff invites" on public.staff_invites
-for update using (clinic_id = public.current_clinic_id() and public.current_role() = 'owner')
-with check (clinic_id = public.current_clinic_id() and public.current_role() = 'owner');
+for update using (clinic_id = public.current_clinic_id() and public.current_role() in ('owner', 'head_doctor'))
+with check (clinic_id = public.current_clinic_id() and public.current_role() in ('owner', 'head_doctor'));
 
 drop policy if exists "clinic members read patients" on public.patients;
 create policy "clinic members read patients" on public.patients
@@ -394,10 +474,10 @@ drop policy if exists "owners receptionists manage medical history" on public.me
 create policy "owners receptionists manage medical history" on public.medical_history
 for all using (exists (
   select 1 from public.patients p where p.id = patient_id and p.clinic_id = public.current_clinic_id()
-) and public.current_role() in ('owner', 'receptionist'))
+) and public.current_role() in ('owner', 'head_doctor', 'receptionist'))
 with check (exists (
   select 1 from public.patients p where p.id = patient_id and p.clinic_id = public.current_clinic_id()
-) and public.current_role() in ('owner', 'receptionist'));
+) and public.current_role() in ('owner', 'head_doctor', 'receptionist'));
 
 drop policy if exists "clinic members read appointments" on public.appointments;
 create policy "clinic members read appointments" on public.appointments
@@ -472,7 +552,7 @@ create policy "owners doctors upload clinical files" on storage.objects
 for insert with check (
   bucket_id in ('prescriptions', 'xrays', 'patient-files')
   and (storage.foldername(name))[1] = public.current_clinic_id()::text
-  and public.current_role() in ('owner', 'doctor')
+  and public.current_role() in ('owner', 'head_doctor', 'doctor', 'working_doctor')
 );
 
 drop policy if exists "owners doctors update clinical files" on storage.objects;
@@ -480,7 +560,7 @@ create policy "owners doctors update clinical files" on storage.objects
 for update using (
   bucket_id in ('prescriptions', 'xrays', 'patient-files')
   and (storage.foldername(name))[1] = public.current_clinic_id()::text
-  and public.current_role() in ('owner', 'doctor')
+  and public.current_role() in ('owner', 'head_doctor', 'doctor', 'working_doctor')
 );
 
 -- Seed clinic and sample patients. Create the auth users first, then replace the IDs below with their auth.users IDs.

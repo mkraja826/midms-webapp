@@ -28,6 +28,57 @@ export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
   },
 });
 
+const supabaseProjectRef = supabaseUrl.match(/^https:\/\/([^.]+)\.supabase\.co/)?.[1];
+const supabaseAuthStorageKey = supabaseProjectRef ? `sb-${supabaseProjectRef}-auth-token` : null;
+const forceSignedOutKey = "midms.force-signed-out";
+
+export async function clearSupabaseAuthStorage() {
+  try {
+    const keys = await AsyncStorage.getAllKeys();
+    const authKeys = keys.filter(
+      (key) =>
+        key === supabaseAuthStorageKey ||
+        key === "supabase.auth.token" ||
+        (key.startsWith("sb-") && key.endsWith("-auth-token"))
+    );
+
+    if (supabaseAuthStorageKey && !authKeys.includes(supabaseAuthStorageKey)) {
+      authKeys.push(supabaseAuthStorageKey);
+    }
+
+    if (authKeys.length > 0) {
+      await AsyncStorage.multiRemove(authKeys);
+    }
+  } catch (error) {
+    console.warn("Failed to clear stored auth session:", error);
+  }
+}
+
+export async function markForceSignedOut() {
+  try {
+    await AsyncStorage.setItem(forceSignedOutKey, "1");
+  } catch (error) {
+    console.warn("Failed to mark signed-out state:", error);
+  }
+}
+
+export async function clearForceSignedOut() {
+  try {
+    await AsyncStorage.removeItem(forceSignedOutKey);
+  } catch (error) {
+    console.warn("Failed to clear signed-out state:", error);
+  }
+}
+
+export async function shouldForceSignedOut() {
+  try {
+    return (await AsyncStorage.getItem(forceSignedOutKey)) === "1";
+  } catch (error) {
+    console.warn("Failed to read signed-out state:", error);
+    return false;
+  }
+}
+
 export type Role =
   | "head_doctor"
   | "working_doctor"
@@ -235,7 +286,7 @@ export type WorkflowDashboardSummary = {
 export type StaffInvite = {
   id: string;
   clinic_id: string;
-  email: string;
+  email: string | null;
   name: string;
   role: Role;
   invite_code: string | null;
@@ -732,7 +783,7 @@ export async function getDashboardStats(): Promise<DashboardStats> {
       "Dashboard appointments query failed",
       supabase
         .from("appointments")
-        .select("*, patients(id,name,phone), profiles(id,name)")
+        .select("*, patients(id,name,phone)")
         .gte("appointment_time", todayStart)
         .lte("appointment_time", todayEnd)
         .order("appointment_time", { ascending: true })
@@ -1225,7 +1276,7 @@ export async function createAppointment(input: {
 export async function getTodayAppointments() {
   const { data, error } = await supabase
     .from("appointments")
-    .select("*, patients(id,name,phone), profiles(id,name)")
+    .select("*, patients(id,name,phone)")
     .gte("appointment_time", startOfToday())
     .lte("appointment_time", endOfToday())
     .order("appointment_time", { ascending: true });
@@ -1248,6 +1299,7 @@ export async function updateAppointmentStatus(id: string, status: AppointmentSta
 
 export async function createVisit(input: {
   patient_id: string;
+  doctor_id?: string | null;
   chief_complaint?: string;
   diagnosis?: string;
   doctor_notes?: string;
@@ -1259,14 +1311,14 @@ export async function createVisit(input: {
   const profile = await getCurrentProfile();
   if (!profile?.clinic_id) throw new Error("Clinic profile not found");
 
-  const { treatment_name, treatment_cost, treatment_category, ...visitInput } = input;
+  const { doctor_id, treatment_name, treatment_cost, treatment_category, ...visitInput } = input;
 
   const { data: visit, error } = await supabase
     .from("patient_visits")
     .insert({
       ...visitInput,
       clinic_id: profile.clinic_id,
-      doctor_id: profile.id,
+      doctor_id: doctor_id ?? profile.id,
       visit_date: new Date().toISOString(),
       visit_status: "completed",
     })
@@ -1705,15 +1757,15 @@ export async function getStaffInvites() {
 
 export async function createStaffInvite(input: {
   name: string;
-  email: string;
+  email?: string | null;
   role: "working_doctor" | "receptionist" | "doctor";
 }) {
   const finalRole = input.role === "doctor" ? "working_doctor" : input.role;
 
   const { data, error } = await supabase.rpc("create_staff_invite", {
-    staff_name: input.name,
-    staff_email: input.email.toLowerCase(),
-    staff_role: finalRole,
+    invitee_name: input.name,
+    invitee_email: input.email?.trim().toLowerCase() || null,
+    invitee_role: finalRole,
   });
 
   if (error) throw error;

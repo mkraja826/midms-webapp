@@ -15,6 +15,10 @@ import {
   getRoleSegment,
   normalizeRole,
   Profile,
+  clearForceSignedOut,
+  clearSupabaseAuthStorage,
+  markForceSignedOut,
+  shouldForceSignedOut,
   supabase,
 } from "@/lib/supabase";
 
@@ -82,6 +86,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     async function initAuth() {
       try {
         setLoadingMessage("Opening DMS...");
+        if (await shouldForceSignedOut()) {
+          await clearSupabaseAuthStorage();
+          if (!mounted) return;
+          setSession(null);
+          setProfile(null);
+          return;
+        }
         const { data } = await supabase.auth.getSession();
         if (!mounted) return;
         await loadSession(data.session);
@@ -121,8 +132,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     if (loading) return;
-    const firstSegment = segments[0];
-    const secondSegment = segments[1];
+    const [firstSegment, secondSegment] = segments as [string?, string?];
     const isAuthScreen = firstSegment === "auth";
     const isSettingsPasswordScreen = firstSegment === "settings" && secondSegment === "change-password";
 
@@ -168,6 +178,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           10000
         );
         if (error) throw error;
+        await clearForceSignedOut();
         if (data.user && !data.user.email_confirmed_at) {
           await supabase.auth.signOut();
           setSession(null);
@@ -210,11 +221,20 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         if (error) throw error;
       },
       async signOut() {
-        const { error } = await supabase.auth.signOut();
-        if (error) throw error;
-        setSession(null);
-        setProfile(null);
-        router.replace("/login");
+        try {
+          const { error } = await withTimeout(supabase.auth.signOut({ scope: "local" }), 8000);
+          if (error) console.warn("Sign out request failed:", error.message);
+        } catch (error) {
+          console.warn("Sign out request failed:", error);
+        } finally {
+          await markForceSignedOut();
+          await clearSupabaseAuthStorage();
+          setSession(null);
+          setProfile(null);
+          setLoading(false);
+          router.dismissAll?.();
+          router.replace("/login" as never);
+        }
       },
     }),
     [loading, loadingMessage, profile, session]

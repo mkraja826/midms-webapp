@@ -29,7 +29,7 @@ function toNumber(value: string) {
 }
 
 export default function AccountSettingsScreen() {
-  const { profile } = useAuth();
+  const { profile, signOut } = useAuth();
   const [settings, setSettings] = useState<ClinicFeatureSettings>(DEFAULT_CLINIC_FEATURE_SETTINGS);
   const [opFeeAmount, setOpFeeAmount] = useState(String(DEFAULT_CLINIC_FEATURE_SETTINGS.op_fee_amount));
   const [loading, setLoading] = useState(true);
@@ -89,6 +89,29 @@ export default function AccountSettingsScreen() {
     }
   }
 
+  function confirmLogout() {
+    Alert.alert("Logout", "Sign out from this device?", [
+      {
+        text: "Cancel",
+        style: "cancel",
+      },
+      {
+        text: "Logout",
+        style: "destructive",
+        onPress: async () => {
+          try {
+            await signOut();
+          } catch (error) {
+            Alert.alert(
+              "Logout failed",
+              error instanceof Error ? error.message : "Please try again."
+            );
+          }
+        },
+      },
+    ]);
+  }
+
   if (!canManage) {
     return (
       <Screen>
@@ -109,7 +132,21 @@ export default function AccountSettingsScreen() {
           />
         </SectionCard>
 
-        <AppButton title="Back to Dashboard" icon="arrow-back-outline" variant="ghost" onPress={() => router.replace(homePath as never)} />
+        <View style={{ gap: 12 }}>
+          <AppButton
+            title="Back to Dashboard"
+            icon="arrow-back-outline"
+            variant="ghost"
+            onPress={() => router.replace(homePath as never)}
+          />
+
+          <AppButton
+            title="Logout"
+            icon="log-out-outline"
+            variant="danger"
+            onPress={confirmLogout}
+          />
+        </View>
       </Screen>
     );
   }
@@ -177,7 +214,21 @@ export default function AccountSettingsScreen() {
         </Text>
       </SectionCard>
 
-      <AppButton title="Back to Dashboard" icon="arrow-back-outline" variant="ghost" onPress={() => router.replace(homePath as never)} />
+      <View style={{ gap: 12 }}>
+        <AppButton
+          title="Back to Dashboard"
+          icon="arrow-back-outline"
+          variant="ghost"
+          onPress={() => router.replace(homePath as never)}
+        />
+
+        <AppButton
+          title="Logout"
+          icon="log-out-outline"
+          variant="danger"
+          onPress={confirmLogout}
+        />
+      </View>
     </Screen>
   );
 }

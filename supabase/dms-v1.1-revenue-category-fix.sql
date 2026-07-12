@@ -172,6 +172,10 @@ begin
     raise exception 'Clinic profile not found';
   end if;
 
+  if caller.role not in ('owner', 'head_doctor', 'receptionist') then
+    raise exception 'Only owner or reception can record payments';
+  end if;
+
   if remaining <= 0 then
     raise exception 'Payment amount must be greater than zero';
   end if;

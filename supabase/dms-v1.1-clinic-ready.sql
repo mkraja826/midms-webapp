@@ -167,6 +167,10 @@ begin
     raise exception 'Clinic profile not found';
   end if;
 
+  if caller.role not in ('owner', 'head_doctor', 'receptionist') then
+    raise exception 'Only owner or reception can collect fees';
+  end if;
+
   if p_fee_type not in ('op_fee', 'xray_fee', 'medication_fee', 'treatment_fee', 'pending_collection', 'other') then
     raise exception 'Invalid payment category';
   end if;
@@ -224,6 +228,10 @@ begin
   select * into caller from public.profiles where id = auth.uid() and active = true limit 1;
   if caller.id is null or caller.clinic_id is null then
     raise exception 'Clinic profile not found';
+  end if;
+
+  if caller.role not in ('owner', 'head_doctor', 'receptionist') then
+    raise exception 'Only owner or reception can check in patients';
   end if;
 
   if p_op_status not in ('paid', 'pending', 'waived') then
@@ -487,6 +495,10 @@ begin
   select * into caller from public.profiles where id = auth.uid() and active = true limit 1;
   if caller.id is null or caller.clinic_id is null then
     raise exception 'Clinic profile not found';
+  end if;
+
+  if caller.role not in ('owner', 'head_doctor', 'receptionist') then
+    raise exception 'Only owner or reception can record payments';
   end if;
 
   if remaining <= 0 then

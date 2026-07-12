@@ -6,7 +6,7 @@ import { AppInput } from "@/components/AppInput";
 import { Screen } from "@/components/Screen";
 import { SectionCard } from "@/components/SectionCard";
 import { colors } from "@/constants/colors";
-import { supabase } from "@/lib/supabase";
+import { createStaffInvite } from "@/lib/supabase";
 
 type StaffRole = "working_doctor" | "receptionist";
 
@@ -59,15 +59,13 @@ export default function AddStaffScreen() {
     setInviteCode("");
 
     try {
-      const { data, error } = await supabase.rpc("create_staff_invite", {
-        invitee_name: name.trim(),
-        invitee_email: email.trim() || null,
-        invitee_role: role,
+      const invite = await createStaffInvite({
+        name: name.trim(),
+        email: email.trim() || null,
+        role,
       });
 
-      if (error) throw error;
-
-      const code = data?.invite_code || "";
+      const code = invite.invite_code || "";
 
       setInviteCode(code);
 

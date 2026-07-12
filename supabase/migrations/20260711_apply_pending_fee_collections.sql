@@ -19,6 +19,7 @@ as $$
 declare
   v_user_id uuid;
   v_clinic_id uuid;
+  v_role text;
   v_patient_clinic_id uuid;
   v_invoice_id uuid;
   v_payment_id uuid;
@@ -36,8 +37,8 @@ begin
     raise exception 'Not authenticated';
   end if;
 
-  select pr.clinic_id
-  into v_clinic_id
+  select pr.clinic_id, pr.role
+  into v_clinic_id, v_role
   from public.profiles pr
   where pr.id = v_user_id
     and pr.active = true
@@ -45,6 +46,10 @@ begin
 
   if v_clinic_id is null then
     raise exception 'Clinic not found for current user';
+  end if;
+
+  if v_role not in ('owner', 'head_doctor', 'receptionist') then
+    raise exception 'Only owner or reception can collect fees';
   end if;
 
   select pt.clinic_id

@@ -19,7 +19,6 @@ export default function LegalAccountScreen() {
         onPress: async () => {
           try {
             await signOut();
-            router.replace("/login" as never);
           } catch (error) {
             Alert.alert("Logout failed", error instanceof Error ? error.message : "Please try again.");
           }

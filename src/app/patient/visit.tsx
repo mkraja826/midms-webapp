@@ -64,6 +64,7 @@ const TIME_SLOTS: Slot[] = [
   { label: "07:00 PM", hour: 19, minute: 0 },
   { label: "07:30 PM", hour: 19, minute: 30 },
 ];
+const ONGOING_PAYMENT_METHODS = ["Cash", "UPI", "Card"] as const;
 
 function toNumber(value: string | number | null | undefined) {
   const cleaned = String(value ?? "").replace(/[^0-9.]/g, "");
@@ -145,6 +146,9 @@ export default function AddVisitScreen() {
     return dateOptions.find((option) => TIME_SLOTS.some((slot) => isFutureDateTime(option.date, slot))) || dateOptions[0];
   }, [dateOptions]);
 
+  const [ongoingPaidAmount, setOngoingPaidAmount] = useState("");
+  const [ongoingPaymentMethod, setOngoingPaymentMethod] =
+    useState<(typeof ONGOING_PAYMENT_METHODS)[number]>("Cash");
   const [patients, setPatients] = useState<Patient[]>([]);
   const [doctors, setDoctors] = useState<DoctorOption[]>([]);
   const [selectedPatientId, setSelectedPatientId] = useState(incomingPatientId);
@@ -235,6 +239,7 @@ export default function AddVisitScreen() {
   useEffect(() => {
     setTreatmentFlow("undecided");
     setPromptedTreatmentKey("");
+    setOngoingPaidAmount("");
   }, [selectedPatientId]);
 
   useEffect(() => {
@@ -399,6 +404,7 @@ export default function AddVisitScreen() {
 
   function chooseNewTreatment() {
     setTreatmentFlow("new");
+    setOngoingPaidAmount("");
   }
 
   function showTreatmentFlowPopup(saveAfterChoice = false) {
@@ -470,22 +476,27 @@ export default function AddVisitScreen() {
 
     const cost = toNumber(treatmentCost);
     const paid = toNumber(paidAmount);
+    const ongoingCollected = toNumber(ongoingPaidAmount);
     const selectedFlow = hasActiveTreatment ? options?.flow ?? treatmentFlow : "new";
     const continuingExistingTreatment = hasActiveTreatment && selectedFlow === "ongoing";
     const creatingSeparateTreatment = hasActiveTreatment && selectedFlow === "new";
     const shouldCreateTreatment = !continuingExistingTreatment && Boolean(treatmentName.trim() || cost > 0);
 
     if (hasActiveTreatment && selectedFlow === "undecided") {
-      showTreatmentFlowPopup(true);
+      Alert.alert("Choose treatment type", "Select Ongoing Treatment or New Treatment from the Ongoing treatment check card, then press Save again.");
       return;
     }
 
-    if (continuingExistingTreatment && paid > 0) {
-      Alert.alert(
-        "Use Reception Fees",
-        "For an existing ongoing treatment payment, collect pending amount from Reception Fees so it is applied to the old pending invoice."
-      );
-      return;
+    if (continuingExistingTreatment && ongoingCollected > 0) {
+      if (activeTreatmentDue <= 0) {
+        Alert.alert("No pending treatment", "This treatment has no pending balance.");
+        return;
+      }
+
+      if (ongoingCollected > activeTreatmentDue) {
+        Alert.alert("Invalid amount", `Maximum receivable is ${formatMoney(activeTreatmentDue)}`);
+        return;
+      }
     }
 
     if (creatingSeparateTreatment && !shouldCreateTreatment) {
@@ -513,6 +524,7 @@ export default function AddVisitScreen() {
     try {
       const visit = await createVisit({
         patient_id: selectedPatientId,
+        doctor_id: selectedDoctorId,
         chief_complaint: complaintSummary.trim(),
         diagnosis: undefined,
         doctor_notes: continuingExistingTreatment
@@ -524,12 +536,6 @@ export default function AddVisitScreen() {
         treatment_category: shouldCreateTreatment ? treatmentCategory.trim() || undefined : undefined,
       });
 
-      const { error: doctorUpdateError } = await supabase
-        .from("patient_visits")
-        .update({ doctor_id: selectedDoctorId })
-        .eq("id", visit.id);
-
-      if (doctorUpdateError) throw doctorUpdateError;
 
       if (continuingExistingTreatment && primaryActiveTreatment?.id) {
         const { error: treatmentStatusError } = await supabase
@@ -539,6 +545,17 @@ export default function AddVisitScreen() {
           .eq("patient_id", selectedPatientId);
 
         if (treatmentStatusError) throw treatmentStatusError;
+      }
+      if (continuingExistingTreatment && ongoingCollected > 0) {
+        const { error: paymentError } = await supabase.rpc("collect_reception_fee", {
+          p_patient_id: selectedPatientId,
+          p_fee_type: "treatment_fee",
+          p_amount: ongoingCollected,
+          p_payment_method: ongoingPaymentMethod,
+          p_notes: "Ongoing treatment payment",
+        });
+
+        if (paymentError) throw paymentError;
       }
 
       if (shouldCreateTreatment && cost > 0) {
@@ -843,11 +860,50 @@ export default function AddVisitScreen() {
         }
       >
         {hasActiveTreatment && treatmentFlow === "ongoing" ? (
-          <View style={{ padding: 14, borderRadius: 18, borderWidth: 1, borderColor: colors.success, backgroundColor: colors.successSoft, gap: 6 }}>
-            <Text style={{ color: colors.text, fontWeight: "900" }}>Saving under existing treatment</Text>
-            <Text style={{ color: colors.muted, lineHeight: 18 }}>
-              No duplicate treatment or invoice will be created. Use Reception Fees to collect old pending treatment amount.
-            </Text>
+          <View style={{ gap: 12 }}>
+            <View style={{ padding: 14, borderRadius: 18, borderWidth: 1, borderColor: colors.success, backgroundColor: colors.successSoft, gap: 6 }}>
+              <Text style={{ color: colors.text, fontWeight: "900" }}>Saving under existing treatment</Text>
+              <Text style={{ color: colors.muted, lineHeight: 18 }}>
+                No duplicate treatment or invoice will be created. Collected amount below will clear the existing pending treatment invoice first.
+              </Text>
+              <Text style={{ color: colors.success, fontWeight: "900" }}>
+                Existing treatment pending: {formatMoney(activeTreatmentDue)}
+              </Text>
+            </View>
+
+            <AppInput
+              label="Collected today for existing treatment"
+              value={ongoingPaidAmount}
+              onChangeText={setOngoingPaidAmount}
+              keyboardType="numeric"
+              placeholder="0"
+              helper={activeTreatmentDue > 0 ? `Maximum pending: ${formatMoney(activeTreatmentDue)}` : "No pending treatment amount found. Leave as 0."}
+            />
+
+            <View style={{ flexDirection: "row", gap: 10 }}>
+              {ONGOING_PAYMENT_METHODS.map((method) => {
+                const selected = ongoingPaymentMethod === method;
+
+                return (
+                  <Pressable
+                    key={method}
+                    onPress={() => setOngoingPaymentMethod(method)}
+                    style={{
+                      flex: 1,
+                      minHeight: 48,
+                      borderRadius: 999,
+                      borderWidth: 1,
+                      borderColor: selected ? colors.primary : colors.border,
+                      backgroundColor: selected ? colors.primary : colors.background,
+                      alignItems: "center",
+                      justifyContent: "center",
+                    }}
+                  >
+                    <Text style={{ color: selected ? colors.white : colors.text, fontWeight: "900" }}>{method}</Text>
+                  </Pressable>
+                );
+              })}
+            </View>
           </View>
         ) : (
           <>

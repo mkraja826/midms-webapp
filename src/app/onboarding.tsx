@@ -117,7 +117,6 @@ export default function OnboardingScreen() {
   async function logout() {
     try {
       await signOut();
-      router.replace("/login" as never);
     } catch (error) {
       Alert.alert("Logout failed", getErrorMessage(error));
     }
