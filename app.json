@@ -1,31 +1,23 @@
 {
   "expo": {
-    "name": "CapDent",
+    "name": "MiDMS",
     "slug": "dmsdms",
     "scheme": "dms",
     "version": "1.1.0",
     "orientation": "portrait",
     "userInterfaceStyle": "light",
     "icon": "./assets/icon.png",
+   
     "assetBundlePatterns": [
       "**/*"
     ],
     "plugins": [
       "expo-router",
       [
-        "expo-splash-screen",
-        {
-          "image": "./assets/splash-logo.png",
-          "imageWidth": 220,
-          "resizeMode": "contain",
-          "backgroundColor": "#F6FAFB"
-        }
-      ],
-      [
         "expo-image-picker",
         {
-          "cameraPermission": "CapDent needs camera access to take patient photos, prescription photos, and X-ray images.",
-          "photosPermission": "CapDent needs photo library access to upload patient photos, prescriptions, X-rays, and reports."
+          "cameraPermission": "MiDMS needs camera access to take patient photos, prescription photos, and X-ray images.",
+          "photosPermission": "MiDMS needs photo library access to upload patient photos, prescriptions, X-rays, and reports."
         }
       ],
       [
@@ -38,24 +30,24 @@
           }
         }
       ],
-      "expo-font"
+      "expo-font",
+      "expo-splash-screen"
     ],
     "android": {
       "package": "com.dms.clinic",
-      "versionCode": 2,
+      "versionCode": 14,
       "allowBackup": false,
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
         "backgroundColor": "#F6FAFB"
       },
       "permissions": [
-        "com.android.vending.BILLING",
-        "android.permission.CAMERA"
+        "android.permission.CAMERA",
+        "android.permission.READ_MEDIA_IMAGES",
+        "android.permission.READ_EXTERNAL_STORAGE"
       ],
       "blockedPermissions": [
         "android.permission.RECORD_AUDIO",
-        "android.permission.READ_MEDIA_IMAGES",
-        "android.permission.READ_EXTERNAL_STORAGE",
         "android.permission.SYSTEM_ALERT_WINDOW",
         "android.permission.WRITE_EXTERNAL_STORAGE"
       ]
@@ -64,8 +56,8 @@
       "bundleIdentifier": "com.dms.clinic",
       "buildNumber": "2",
       "infoPlist": {
-        "NSCameraUsageDescription": "CapDent needs camera access to take patient photos, prescription photos, and X-ray images.",
-        "NSPhotoLibraryUsageDescription": "CapDent needs photo library access to upload patient photos, prescriptions, X-rays, and reports.",
+        "NSCameraUsageDescription": "MiDMS needs camera access to take patient photos, prescription photos, and X-ray images.",
+        "NSPhotoLibraryUsageDescription": "MiDMS needs photo library access to upload patient photos, prescriptions, X-rays, and reports.",
         "ITSAppUsesNonExemptEncryption": false
       }
     },

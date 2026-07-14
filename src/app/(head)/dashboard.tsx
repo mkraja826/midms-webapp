@@ -1,7 +1,7 @@
 import { Ionicons } from "@expo/vector-icons";
 import { router } from "expo-router";
 import { useEffect, useMemo, useState, type ComponentProps, type ReactNode } from "react";
-import { Alert, Pressable, Text, View } from "react-native";
+import { Alert, Pressable, Text, useWindowDimensions, View } from "react-native";
 import { ClinicBrandHeader } from "@/components/ClinicBrandHeader";
 import { EmptyState } from "@/components/EmptyState";
 import { Screen } from "@/components/Screen";
@@ -43,9 +43,11 @@ function isWaitingStatus(status?: string | null) {
 
 export default function HeadDashboard() {
   const { profile } = useAuth();
+  const { width } = useWindowDimensions();
   const [stats, setStats] = useState<DashboardStats | null>(null);
   const [summary, setSummary] = useState<WorkflowDashboardSummary | null>(null);
   const [loading, setLoading] = useState(true);
+  const metricBasis = width < 380 ? "100%" : "47%";
 
   async function load(force = false) {
     try {
@@ -104,10 +106,10 @@ export default function HeadDashboard() {
       />
 
       <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 10 }}>
-        <CompactMetric label="Patients Today" value={loading ? "..." : patientCount} icon="people-outline" />
-        <CompactMetric label="Waiting" value={loading ? "..." : waitingCount} icon="hourglass-outline" tone="warning" />
-        <CompactMetric label="Completed" value={loading ? "..." : completedCount} icon="checkmark-done-outline" tone="success" />
-        <CompactMetric label="Total Patients" value={loading ? "..." : stats?.totalPatients ?? 0} icon="person-outline" />
+        <CompactMetric basis={metricBasis} label="Patients Today" value={loading ? "..." : patientCount} icon="people-outline" />
+        <CompactMetric basis={metricBasis} label="Waiting" value={loading ? "..." : waitingCount} icon="hourglass-outline" tone="warning" />
+        <CompactMetric basis={metricBasis} label="Completed" value={loading ? "..." : completedCount} icon="checkmark-done-outline" tone="success" />
+        <CompactMetric basis={metricBasis} label="Total Patients" value={loading ? "..." : stats?.totalPatients ?? 0} icon="person-outline" />
       </View>
 
       <DashboardSection title="Collections" subtitle="Today's split, kept simple for closing review.">
@@ -204,6 +206,9 @@ function OwnerSummary({
   waiting: number;
   completed: number;
 }) {
+  const { width } = useWindowDimensions();
+  const stackPills = width < 360;
+
   return (
     <View
       style={{
@@ -244,7 +249,7 @@ function OwnerSummary({
         </Pressable>
       </View>
 
-      <View style={{ flexDirection: "row", gap: 10 }}>
+      <View style={{ flexDirection: stackPills ? "column" : "row", gap: 10 }}>
         <SummaryPill label="Collected" value={loading ? "..." : money(revenue)} icon="cash-outline" />
         <SummaryPill label="Pending" value={loading ? "..." : money(pending)} icon="wallet-outline" warning />
       </View>
@@ -288,11 +293,13 @@ function SummaryPill({
 }
 
 function CompactMetric({
+  basis,
   label,
   value,
   icon,
   tone = "primary",
 }: {
+  basis: "47%" | "100%";
   label: string;
   value: string | number;
   icon: IconName;
@@ -304,8 +311,9 @@ function CompactMetric({
   return (
     <View
       style={{
-        flex: 1,
-        minWidth: "46%",
+        flexGrow: 1,
+        flexShrink: 0,
+        flexBasis: basis,
         minHeight: 82,
         borderRadius: 20,
         padding: 12,
@@ -353,9 +361,10 @@ function FlatListPanel({ children }: { children: ReactNode }) {
     <View
       style={{
         backgroundColor: colors.surface,
-        borderTopWidth: 1,
-        borderBottomWidth: 1,
+        borderWidth: 1,
+        borderRadius: 20,
         borderColor: colors.border,
+        overflow: "hidden",
       }}
     >
       {children}
@@ -391,6 +400,7 @@ function DashboardRow({
       android_ripple={{ color: "rgba(15, 118, 110, 0.08)", borderless: false }}
       style={({ pressed }) => ({
         minHeight: 70,
+        paddingHorizontal: 14,
         paddingVertical: 12,
         flexDirection: "row",
         alignItems: "center",
@@ -413,7 +423,7 @@ function DashboardRow({
         <Ionicons name={icon} size={21} color={iconColor} />
       </View>
 
-      <View style={{ flex: 1 }}>
+      <View style={{ flex: 1, minWidth: 0 }}>
         <Text numberOfLines={1} style={{ color: colors.text, fontSize: 15, fontWeight: "900" }}>
           {title}
         </Text>
@@ -423,7 +433,19 @@ function DashboardRow({
       </View>
 
       {value ? (
-        <Text numberOfLines={1} style={{ color: colors.text, fontSize: 15, fontWeight: "900", fontVariant: ["tabular-nums"] }}>
+        <Text
+          numberOfLines={1}
+          adjustsFontSizeToFit
+          minimumFontScale={0.76}
+          style={{
+            color: colors.text,
+            fontSize: 15,
+            fontWeight: "900",
+            fontVariant: ["tabular-nums"],
+            maxWidth: 116,
+            textAlign: "right",
+          }}
+        >
           {value}
         </Text>
       ) : null}
@@ -441,6 +463,7 @@ function WaitingRow({ item, isLast }: { item: AppointmentRow; isLast: boolean })
       android_ripple={{ color: "rgba(15, 118, 110, 0.08)", borderless: false }}
       style={({ pressed }) => ({
         minHeight: 68,
+        paddingHorizontal: 14,
         paddingVertical: 11,
         flexDirection: "row",
         alignItems: "center",
@@ -463,7 +486,7 @@ function WaitingRow({ item, isLast }: { item: AppointmentRow; isLast: boolean })
         <Ionicons name="time-outline" size={21} color={colors.warning} />
       </View>
 
-      <View style={{ flex: 1 }}>
+      <View style={{ flex: 1, minWidth: 0 }}>
         <Text numberOfLines={1} style={{ color: colors.text, fontWeight: "900", fontSize: 15 }}>
           {item.patients?.name || "Patient"}
         </Text>
