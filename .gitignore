@@ -46,3 +46,9 @@ credentials.json
 credentials.json
 .codex-remote-attachments/
 *.tgz
+
+# Android signing credentials and local files
+*.jks
+credentials.json
+.codex-remote-attachments/
+*.tgz
