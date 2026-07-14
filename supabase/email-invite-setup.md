@@ -21,9 +21,9 @@ This function uses Resend.
 
 ```powershell
 npx.cmd supabase secrets set RESEND_API_KEY=YOUR_RESEND_API_KEY
-npx.cmd supabase secrets set INVITE_FROM_EMAIL="DMS <onboarding@yourdomain.com>"
-npx.cmd supabase secrets set APP_NAME="DMS"
-npx.cmd supabase secrets set APP_URL="Download/open the DMS app"
+npx.cmd supabase secrets set INVITE_FROM_EMAIL="CapDent <onboarding@yourdomain.com>"
+npx.cmd supabase secrets set APP_NAME="CapDent"
+npx.cmd supabase secrets set APP_URL="Download/open the CapDent app"
 ```
 
 For quick testing, Resend allows `onboarding@resend.dev`, but production should use a verified domain.

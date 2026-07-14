@@ -1,6 +1,6 @@
 import { Ionicons } from "@expo/vector-icons";
 import { router, useLocalSearchParams } from "expo-router";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Alert, Pressable, Text, TextInput, View } from "react-native";
 import { AppButton } from "@/components/AppButton";
 import { AppInput } from "@/components/AppInput";
@@ -21,7 +21,8 @@ import {
   PatientMedicationEntry,
   savePatientMedication,
 } from "@/lib/patientMedications";
-import { getDashboardPath, getPatients, Patient } from "@/lib/supabase";
+import { searchPatientsPage } from "@/lib/patientDirectory";
+import { getDashboardPath, Patient, supabase } from "@/lib/supabase";
 
 function formatDate(value: string) {
   return new Date(value).toLocaleString([], {
@@ -60,7 +61,10 @@ export default function PatientMedicationsScreen() {
   const [instructions, setInstructions] = useState("");
 
   const [loading, setLoading] = useState(true);
+  const [loadingPatients, setLoadingPatients] = useState(true);
   const [saving, setSaving] = useState(false);
+  const patientRequestRef = useRef(0);
+  const patientSearchMountedRef = useRef(false);
 
   const homePath = getDashboardPath(profile?.role ?? "receptionist");
 
@@ -69,19 +73,7 @@ export default function PatientMedicationsScreen() {
     [patients, selectedPatientId]
   );
 
-  const filteredPatients = useMemo(() => {
-    const term = patientSearch.trim().toLowerCase();
-    if (!term) return patients.slice(0, 12);
-
-    return patients
-      .filter(
-        (patient) =>
-          patient.name.toLowerCase().includes(term) ||
-          (patient.phone || "").toLowerCase().includes(term) ||
-          (patient.patient_code || "").toLowerCase().includes(term)
-      )
-      .slice(0, 12);
-  }, [patientSearch, patients]);
+  const filteredPatients = patients;
 
   function exitScreen() {
     if (selectedPatientId) {
@@ -92,22 +84,52 @@ export default function PatientMedicationsScreen() {
     router.replace(homePath as never);
   }
 
+  async function loadPatientOptions(searchText = patientSearch) {
+    const requestId = patientRequestRef.current + 1;
+    patientRequestRef.current = requestId;
+
+    try {
+      setLoadingPatients(true);
+      const result = await searchPatientsPage({
+        query: searchText,
+        page: 1,
+        pageSize: 12,
+      });
+      let rows = result.patients;
+
+      if (incomingPatientId && !rows.some((patient) => patient.id === incomingPatientId)) {
+        const { data, error } = await supabase
+          .from("patients")
+          .select("*")
+          .eq("id", incomingPatientId)
+          .maybeSingle<Patient>();
+
+        if (error) throw error;
+        if (data) rows = [data, ...rows];
+      }
+
+      if (requestId === patientRequestRef.current) {
+        setPatients(rows);
+        if (incomingPatientId) setSelectedPatientId(incomingPatientId);
+      }
+    } finally {
+      if (requestId === patientRequestRef.current) setLoadingPatients(false);
+    }
+  }
+
   async function load() {
     try {
       setLoading(true);
-      const [featureSettings, patientRows, suggestionRows, recentRows] = await Promise.all([
+      const [featureSettings, suggestionRows, recentRows] = await Promise.all([
         getClinicFeatureSettings().catch(() => DEFAULT_CLINIC_FEATURE_SETTINGS),
-        getPatients(),
         getMedicationSuggestions(),
         getRecentPatientMedications(incomingPatientId || undefined),
       ]);
 
       setEnabled(featureSettings.enable_prescription_medications);
-      setPatients(patientRows);
       setSuggestions(suggestionRows);
       setRecent(recentRows);
-
-      if (incomingPatientId) setSelectedPatientId(incomingPatientId);
+      await loadPatientOptions(patientSearch);
     } catch (error) {
       Alert.alert("Medication screen failed", errorMessage(error));
     } finally {
@@ -116,8 +138,23 @@ export default function PatientMedicationsScreen() {
   }
 
   useEffect(() => {
-    load();
+    void load();
   }, [incomingPatientId]);
+
+  useEffect(() => {
+    if (!patientSearchMountedRef.current) {
+      patientSearchMountedRef.current = true;
+      return;
+    }
+
+    const timeout = setTimeout(() => {
+      void loadPatientOptions(patientSearch).catch((error) => {
+        Alert.alert("Patients load failed", errorMessage(error));
+      });
+    }, 260);
+
+    return () => clearTimeout(timeout);
+  }, [patientSearch]);
 
   async function refreshSuggestions(nextName = medicationName) {
     try {
@@ -246,7 +283,7 @@ export default function PatientMedicationsScreen() {
               <TextInput value={patientSearch} onChangeText={setPatientSearch} placeholder="Search patient name, phone, or ID" placeholderTextColor={colors.muted} style={{ flex: 1, minHeight: 54, color: colors.text, fontSize: 16 }} />
             </View>
 
-            {loading ? (
+            {loadingPatients ? (
               <Text style={{ color: colors.muted }}>Loading patients...</Text>
             ) : filteredPatients.length ? (
               <View style={{ gap: 10 }}>

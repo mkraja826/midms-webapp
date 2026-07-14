@@ -34,6 +34,7 @@ export default function AccountSettingsScreen() {
   const [opFeeAmount, setOpFeeAmount] = useState(String(DEFAULT_CLINIC_FEATURE_SETTINGS.op_fee_amount));
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [loggingOut, setLoggingOut] = useState(false);
 
   const canManage = canManageClinicFeatureSettings(profile);
   const homePath = getDashboardPath(profile?.role ?? "receptionist");
@@ -41,7 +42,7 @@ export default function AccountSettingsScreen() {
   async function load() {
     try {
       setLoading(true);
-      const data = await getClinicFeatureSettings();
+      const data = await getClinicFeatureSettings({ force: true });
       setSettings(data);
       setOpFeeAmount(String(data.op_fee_amount));
     } catch (error) {
@@ -89,27 +90,19 @@ export default function AccountSettingsScreen() {
     }
   }
 
-  function confirmLogout() {
-    Alert.alert("Logout", "Sign out from this device?", [
-      {
-        text: "Cancel",
-        style: "cancel",
-      },
-      {
-        text: "Logout",
-        style: "destructive",
-        onPress: async () => {
-          try {
-            await signOut();
-          } catch (error) {
-            Alert.alert(
-              "Logout failed",
-              error instanceof Error ? error.message : "Please try again."
-            );
-          }
-        },
-      },
-    ]);
+  async function logout() {
+    if (loggingOut) return;
+
+    try {
+      setLoggingOut(true);
+      await signOut();
+    } catch (error) {
+      Alert.alert(
+        "Logout failed",
+        error instanceof Error ? error.message : "Please try again."
+      );
+      setLoggingOut(false);
+    }
   }
 
   if (!canManage) {
@@ -144,7 +137,9 @@ export default function AccountSettingsScreen() {
             title="Logout"
             icon="log-out-outline"
             variant="danger"
-            onPress={confirmLogout}
+            onPress={logout}
+            loading={loggingOut}
+            loadingTitle="Logging out..."
           />
         </View>
       </Screen>
@@ -226,7 +221,9 @@ export default function AccountSettingsScreen() {
           title="Logout"
           icon="log-out-outline"
           variant="danger"
-          onPress={confirmLogout}
+          onPress={logout}
+          loading={loggingOut}
+          loadingTitle="Logging out..."
         />
       </View>
     </Screen>

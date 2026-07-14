@@ -18,6 +18,8 @@ export type OngoingTreatmentItem = {
   visitDate: string | null;
   doctorId: string | null;
   doctorName: string | null;
+  totalAmount: number;
+  paidAmount: number;
   dueAmount: number;
   paymentCleared: boolean;
 };
@@ -55,6 +57,8 @@ type DoctorMini = {
 type InvoiceMini = {
   patient_id: string;
   visit_id: string | null;
+  total_amount: number | string | null;
+  paid_amount: number | string | null;
   due_amount: number | string | null;
   status: string | null;
   payment_category: string | null;
@@ -69,16 +73,25 @@ function indexById<T extends { id: string }>(rows: T[]) {
   return new Map(rows.map((row) => [row.id, row]));
 }
 
-function getTreatmentDue(treatment: TreatmentRow, invoices: InvoiceMini[]) {
-  const visitDue = invoices
-    .filter((invoice) => invoice.visit_id && invoice.visit_id === treatment.visit_id)
-    .reduce((sum, invoice) => sum + toNumber(invoice.due_amount), 0);
+function getTreatmentInvoices(treatment: TreatmentRow, invoices: InvoiceMini[]) {
+  const visitInvoices = invoices.filter((invoice) => invoice.visit_id && invoice.visit_id === treatment.visit_id);
 
-  if (visitDue > 0) return visitDue;
+  if (visitInvoices.length > 0) return visitInvoices;
 
-  return invoices
-    .filter((invoice) => invoice.patient_id === treatment.patient_id)
-    .reduce((sum, invoice) => sum + toNumber(invoice.due_amount), 0);
+  return invoices.filter((invoice) => invoice.patient_id === treatment.patient_id);
+}
+
+function getTreatmentPaymentTotals(treatment: TreatmentRow, invoices: InvoiceMini[]) {
+  const relevantInvoices = getTreatmentInvoices(treatment, invoices);
+  const invoiceTotal = relevantInvoices.reduce((sum, invoice) => sum + toNumber(invoice.total_amount), 0);
+  const paidAmount = relevantInvoices.reduce((sum, invoice) => sum + toNumber(invoice.paid_amount), 0);
+  const dueAmount = relevantInvoices.reduce((sum, invoice) => sum + toNumber(invoice.due_amount), 0);
+
+  return {
+    totalAmount: invoiceTotal || toNumber(treatment.cost),
+    paidAmount,
+    dueAmount,
+  };
 }
 
 export async function getOngoingTreatments(options?: { limit?: number; doctorOnly?: boolean }) {
@@ -116,11 +129,9 @@ export async function getOngoingTreatments(options?: { limit?: number; doctorOnl
     patientIds.length
       ? supabase
           .from("invoices")
-          .select("patient_id,visit_id,due_amount,status,payment_category")
+          .select("patient_id,visit_id,total_amount,paid_amount,due_amount,status,payment_category")
           .in("patient_id", patientIds)
           .eq("payment_category", "treatment_fee")
-          .in("status", ["unpaid", "partial"])
-          .gt("due_amount", 0)
       : Promise.resolve({ data: [] as InvoiceMini[], error: null }),
   ]);
 
@@ -148,7 +159,7 @@ export async function getOngoingTreatments(options?: { limit?: number; doctorOnl
       const patient = patients.get(treatment.patient_id);
       const visit = treatment.visit_id ? visits.get(treatment.visit_id) : null;
       const doctor = visit?.doctor_id ? doctors.get(visit.doctor_id) : null;
-      const dueAmount = getTreatmentDue(treatment, invoices);
+      const paymentTotals = getTreatmentPaymentTotals(treatment, invoices);
 
       return {
         id: treatment.id,
@@ -165,8 +176,10 @@ export async function getOngoingTreatments(options?: { limit?: number; doctorOnl
         visitDate: visit?.visit_date || null,
         doctorId: visit?.doctor_id || null,
         doctorName: doctor?.name || null,
-        dueAmount,
-        paymentCleared: dueAmount <= 0,
+        totalAmount: paymentTotals.totalAmount,
+        paidAmount: paymentTotals.paidAmount,
+        dueAmount: paymentTotals.dueAmount,
+        paymentCleared: paymentTotals.dueAmount <= 0,
       } satisfies OngoingTreatmentItem;
     })
     .filter((item) => !options?.doctorOnly || item.doctorId === profile.id)

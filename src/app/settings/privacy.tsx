@@ -36,8 +36,8 @@ export default function PrivacyScreen() {
       </View>
 
       <SectionCard title="Privacy" subtitle="Live public privacy policy is available.">
-        <Row text="DMS is used for clinic records, appointments, uploads, payments, reminders, and staff access." />
-        <Row text="DMS may store clinic, staff, patient, appointment, visit, payment, prescription, X-ray, and photo data." />
+        <Row text="CapDent is used for clinic records, appointments, uploads, payments, reminders, and staff access." />
+        <Row text="CapDent may store clinic, staff, patient, appointment, visit, payment, prescription, X-ray, and photo data." />
         <Row text="Only authorized clinic staff should use the app." />
         <Row text="Keep login details private and do not share staff accounts." />
       </SectionCard>
@@ -49,7 +49,7 @@ export default function PrivacyScreen() {
 
       <SectionCard title="Disclaimer" subtitle="Clinic workflow only.">
         <Row text="This app is for clinic management and record keeping." />
-        <Row text="DMS does not provide medical advice, diagnosis, or treatment." />
+        <Row text="CapDent does not provide medical advice, diagnosis, or treatment." />
         <Row text="Clinical decisions remain with qualified clinic professionals." />
       </SectionCard>
 

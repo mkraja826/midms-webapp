@@ -143,7 +143,7 @@ export default function ResetPasswordScreen() {
           {checkingLink
             ? "Checking your secure reset link..."
             : linkReady
-              ? "Set a new password for this DMS account."
+              ? "Set a new password for this CapDent account."
               : "Open the latest reset link from your email to continue."}
         </Text>
       </View>

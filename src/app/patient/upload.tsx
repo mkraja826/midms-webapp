@@ -1,7 +1,7 @@
 import { Ionicons } from "@expo/vector-icons";
 import * as ImagePicker from "expo-image-picker";
 import { router, useLocalSearchParams } from "expo-router";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   Alert,
   DimensionValue,
@@ -18,10 +18,11 @@ import { Screen } from "@/components/Screen";
 import { SectionCard } from "@/components/SectionCard";
 import { StatusBadge } from "@/components/StatusBadge";
 import { colors } from "@/constants/colors";
+import { searchPatientsPage } from "@/lib/patientDirectory";
 import {
   FileType,
-  getPatients,
   Patient,
+  supabase,
   UploadProgressState,
   uploadPatientFile,
 } from "@/lib/supabase";
@@ -174,28 +175,65 @@ export default function ClinicalUploadScreen() {
   const [uploading, setUploading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState<UploadProgressState | null>(null);
   const [done, setDone] = useState(false);
+  const patientRequestRef = useRef(0);
+  const patientSearchMountedRef = useRef(false);
 
   const config = getConfig(type);
 
-  async function loadPatients() {
+  async function loadPatients(searchText = patientSearch) {
+    const requestId = patientRequestRef.current + 1;
+    patientRequestRef.current = requestId;
+
     try {
       setLoadingPatients(true);
-      const rows = await getPatients();
-      setPatients(rows);
+      const result = await searchPatientsPage({
+        query: searchText,
+        page: 1,
+        pageSize: 12,
+      });
+      let rows = result.patients;
 
-      if (incomingPatientId && rows.some((patient) => patient.id === incomingPatientId)) {
-        setSelectedPatientId(incomingPatientId);
+      if (incomingPatientId && !rows.some((patient) => patient.id === incomingPatientId)) {
+        const { data, error } = await supabase
+          .from("patients")
+          .select("*")
+          .eq("id", incomingPatientId)
+          .maybeSingle<Patient>();
+
+        if (error) throw error;
+        if (data) rows = [data, ...rows];
+      }
+
+      if (requestId === patientRequestRef.current) {
+        setPatients(rows);
+
+        if (incomingPatientId && rows.some((patient) => patient.id === incomingPatientId)) {
+          setSelectedPatientId(incomingPatientId);
+        }
       }
     } catch (error) {
       Alert.alert("Patients load failed", getErrorMessage(error));
     } finally {
-      setLoadingPatients(false);
+      if (requestId === patientRequestRef.current) setLoadingPatients(false);
     }
   }
 
   useEffect(() => {
-    loadPatients();
+    void loadPatients("");
   }, [incomingPatientId]);
+
+  useEffect(() => {
+    if (!patientSearchMountedRef.current) {
+      patientSearchMountedRef.current = true;
+      return;
+    }
+
+    const timeout = setTimeout(() => {
+      void loadPatients(patientSearch);
+    }, 260);
+
+    return () => clearTimeout(timeout);
+  }, [patientSearch]);
 
   const selectedPatient = useMemo(
     () => patients.find((patient) => patient.id === selectedPatientId) || null,
@@ -216,21 +254,7 @@ export default function ClinicalUploadScreen() {
     router.replace("/gallery" as never);
   }
 
-  const filteredPatients = useMemo(() => {
-    const term = patientSearch.trim().toLowerCase();
-
-    if (!term) return patients.slice(0, 12);
-
-    return patients
-      .filter((patient) => {
-        return (
-          patient.name.toLowerCase().includes(term) ||
-          (patient.phone || "").toLowerCase().includes(term) ||
-          (patient.patient_code || "").toLowerCase().includes(term)
-        );
-      })
-      .slice(0, 12);
-  }, [patientSearch, patients]);
+  const filteredPatients = patients;
 
   async function pickFromCamera() {
     const permission = await ImagePicker.requestCameraPermissionsAsync();
@@ -535,7 +559,7 @@ export default function ClinicalUploadScreen() {
               onChangeText={setXrayAmount}
               keyboardType="numeric"
               placeholder="Example: 500"
-              helper="If entered, DMS creates a separate X-ray fee invoice."
+              helper="If entered, CapDent creates a separate X-ray fee invoice."
             />
 
             <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8 }}>

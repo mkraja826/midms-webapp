@@ -1,6 +1,6 @@
 import { Ionicons } from "@expo/vector-icons";
 import { router, useLocalSearchParams } from "expo-router";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Alert, Pressable, Text, TextInput, View } from "react-native";
 import { AppButton } from "@/components/AppButton";
 import { AppInput } from "@/components/AppInput";
@@ -11,7 +11,8 @@ import { StatusBadge } from "@/components/StatusBadge";
 import { SuccessNotice } from "@/components/SuccessNotice";
 import { colors } from "@/constants/colors";
 import { DEFAULT_OP_FEE_AMOUNT, getClinicFeatureSettings } from "@/lib/clinicOptions";
-import { getPatients, Patient, PaymentCategory, supabase } from "@/lib/supabase";
+import { searchPatientsPage } from "@/lib/patientDirectory";
+import { Patient, PaymentCategory, supabase } from "@/lib/supabase";
 
 type FeeType = Exclude<PaymentCategory, "pending_collection"> | "other";
 
@@ -74,6 +75,8 @@ export default function ReceptionFeeScreen() {
   const [successMessage, setSuccessMessage] = useState("");
   const [loadingPatients, setLoadingPatients] = useState(true);
   const [saving, setSaving] = useState(false);
+  const patientRequestRef = useRef(0);
+  const patientSearchMountedRef = useRef(false);
 
   const config = getFeeConfig(feeType);
 
@@ -84,50 +87,65 @@ export default function ReceptionFeeScreen() {
     setSuccessMessage("");
   }
 
-  async function loadPatients() {
+  async function loadPatients(searchText = patientSearch, refreshSettings = false) {
+    const requestId = patientRequestRef.current + 1;
+    patientRequestRef.current = requestId;
+
     try {
       setLoadingPatients(true);
-      const [rows, clinicSettings] = await Promise.all([
-        getPatients(),
-        getClinicFeatureSettings().catch(() => ({ op_fee_amount: DEFAULT_OP_FEE_AMOUNT })),
+      const [patientResult, clinicSettings] = await Promise.all([
+        searchPatientsPage({
+          query: searchText,
+          page: 1,
+          pageSize: 12,
+        }),
+        refreshSettings
+          ? getClinicFeatureSettings().catch(() => ({ op_fee_amount: DEFAULT_OP_FEE_AMOUNT }))
+          : Promise.resolve(null),
       ]);
 
-      const nextOpFee = Number(clinicSettings.op_fee_amount || DEFAULT_OP_FEE_AMOUNT);
-      setClinicOpFee(nextOpFee);
-      setPatients(rows);
+      if (requestId !== patientRequestRef.current) return;
 
-      if (feeType === "op_fee") {
-        setAmount(String(nextOpFee));
+      if (clinicSettings) {
+        const nextOpFee = Number(clinicSettings.op_fee_amount || DEFAULT_OP_FEE_AMOUNT);
+        setClinicOpFee(nextOpFee);
+
+        if (feeType === "op_fee") {
+          setAmount(String(nextOpFee));
+        }
       }
+
+      setPatients(patientResult.patients);
     } catch (error) {
       Alert.alert("Patients load failed", getErrorMessage(error));
     } finally {
-      setLoadingPatients(false);
+      if (requestId === patientRequestRef.current) setLoadingPatients(false);
     }
   }
 
   useEffect(() => {
-    loadPatients();
+    void loadPatients("", true);
   }, []);
+
+  useEffect(() => {
+    if (!patientSearchMountedRef.current) {
+      patientSearchMountedRef.current = true;
+      return;
+    }
+
+    const timeout = setTimeout(() => {
+      void loadPatients(patientSearch);
+    }, 260);
+
+    return () => clearTimeout(timeout);
+  }, [patientSearch]);
 
   const selectedPatient = useMemo(
     () => patients.find((patient) => patient.id === selectedPatientId) || null,
     [patients, selectedPatientId]
   );
 
-  const filteredPatients = useMemo(() => {
-    const term = patientSearch.trim().toLowerCase();
-    if (!term) return patients.slice(0, 12);
-
-    return patients
-      .filter(
-        (patient) =>
-          patient.name.toLowerCase().includes(term) ||
-          (patient.phone || "").toLowerCase().includes(term) ||
-          (patient.patient_code || "").toLowerCase().includes(term)
-      )
-      .slice(0, 12);
-  }, [patientSearch, patients]);
+  const filteredPatients = patients;
 
   function resetForAnother() {
     setSelectedPatientId("");
@@ -177,7 +195,7 @@ export default function ReceptionFeeScreen() {
   }
 
   return (
-    <Screen refreshing={loadingPatients} onRefresh={loadPatients}>
+    <Screen refreshing={loadingPatients} onRefresh={() => loadPatients(patientSearch, true)}>
       <View style={{ gap: 6 }}>
         <Text style={{ color: colors.text, fontSize: 30, fontWeight: "900" }}>Reception Fees</Text>
         <Text style={{ color: colors.muted, fontSize: 15, lineHeight: 21 }}>
@@ -187,7 +205,7 @@ export default function ReceptionFeeScreen() {
 
       {successMessage ? <SuccessNotice title="Payment saved" message={successMessage} /> : null}
 
-      <SectionCard title="Fee Type" subtitle="Choose the correct fee category so owner revenue reports stay clear.">
+      <SectionCard title="Fee Type" subtitle="Choose the correct fee category so clinic reports stay clear.">
         <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 10 }}>
           {FEE_TYPES.map((item) => (
             <FeeTypeCard key={item.key} title={item.title} subtitle={item.subtitle} icon={item.icon} selected={feeType === item.key} onPress={() => changeFeeType(item.key)} />
@@ -268,7 +286,7 @@ export default function ReceptionFeeScreen() {
           onChangeText={setAmount}
           keyboardType="numeric"
           placeholder={feeType === "op_fee" ? String(clinicOpFee) : "Enter amount"}
-          helper={feeType === "op_fee" ? "Default comes from owner Account Settings. Reception can edit for this patient." : "Amount may change per patient."}
+          helper={feeType === "op_fee" ? "Default comes from clinic settings. Reception can edit for this patient." : "Amount may change per patient."}
         />
 
         <View style={{ flexDirection: "row", gap: 10 }}>

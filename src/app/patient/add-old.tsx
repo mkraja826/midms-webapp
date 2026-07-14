@@ -1,12 +1,12 @@
 import { router } from "expo-router";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Alert, Switch, Text, View } from "react-native";
 import { AppButton } from "@/components/AppButton";
 import { AppInput } from "@/components/AppInput";
 import { Screen } from "@/components/Screen";
 import { SectionCard } from "@/components/SectionCard";
 import { colors } from "@/constants/colors";
-import { createOldPatient, searchPatients } from "@/lib/supabase";
+import { ClinicPatientLimitStatus, createOldPatient, getClinicPatientLimitStatus, searchPatients } from "@/lib/supabase";
 
 const datePattern = /^\d{4}-\d{2}-\d{2}$/;
 
@@ -46,13 +46,27 @@ export default function AddOldPatientScreen() {
     diabetes: false,
     blood_pressure: false,
   });
+  const [limitStatus, setLimitStatus] = useState<ClinicPatientLimitStatus | null>(null);
   const [saving, setSaving] = useState(false);
 
   function setField(key: keyof typeof form, value: string) {
     setForm((current) => ({ ...current, [key]: value }));
   }
 
-  async function save(skipDuplicateCheck = false) {
+  async function loadLimitStatus() {
+    try {
+      const usage = await getClinicPatientLimitStatus();
+      setLimitStatus(usage);
+    } catch (error) {
+      console.warn("Patient limit load failed:", error);
+    }
+  }
+
+  useEffect(() => {
+    loadLimitStatus();
+  }, []);
+
+  async function save(skipDuplicateCheck = false, skipLimitWarning = false) {
     if (!form.name.trim()) {
       Alert.alert("Name required", "Enter the old patient name.");
       return;
@@ -61,6 +75,36 @@ export default function AddOldPatientScreen() {
     if (!isValidOptionalDate(form.registered_date) || !isValidOptionalDate(form.last_visit_date)) {
       Alert.alert("Date format", "Use YYYY-MM-DD for old registration date and last visit date.");
       return;
+    }
+
+    if (!skipLimitWarning) {
+      try {
+        const usage = await getClinicPatientLimitStatus();
+        setLimitStatus(usage);
+
+        if (usage.level === "blocked") {
+          Alert.alert("Free patient limit reached", usage.message, [
+            { text: "Cancel", style: "cancel" },
+            { text: "View Plans", onPress: () => router.push("/settings/subscription" as never) },
+          ]);
+          return;
+        }
+
+        if (usage.level === "warning") {
+          Alert.alert("Free patient slots low", usage.message, [
+            { text: "Cancel", style: "cancel" },
+            { text: "Continue", onPress: () => void save(skipDuplicateCheck, true) },
+          ]);
+          return;
+        }
+
+        if (usage.level === "notice") {
+          Alert.alert("Free patient slots", usage.message);
+        }
+      } catch (error) {
+        Alert.alert("Patient limit check failed", error instanceof Error ? error.message : "Please try again.");
+        return;
+      }
     }
 
     const phone = form.phone.trim();
@@ -77,7 +121,7 @@ export default function AddOldPatientScreen() {
             `This phone number already belongs to ${duplicate.name}. Continue adding this old record?`,
             [
               { text: "Cancel", style: "cancel" },
-              { text: "Continue", onPress: () => save(true) },
+              { text: "Continue", onPress: () => save(true, skipLimitWarning) },
             ]
           );
           return;
@@ -123,6 +167,16 @@ export default function AddOldPatientScreen() {
         },
       });
 
+      const nextUsage = await getClinicPatientLimitStatus();
+      setLimitStatus(nextUsage);
+
+      if (!nextUsage.unlimited && (nextUsage.level === "notice" || nextUsage.level === "warning")) {
+        Alert.alert("Old patient saved", nextUsage.message, [
+          { text: "Open Patient", onPress: () => router.replace({ pathname: "/patient/[id]", params: { id: patient.id } }) },
+        ]);
+        return;
+      }
+
       router.replace({ pathname: "/patient/[id]", params: { id: patient.id } });
     } catch (error) {
       Alert.alert("Old patient save failed", error instanceof Error ? error.message : "Unable to add old patient.");
@@ -138,9 +192,25 @@ export default function AddOldPatientScreen() {
           Add Old Patient
         </Text>
         <Text style={{ color: colors.muted, fontSize: 15, lineHeight: 21 }}>
-          Use this for clinic records that existed before DMS. Add old ID, last visit, history, and opening due if needed.
+          Use this for clinic records that existed before CapDent. Add old ID, last visit, history, and opening due if needed.
         </Text>
       </View>
+
+      {limitStatus && !limitStatus.unlimited && limitStatus.level !== "none" ? (
+        <SectionCard
+          title={limitStatus.level === "blocked" ? "Free Patient Limit Reached" : "Free Patient Slots"}
+          subtitle={limitStatus.message}
+        >
+          {limitStatus.level === "blocked" ? (
+            <AppButton
+              title="View Plans"
+              icon="card-outline"
+              variant="secondary"
+              onPress={() => router.push("/settings/subscription" as never)}
+            />
+          ) : null}
+        </SectionCard>
+      ) : null}
 
       <SectionCard title="Old Record">
         <AppInput
@@ -154,7 +224,7 @@ export default function AddOldPatientScreen() {
           value={form.registered_date}
           onChangeText={(value) => setField("registered_date", value)}
           placeholder="YYYY-MM-DD"
-          helper="If entered, this becomes the patient registration date in DMS."
+          helper="If entered, this becomes the patient registration date in CapDent."
         />
         <AppInput
           label="Last visit date"
@@ -188,7 +258,7 @@ export default function AddOldPatientScreen() {
           onChangeText={(value) => setField("opening_balance", value)}
           keyboardType="numeric"
           placeholder="Example: 2500"
-          helper="If entered, DMS creates an unpaid opening balance invoice for this old patient."
+          helper="If entered, CapDent creates an unpaid opening balance invoice for this old patient."
         />
         <AppInput
           label="Balance note"

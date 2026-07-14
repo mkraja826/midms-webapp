@@ -10,7 +10,9 @@ import { Screen } from "@/components/Screen";
 import { SectionCard } from "@/components/SectionCard";
 import { StatCard } from "@/components/StatCard";
 import { StatusBadge } from "@/components/StatusBadge";
+import { WorkflowBottomNav } from "@/components/WorkflowBottomNav";
 import { colors } from "@/constants/colors";
+import { receptionWorkflowNavItems } from "@/constants/workflowNav";
 import { useAuth } from "@/lib/auth";
 import {
   ClinicFeatureSettings,
@@ -18,10 +20,12 @@ import {
   getClinicFeatureSettings,
 } from "@/lib/clinicOptions";
 import {
+  closeWaitingAppointment,
   DashboardStats,
   getDashboardStats,
   getRoleLabel,
   getWorkflowDashboardSummary,
+  rescheduleAppointment,
   supabase,
 } from "@/lib/supabase";
 
@@ -44,6 +48,27 @@ function money(value?: number) {
 
 function appointmentTime(value: string) {
   return new Date(value).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+}
+
+function appointmentDateTime(value: string) {
+  return new Date(value).toLocaleString([], {
+    weekday: "short",
+    month: "short",
+    day: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+}
+
+function nextFutureSameTime(value: string, daysToAdd = 1) {
+  const date = new Date(value);
+  date.setDate(date.getDate() + daysToAdd);
+
+  while (date.getTime() <= Date.now()) {
+    date.setDate(date.getDate() + 1);
+  }
+
+  return date;
 }
 
 function startOfToday() {
@@ -77,14 +102,15 @@ export default function ReceptionDashboard() {
   const [summary, setSummary] = useState<any>(null);
   const [features, setFeatures] = useState<ClinicFeatureSettings>(DEFAULT_CLINIC_FEATURE_SETTINGS);
   const [loading, setLoading] = useState(true);
+  const [busyAppointmentId, setBusyAppointmentId] = useState<string | null>(null);
 
-  async function load() {
+  async function load(force = false) {
     try {
       setLoading(true);
 
       const [data, row, featureSettings] = await Promise.all([
-        getDashboardStats(),
-        getWorkflowDashboardSummary(),
+        getDashboardStats({ force }),
+        getWorkflowDashboardSummary({ force }),
         getClinicFeatureSettings().catch((error) => {
           console.warn("Reception optional features load failed:", error);
           return DEFAULT_CLINIC_FEATURE_SETTINGS;
@@ -95,9 +121,10 @@ export default function ReceptionDashboard() {
 
       const { data: appointmentRows, error: appointmentError } = await supabase
         .from("appointments")
-        .select("*, patients(id,name,phone,photo_url), profiles(id,name)")
+        .select("id,patient_id,appointment_time,status,patients(id,name,phone,photo_url)")
         .gte("appointment_time", startOfToday())
         .lte("appointment_time", endOfToday())
+        .in("status", ["scheduled", "waiting", "checked_in", "booked"])
         .order("appointment_time", { ascending: true });
 
       if (!appointmentError && Array.isArray(appointmentRows)) {
@@ -116,8 +143,73 @@ export default function ReceptionDashboard() {
   }
 
   useEffect(() => {
-    load();
+    void load();
   }, []);
+
+  async function performReschedule(item: AppointmentRow, nextTime: Date) {
+    try {
+      setBusyAppointmentId(item.id);
+      await rescheduleAppointment(
+        item.id,
+        nextTime.toISOString(),
+        `Rescheduled by reception from ${appointmentDateTime(item.appointment_time)} to ${appointmentDateTime(nextTime.toISOString())}.`
+      );
+      await load(true);
+    } catch (error) {
+      Alert.alert("Reschedule failed", error instanceof Error ? error.message : "Please try again.");
+    } finally {
+      setBusyAppointmentId(null);
+    }
+  }
+
+  function confirmReschedule(item: AppointmentRow) {
+    const nextTime = nextFutureSameTime(item.appointment_time, 1);
+    const name = item.patients?.name || "this patient";
+
+    Alert.alert(
+      "Reschedule appointment",
+      `Move ${name} to ${appointmentDateTime(nextTime.toISOString())}?`,
+      [
+        { text: "Cancel", style: "cancel" },
+        {
+          text: "Reschedule",
+          onPress: () => void performReschedule(item, nextTime),
+        },
+      ]
+    );
+  }
+
+  async function performCloseWaiting(item: AppointmentRow) {
+    try {
+      setBusyAppointmentId(item.id);
+      await closeWaitingAppointment(
+        item.id,
+        `Closed by reception as no-show on ${appointmentDateTime(new Date().toISOString())}.`
+      );
+      await load(true);
+    } catch (error) {
+      Alert.alert("Close waiting failed", error instanceof Error ? error.message : "Please try again.");
+    } finally {
+      setBusyAppointmentId(null);
+    }
+  }
+
+  function confirmCloseWaiting(item: AppointmentRow) {
+    const name = item.patients?.name || "this patient";
+
+    Alert.alert(
+      "Close waiting?",
+      `${name} will be marked as no-show and removed from the waiting queue.`,
+      [
+        { text: "Cancel", style: "cancel" },
+        {
+          text: "Close waiting",
+          style: "destructive",
+          onPress: () => void performCloseWaiting(item),
+        },
+      ]
+    );
+  }
 
   const appointments = useMemo<AppointmentRow[]>(
     () => ((stats?.todayAppointmentList ?? []) as AppointmentRow[]),
@@ -125,47 +217,37 @@ export default function ReceptionDashboard() {
   );
   const waiting = appointments.filter((item) => isWaitingStatus(item.status));
   const next = waiting[0];
+  const appointmentCount = stats?.todayAppointments ?? appointments.length;
+  const waitingCount = summary?.waiting_count ?? waiting.length;
+  const completedCount = summary?.completed_count ?? 0;
+  const opCheckInCount = summary?.today_patient_count ?? waitingCount + completedCount;
 
   return (
-    <Screen refreshing={loading} onRefresh={load}>
+    <Screen
+      refreshing={loading}
+      onRefresh={() => load(true)}
+      bottomBar={<WorkflowBottomNav items={receptionWorkflowNavItems} activeKey="home" />}
+    >
       <ClinicBrandHeader subtitle={`${getRoleLabel(profile?.role ?? "receptionist")} • Reception Desk`} />
 
       <SectionCard>
         <View style={{ gap: 12 }}>
           <Text style={{ color: colors.text, fontSize: 19, fontWeight: "900" }}>
-            Quick Actions
+            Start Here
           </Text>
 
           <ActionCard
-            title="Quick Check-in + OP Fee"
-            subtitle="Register/select patient, collect ₹300, send to doctor queue"
+            title="Check-in Patient"
+            subtitle="Register/select patient, handle OP fee, send to doctor queue"
             icon="send-outline"
             onPress={() => router.push("/reception/checkin" as never)}
           />
 
           <View style={{ flexDirection: "row", gap: 10 }}>
             <Pressable
-              onPress={() => router.push({ pathname: "/payment/fee", params: { fee_type: "op_fee" } } as never)}
-              style={{
-                flex: 1,
-                minHeight: 102,
-                borderRadius: 22,
-                padding: 13,
-                backgroundColor: colors.successSoft,
-                borderWidth: 1,
-                borderColor: colors.border,
-                justifyContent: "space-between",
-              }}
-            >
-              <Ionicons name="receipt-outline" size={26} color={colors.success} />
-              <View>
-                <Text style={{ color: colors.text, fontWeight: "900", fontSize: 16 }}>OP Fee</Text>
-                <Text style={{ color: colors.muted, marginTop: 2 }}>₹300 default</Text>
-              </View>
-            </Pressable>
-
-            <Pressable
-              onPress={() => router.push({ pathname: "/payment/fee", params: { fee_type: "xray_fee" } } as never)}
+              accessibilityRole="button"
+              accessibilityLabel="Book appointment"
+              onPress={() => router.push("/appointment/book" as never)}
               style={{
                 flex: 1,
                 minHeight: 102,
@@ -177,13 +259,47 @@ export default function ReceptionDashboard() {
                 justifyContent: "space-between",
               }}
             >
-              <Ionicons name="scan-outline" size={26} color={colors.primary} />
+              <Ionicons name="calendar-number-outline" size={26} color={colors.primary} />
               <View>
-                <Text style={{ color: colors.text, fontWeight: "900", fontSize: 16 }}>X-ray Fee</Text>
-                <Text style={{ color: colors.muted, marginTop: 2 }}>Separate X-ray amount</Text>
+                <Text style={{ color: colors.text, fontWeight: "900", fontSize: 16 }}>Book</Text>
+                <Text style={{ color: colors.muted, marginTop: 2 }}>Appointment</Text>
+              </View>
+            </Pressable>
+
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="Collect payment"
+              onPress={() => router.push("/payment/fee" as never)}
+              style={{
+                flex: 1,
+                minHeight: 102,
+                borderRadius: 22,
+                padding: 13,
+                backgroundColor: colors.primarySoft,
+                borderWidth: 1,
+                borderColor: colors.border,
+                justifyContent: "space-between",
+              }}
+            >
+              <Ionicons name="cash-outline" size={26} color={colors.primary} />
+              <View>
+                <Text style={{ color: colors.text, fontWeight: "900", fontSize: 16 }}>Payment</Text>
+                <Text style={{ color: colors.muted, marginTop: 2 }}>Fees & dues</Text>
               </View>
             </Pressable>
           </View>
+          <ActionCard
+            title="Find Patient"
+            subtitle="Open history, payments, files, visits, and patient actions"
+            icon="search-outline"
+            onPress={() => router.push("/patient" as never)}
+          />
+          <AppButton
+            title="More Tools"
+            icon="grid-outline"
+            variant="secondary"
+            onPress={() => router.push("/(reception)/more" as never)}
+          />
         </View>
       </SectionCard>
 
@@ -239,52 +355,51 @@ export default function ReceptionDashboard() {
                 />
               ) : null}
             </View>
+
+            <View style={{ flexDirection: "row", gap: 10 }}>
+              <AppButton
+                title="Move Tomorrow"
+                icon="calendar-number-outline"
+                variant="secondary"
+                loading={busyAppointmentId === next.id}
+                onPress={() => confirmReschedule(next)}
+                style={{ flex: 1 }}
+              />
+              <AppButton
+                title="No-show"
+                icon="close-circle-outline"
+                variant="secondary"
+                loading={busyAppointmentId === next.id}
+                onPress={() => confirmCloseWaiting(next)}
+                style={{ flex: 1 }}
+              />
+            </View>
           </View>
         </SectionCard>
       ) : null}
 
       <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 10 }}>
-        <StatCard label="Waiting" value={loading ? "..." : summary?.waiting_count ?? waiting.length} icon="hourglass-outline" tone="warning" />
-        <StatCard label="Completed" value={loading ? "..." : summary?.completed_count ?? 0} icon="checkmark-done-outline" tone="success" />
+        <StatCard label="OP Check-ins" value={loading ? "..." : opCheckInCount} icon="send-outline" />
+        <StatCard label="Appointments" value={loading ? "..." : appointmentCount} icon="calendar-number-outline" />
+        <StatCard label="Waiting" value={loading ? "..." : waitingCount} icon="hourglass-outline" tone="warning" />
+        <StatCard label="Completed" value={loading ? "..." : completedCount} icon="checkmark-done-outline" tone="success" />
         <StatCard label="Revenue" value={loading ? "..." : money(summary?.today_revenue ?? stats?.todayRevenue)} icon="cash-outline" tone="success" />
         <StatCard label="Pending" value={loading ? "..." : money(summary?.pending_payments ?? stats?.pendingPayments)} icon="wallet-outline" tone="warning" />
       </View>
 
-      <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 10 }}>
-        <StatCard label="OP Fees" value={loading ? "..." : money(summary?.op_fee_revenue_today)} icon="receipt-outline" tone="success" />
-        <StatCard label="X-ray" value={loading ? "..." : money(summary?.xray_revenue_today)} icon="scan-outline" />
-        <StatCard label="Medication" value={loading ? "..." : money(summary?.medication_revenue_today)} icon="medical-outline" />
-        <StatCard label="Treatment" value={loading ? "..." : money(summary?.treatment_revenue_today)} icon="hammer-outline" tone="success" />
-        <StatCard label="Pending Paid" value={loading ? "..." : money(summary?.pending_collected_today)} icon="checkmark-circle-outline" tone="success" />
-        <StatCard label="Other" value={loading ? "..." : money(summary?.other_revenue_today)} icon="wallet-outline" />
-      </View>
-
-      <SectionCard title="Quick Desk" subtitle="Daily reception actions for check-in, fees, appointments, reminders, and optional prescriptions.">
-        <ActionCard title="Book Appointment" subtitle="For WhatsApp/call/online enquiries" icon="calendar-number-outline" onPress={() => router.push("/appointment/book" as never)} />
-        <ActionCard title="Add Old Patient" subtitle="Enter previous clinic records and old pending balance" icon="archive-outline" onPress={() => router.push("/patient/add-old" as never)} />
-        <ActionCard title="Search Patient" subtitle="Open patient history or collect fee" icon="search-outline" onPress={() => router.push("/patient" as never)} />
-        <ActionCard title="Ongoing Treatments" subtitle="Open planned, ongoing and outstanding work" icon="construct-outline" onPress={() => router.push("/treatments/ongoing" as never)} />
-        <ActionCard title="Medication / Treatment Fee" subtitle="Collect medicine, treatment, or other fee" icon="cash-outline" onPress={() => router.push({ pathname: "/payment/fee", params: { fee_type: "medication_fee" } } as never)} />
-        {features.enable_prescription_medications ? (
-          <ActionCard title="Add Prescribed Tablets" subtitle="Enter tablets prescribed by doctor; repeated medicines show for selection" icon="medical-outline" onPress={() => router.push("/patient/medications" as never)} />
-        ) : null}
-        <ActionCard title="Gallery" subtitle="View X-rays, prescriptions, reports and photos" icon="images-outline" onPress={() => router.push("/gallery" as never)} />
-        <ActionCard title="Collect Pending Payment" subtitle="Old due or treatment balance" icon="wallet-outline" onPress={() => router.push("/patient/payment" as never)} />
-        <ActionCard title="Reminders" subtitle="Follow-ups due and pending payments" icon="notifications-outline" onPress={() => router.push("/reminders" as never)} />
-        <ActionCard title="Legal & Account" subtitle="Logout, privacy, support and account options" icon="shield-checkmark-outline" onPress={() => router.push("/settings/legal" as never)} />
-        <ActionCard title="Change Password" subtitle="Update your login password" icon="key-outline" onPress={() => router.push("/settings/change-password" as never)} />
-      </SectionCard>
-
-      <SectionCard title="Waiting Room" subtitle="Patients waiting for doctor visit will appear here.">
+      <SectionCard title="Waiting Room" subtitle={`${waiting.length} active waiting patient${waiting.length === 1 ? "" : "s"} today.`}>
         {waiting.length ? (
           <View style={{ gap: 10 }}>
-            {waiting.slice(0, 8).map((item) => (
+            {waiting.map((item) => (
               <AppointmentItem
                 key={item.id}
                 item={item}
                 showPhoto={features.enable_patient_photos}
                 showMedication={features.enable_prescription_medications}
+                busy={busyAppointmentId === item.id}
                 onPress={() => router.push(`/patient/${item.patient_id}` as never)}
+                onReschedule={() => confirmReschedule(item)}
+                onCloseWaiting={() => confirmCloseWaiting(item)}
               />
             ))}
           </View>
@@ -299,13 +414,19 @@ export default function ReceptionDashboard() {
 function AppointmentItem({
   item,
   onPress,
+  onReschedule,
+  onCloseWaiting,
   showPhoto,
   showMedication,
+  busy,
 }: {
   item: AppointmentRow;
   onPress: () => void;
+  onReschedule: () => void;
+  onCloseWaiting: () => void;
   showPhoto: boolean;
   showMedication: boolean;
+  busy: boolean;
 }) {
   return (
     <Pressable
@@ -349,6 +470,44 @@ function AppointmentItem({
           <Ionicons name="medical-outline" size={18} color={colors.primary} />
         </Pressable>
       ) : null}
+
+      <Pressable
+        disabled={busy}
+        onPress={onReschedule}
+        hitSlop={8}
+        accessibilityRole="button"
+        accessibilityLabel="Move appointment to tomorrow"
+        style={{
+          width: 38,
+          height: 38,
+          borderRadius: 999,
+          backgroundColor: colors.primarySoft,
+          alignItems: "center",
+          justifyContent: "center",
+          opacity: busy ? 0.55 : 1,
+        }}
+      >
+        <Ionicons name="calendar-number-outline" size={18} color={colors.primary} />
+      </Pressable>
+
+      <Pressable
+        disabled={busy}
+        onPress={onCloseWaiting}
+        hitSlop={8}
+        accessibilityRole="button"
+        accessibilityLabel="Close waiting as no-show"
+        style={{
+          width: 38,
+          height: 38,
+          borderRadius: 999,
+          backgroundColor: colors.warningSoft,
+          alignItems: "center",
+          justifyContent: "center",
+          opacity: busy ? 0.55 : 1,
+        }}
+      >
+        <Ionicons name="close-circle-outline" size={18} color={colors.warning} />
+      </Pressable>
 
       <StatusBadge label={item.status || "Waiting"} tone={tone(item.status) as any} />
       <Ionicons name="chevron-forward" size={18} color={colors.muted} />

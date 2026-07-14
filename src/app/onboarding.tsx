@@ -80,7 +80,7 @@ export default function OnboardingScreen() {
 
       Alert.alert(
         "Clinic created",
-        "Your clinic workspace is ready. Your free 3-month trial has started.",
+        "Your clinic workspace is ready. The Free plan helps you start clean without costly software.",
         [
           {
             text: "Open Dashboard",
@@ -192,7 +192,7 @@ export default function OnboardingScreen() {
           type="clinic"
           title="Clinic / Owner"
           icon="business-outline"
-          subtitle="Create a new clinic workspace and start the free 3-month trial."
+          subtitle="Start a new single-owner clinic workspace with free core management."
         />
 
         <AccountChoice
@@ -204,9 +204,9 @@ export default function OnboardingScreen() {
       </SectionCard>
 
       {accountType === "clinic" ? (
-        <SectionCard title="Create Clinic Profile" subtitle="For clinic owner or head doctor account only.">
+        <SectionCard title="Create Clinic Profile" subtitle="For the clinic owner or head doctor starting the workspace.">
           <Text style={{ color: colors.muted, lineHeight: 21 }}>
-            Your 3-month free trial starts automatically after the clinic profile is created.
+            CapDent is built to help small clinics begin professionally without costly software. Upgrade when the clinic grows beyond the starting setup.
           </Text>
 
           <AppInput
@@ -240,7 +240,7 @@ export default function OnboardingScreen() {
           />
 
           <AppButton
-            title="Create Clinic & Start Trial"
+            title="Create Clinic Workspace"
             icon="medkit-outline"
             onPress={finishOwnerSetup}
             loading={loading}
@@ -260,7 +260,7 @@ export default function OnboardingScreen() {
             onChangeText={setInviteCode}
             autoCapitalize="characters"
             autoCorrect={false}
-            placeholder="DMS-ABC123"
+            placeholder="Enter staff invite code"
           />
 
           <AppButton

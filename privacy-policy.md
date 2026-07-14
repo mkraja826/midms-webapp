@@ -1,6 +1,6 @@
-# DMS Privacy Policy
+# CapDent Privacy Policy
 
-DMS is a clinic workflow app for dental clinics. Clinic staff use it to manage patients, appointments, visits, prescriptions, X-rays, files, reminders, and payment records.
+CapDent is a clinic workflow app for dental clinics. Clinic staff use it to manage patients, appointments, visits, prescriptions, X-rays, files, reminders, and payment records.
 
 ## Data Collected
 
@@ -12,7 +12,7 @@ DMS is a clinic workflow app for dental clinics. Clinic staff use it to manage p
 
 ## Data Use
 
-Data is used only for clinic workflow, patient care coordination, billing, reminders, and clinic administration. DMS does not sell patient or clinic data.
+Data is used only for clinic workflow, patient care coordination, billing, reminders, and clinic administration. CapDent does not sell patient or clinic data.
 
 ## Data Storage
 

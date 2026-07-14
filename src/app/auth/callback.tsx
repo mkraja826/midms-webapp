@@ -100,7 +100,7 @@ export default function AuthCallbackScreen() {
         <Text style={{ color: colors.muted, fontSize: 15, lineHeight: 22, textAlign: "center" }}>
           {failed
             ? "Please open the latest email verification link again."
-            : "Please wait while DMS confirms your account."}
+            : "Please wait while CapDent confirms your account."}
         </Text>
         {failed ? (
           <AppButton title="Back to Login" icon="arrow-back-outline" onPress={() => router.replace("/login" as never)} />

@@ -2,7 +2,7 @@ import { Ionicons } from "@expo/vector-icons";
 import { router } from "expo-router";
 import { useEffect, useState } from "react";
 import { Image, Pressable, Text, View } from "react-native";
-import { colors } from "@/constants/colors";
+import { colors, radius } from "@/constants/colors";
 import { useAuth } from "@/lib/auth";
 import { supabase } from "@/lib/supabase";
 
@@ -49,7 +49,7 @@ export function ClinicBrandHeader({
   return (
     <View
       style={{
-        borderRadius: 26,
+        borderRadius: radius.lg,
         padding: 16,
         backgroundColor: colors.surface,
         borderWidth: 1,
@@ -60,9 +60,9 @@ export function ClinicBrandHeader({
       <View style={{ flexDirection: "row", alignItems: "center", gap: 12 }}>
         <View
           style={{
-            width: 58,
-            height: 58,
-            borderRadius: 20,
+            width: 56,
+            height: 56,
+            borderRadius: radius.lg,
             backgroundColor: colors.primarySoft,
             overflow: "hidden",
             alignItems: "center",
@@ -85,7 +85,7 @@ export function ClinicBrandHeader({
         <View style={{ flex: 1 }}>
           <Text
             numberOfLines={1}
-            style={{ color: colors.text, fontSize: 24, fontWeight: "900" }}
+            style={{ color: colors.text, fontSize: 22, fontWeight: "800" }}
           >
             {brand?.name || "Dental Clinic"}
           </Text>
@@ -100,6 +100,8 @@ export function ClinicBrandHeader({
 
         {showManage && canManage ? (
           <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="Manage clinic branding"
             onPress={() => router.push("/clinic/branding" as never)}
             style={{
               width: 42,

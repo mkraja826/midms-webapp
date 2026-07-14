@@ -8,12 +8,11 @@ import { QuickAction } from "@/components/QuickAction";
 import { SectionCard } from "@/components/SectionCard";
 import { StatusChip } from "@/components/StatusChip";
 import { colors } from "@/constants/colors";
-import { Appointment, createAppointment, getPatients, getTodayAppointments, Patient, updateAppointmentStatus } from "@/lib/supabase";
+import { Appointment, createAppointment, getTodayAppointments, searchPatients, updateAppointmentStatus } from "@/lib/supabase";
 import { appointmentReminderMessage, openWhatsApp } from "@/lib/whatsapp";
 
 export default function AppointmentsScreen() {
   const [appointments, setAppointments] = useState<Appointment[]>([]);
-  const [patients, setPatients] = useState<Patient[]>([]);
   const [patientPhone, setPatientPhone] = useState("");
   const [dateTime, setDateTime] = useState(new Date().toISOString().slice(0, 16));
   const [notes, setNotes] = useState("");
@@ -22,9 +21,8 @@ export default function AppointmentsScreen() {
 
   const load = useCallback(async () => {
     try {
-      const [nextAppointments, nextPatients] = await Promise.all([getTodayAppointments(), getPatients()]);
+      const nextAppointments = await getTodayAppointments();
       setAppointments(nextAppointments);
-      setPatients(nextPatients);
     } catch (error) {
       Alert.alert("Appointments error", error instanceof Error ? error.message : "Unable to load appointments.");
     } finally {
@@ -35,13 +33,23 @@ export default function AppointmentsScreen() {
   useFocusEffect(useCallback(() => { load(); }, [load]));
 
   async function save() {
-    const patient = patients.find((item) => item.phone === patientPhone.trim() || item.name.toLowerCase() === patientPhone.trim().toLowerCase());
-    if (!patient) {
-      Alert.alert("Patient not found", "Enter an exact patient phone number or name.");
+    const term = patientPhone.trim();
+
+    if (!term) {
+      Alert.alert("Patient missing", "Enter exact patient phone number or name.");
       return;
     }
+
     setSaving(true);
     try {
+      const matches = await searchPatients(term);
+      const patient = matches.find((item) => item.phone === term || item.name.toLowerCase() === term.toLowerCase());
+
+      if (!patient) {
+        Alert.alert("Patient not found", "Enter an exact patient phone number or name.");
+        return;
+      }
+
       await createAppointment({ patient_id: patient.id, appointment_time: new Date(dateTime).toISOString(), notes });
       setPatientPhone("");
       setNotes("");

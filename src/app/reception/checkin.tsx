@@ -1,6 +1,6 @@
 import { Ionicons } from "@expo/vector-icons";
 import { router } from "expo-router";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Alert, Pressable, Text, TextInput, View } from "react-native";
 import { AppButton } from "@/components/AppButton";
 import { AppInput } from "@/components/AppInput";
@@ -10,7 +10,8 @@ import { SectionCard } from "@/components/SectionCard";
 import { StatusBadge } from "@/components/StatusBadge";
 import { colors } from "@/constants/colors";
 import { DEFAULT_OP_FEE_AMOUNT, getClinicFeatureSettings } from "@/lib/clinicOptions";
-import { getPatients, Patient, supabase } from "@/lib/supabase";
+import { searchPatientsPage } from "@/lib/patientDirectory";
+import { getClinicPatientLimitStatus, Patient, supabase } from "@/lib/supabase";
 
 type Mode = "existing" | "new";
 type OpFeeStatus = "paid" | "pending" | "waived";
@@ -61,47 +62,65 @@ export default function ReceptionCheckinScreen() {
 
   const [loadingPatients, setLoadingPatients] = useState(true);
   const [saving, setSaving] = useState(false);
+  const patientRequestRef = useRef(0);
+  const patientSearchMountedRef = useRef(false);
 
-  async function loadPatients() {
+  async function loadPatients(searchText = patientSearch, refreshSettings = false) {
+    const requestId = patientRequestRef.current + 1;
+    patientRequestRef.current = requestId;
+
     try {
       setLoadingPatients(true);
-      const [rows, clinicSettings] = await Promise.all([
-        getPatients(),
-        getClinicFeatureSettings().catch(() => ({ op_fee_amount: DEFAULT_OP_FEE_AMOUNT })),
+      const [patientResult, clinicSettings] = await Promise.all([
+        searchPatientsPage({
+          query: searchText,
+          page: 1,
+          pageSize: 12,
+        }),
+        refreshSettings
+          ? getClinicFeatureSettings().catch(() => ({ op_fee_amount: DEFAULT_OP_FEE_AMOUNT }))
+          : Promise.resolve(null),
       ]);
 
-      const nextOpFee = Math.round(Number(clinicSettings.op_fee_amount || DEFAULT_OP_FEE_AMOUNT));
-      setClinicOpFee(nextOpFee);
-      setOpAmount(String(nextOpFee));
-      setPatients(rows);
+      if (requestId !== patientRequestRef.current) return;
+
+      if (clinicSettings) {
+        const nextOpFee = Math.round(Number(clinicSettings.op_fee_amount || DEFAULT_OP_FEE_AMOUNT));
+        setClinicOpFee(nextOpFee);
+        setOpAmount(String(nextOpFee));
+      }
+
+      setPatients(patientResult.patients);
     } catch (error) {
       Alert.alert("Patients load failed", getErrorMessage(error));
     } finally {
-      setLoadingPatients(false);
+      if (requestId === patientRequestRef.current) setLoadingPatients(false);
     }
   }
 
   useEffect(() => {
-    loadPatients();
+    void loadPatients("", true);
   }, []);
+
+  useEffect(() => {
+    if (!patientSearchMountedRef.current) {
+      patientSearchMountedRef.current = true;
+      return;
+    }
+
+    const timeout = setTimeout(() => {
+      void loadPatients(patientSearch);
+    }, 260);
+
+    return () => clearTimeout(timeout);
+  }, [patientSearch]);
 
   const selectedPatient = useMemo(
     () => patients.find((patient) => patient.id === selectedPatientId) || null,
     [patients, selectedPatientId]
   );
 
-  const filteredPatients = useMemo(() => {
-    const term = patientSearch.trim().toLowerCase();
-    if (!term) return patients.slice(0, 12);
-
-    return patients
-      .filter((patient) =>
-        patient.name.toLowerCase().includes(term) ||
-        (patient.phone || "").toLowerCase().includes(term) ||
-        (patient.patient_code || "").toLowerCase().includes(term)
-      )
-      .slice(0, 12);
-  }, [patientSearch, patients]);
+  const filteredPatients = patients;
 
   function resetPatientSelection(nextMode: Mode) {
     setMode(nextMode);
@@ -121,10 +140,10 @@ export default function ReceptionCheckinScreen() {
     setOpStatus("paid");
     setWaiverReason("Doctor waived");
     setPaymentMethod("Cash");
-    loadPatients();
+    void loadPatients("", true);
   }
 
-  async function checkIn() {
+  async function checkIn(skipLimitWarning = false) {
     const fee = toNumber(opAmount);
 
     if (opStatus !== "waived" && fee <= 0) {
@@ -147,9 +166,32 @@ export default function ReceptionCheckinScreen() {
       return;
     }
 
-    setSaving(true);
-
     try {
+      if (mode === "new" && !skipLimitWarning) {
+        const usage = await getClinicPatientLimitStatus();
+
+        if (usage.level === "blocked") {
+          Alert.alert("Free patient limit reached", usage.message, [
+            { text: "Cancel", style: "cancel" },
+            { text: "View Plans", onPress: () => router.push("/settings/subscription" as never) },
+          ]);
+          return;
+        }
+
+        if (usage.level === "warning") {
+          Alert.alert("Free patient slots low", usage.message, [
+            { text: "Cancel", style: "cancel" },
+            { text: "Continue", onPress: () => void checkIn(true) },
+          ]);
+          return;
+        }
+
+        if (usage.level === "notice") {
+          Alert.alert("Free patient slots", usage.message);
+        }
+      }
+
+      setSaving(true);
       const { data, error } = await supabase.rpc("reception_quick_checkin", {
         p_patient_id: mode === "existing" ? selectedPatientId : null,
         p_name: mode === "new" ? name.trim() : null,
@@ -167,12 +209,21 @@ export default function ReceptionCheckinScreen() {
 
       const result = Array.isArray(data) ? data[0] : data;
       const patientId = result?.patient_id || selectedPatientId;
+      let limitNotice = "";
+
+      if (mode === "new") {
+        const nextUsage = await getClinicPatientLimitStatus();
+        if (!nextUsage.unlimited && (nextUsage.level === "notice" || nextUsage.level === "warning")) {
+          limitNotice = `\n\n${nextUsage.message}`;
+        }
+      }
+
       const message =
         opStatus === "paid"
-          ? `OP fee ${money(fee)} collected. Patient is now in doctor's waiting queue.`
+          ? `OP fee ${money(fee)} collected. Patient is now in doctor's waiting queue.${limitNotice}`
           : opStatus === "pending"
-          ? `OP fee ${money(fee)} marked pending. Patient is now in doctor's waiting queue.`
-          : `OP fee waived: ${waiverReason}. Patient is now in doctor's waiting queue.`;
+          ? `OP fee ${money(fee)} marked pending. Patient is now in doctor's waiting queue.${limitNotice}`
+          : `OP fee waived: ${waiverReason}. Patient is now in doctor's waiting queue.${limitNotice}`;
 
       Alert.alert("Patient checked in", message, [
         {
@@ -192,7 +243,7 @@ export default function ReceptionCheckinScreen() {
   }
 
   return (
-    <Screen refreshing={loadingPatients} onRefresh={loadPatients}>
+    <Screen refreshing={loadingPatients} onRefresh={() => loadPatients(patientSearch, true)}>
       <View style={{ gap: 6 }}>
         <Text style={{ color: colors.text, fontSize: 30, fontWeight: "900" }}>Quick Check-in</Text>
         <Text style={{ color: colors.muted, fontSize: 15, lineHeight: 21 }}>
@@ -280,7 +331,7 @@ export default function ReceptionCheckinScreen() {
         </SectionCard>
       )}
 
-      <SectionCard title="OP Fee" subtitle="Default amount comes from owner Account Settings. Reception can still edit per patient.">
+      <SectionCard title="OP Fee" subtitle="Default amount comes from clinic settings. Reception can still edit per patient.">
         <View style={{ padding: 16, borderRadius: 24, backgroundColor: opStatus === "waived" ? colors.warningSoft : colors.successSoft, borderWidth: 1, borderColor: colors.border, alignItems: "center", gap: 6 }}>
           <Text style={{ color: colors.muted, fontWeight: "800" }}>OP Fee</Text>
           <Text style={{ color: colors.text, fontSize: 42, fontWeight: "900" }}>
@@ -324,7 +375,7 @@ export default function ReceptionCheckinScreen() {
             onChangeText={setOpAmount}
             keyboardType="numeric"
             placeholder={String(clinicOpFee)}
-            helper="Default comes from owner Account Settings, but reception can edit it for this patient."
+            helper="Default comes from clinic settings, but reception can edit it for this patient."
           />
         ) : (
           <View style={{ gap: 10 }}>

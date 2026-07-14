@@ -11,11 +11,11 @@ const DELETE_ACCOUNT_URL = "https://dms.micirql.com/delete-account";
 export default function DeleteAccountScreen() {
   const { profile } = useAuth();
 
-  const subject = encodeURIComponent("MiDMS account and data deletion request");
+  const subject = encodeURIComponent("CapDent account and data deletion request");
   const body = encodeURIComponent(
-    `Hello MiDMS Support,
+    `Hello CapDent Support,
 
-I want to request deletion of my MiDMS account and related clinic data.
+I want to request deletion of my CapDent account and related clinic data.
 
 Account email: ${profile?.email ?? ""}
 Clinic ID: ${profile?.clinic_id ?? ""}

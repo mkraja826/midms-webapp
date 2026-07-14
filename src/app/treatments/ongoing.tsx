@@ -11,6 +11,7 @@ export default function OngoingTreatmentsPage() {
   const { profile } = useAuth();
   const doctorOnly = profile?.role === "doctor" || profile?.role === "working_doctor";
   const allowStatusUpdates = profile?.role !== "receptionist";
+  const allowCompleteUpdates = profile?.role === "receptionist";
 
   return (
     <Screen>
@@ -39,6 +40,7 @@ export default function OngoingTreatmentsPage() {
 
       <OngoingTreatmentsSection
         allowStatusUpdates={allowStatusUpdates}
+        allowCompleteUpdates={allowCompleteUpdates}
         doctorOnly={doctorOnly}
         limit={50}
       />

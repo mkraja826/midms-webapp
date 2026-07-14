@@ -28,7 +28,7 @@ export default function ChangePasswordScreen() {
     setLoading(true);
     try {
       await updatePassword(password);
-      Alert.alert("Password changed", "Your DMS password was updated.", [
+      Alert.alert("Password changed", "Your CapDent password was updated.", [
         { text: "Done", onPress: () => router.back() },
       ]);
     } catch (error) {

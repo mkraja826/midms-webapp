@@ -1,6 +1,6 @@
-﻿# DMS Play Console Data Safety Draft
+﻿# CapDent Play Console Data Safety Draft
 
-App name: DMS - Dental Management System
+App name: CapDent
 Package: com.dms.clinic
 
 Privacy Policy URL:
@@ -21,7 +21,7 @@ Yes.
 Yes.
 
 Reason:
-DMS sends data to backend services over secure network connections.
+CapDent sends data to backend services over secure network connections.
 
 ### Do you provide a way for users to request that their data is deleted?
 Yes.
@@ -33,11 +33,11 @@ Web URL:
 https://main.dms-legal.pages.dev/delete-account.html
 
 ### Does your app share user data with third parties?
-Recommended answer for current DMS:
+Recommended answer for current CapDent:
 No.
 
 Reason:
-DMS uses backend/service providers for app functionality. Data is not sold or shared for ads/marketing. If analytics, ads, Firebase Crashlytics, Sentry, or other SDKs are added later, this answer must be reviewed again.
+CapDent uses backend/service providers for app functionality. Data is not sold or shared for ads/marketing. If analytics, ads, Firebase Crashlytics, Sentry, or other SDKs are added later, this answer must be reviewed again.
 
 ## Data types to declare as collected
 
@@ -145,7 +145,7 @@ Audio files:
 No.
 
 Calendar:
-No, because DMS stores appointments inside the app, not the user's device calendar.
+No, because CapDent stores appointments inside the app, not the user's device calendar.
 
 Contacts:
 No, unless the app imports contacts from the phone contact book.
@@ -176,7 +176,7 @@ Do not select unless added later:
 
 ## Notes before submission
 
-1. If Google asks whether data is processed ephemerally, answer No for core DMS records because clinic data is stored.
+1. If Google asks whether data is processed ephemerally, answer No for core CapDent records because clinic data is stored.
 2. If Google asks whether users can request data deletion, answer Yes.
 3. If Google asks whether data is optional or required, account/login data is required. Prescription photos, X-rays, PDFs, and some clinic workflow details are optional because clinics upload them only when needed.
 4. If any analytics, ads, crash reporting, or marketing SDK is added later, update this Data Safety form before release.

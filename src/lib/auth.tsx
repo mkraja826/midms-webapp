@@ -17,6 +17,7 @@ import {
   Profile,
   clearForceSignedOut,
   clearSupabaseAuthStorage,
+  invalidateSupabaseCache,
   markForceSignedOut,
   shouldForceSignedOut,
   supabase,
@@ -56,12 +57,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [session, setSession] = useState<Session | null>(null);
   const [profile, setProfile] = useState<Profile | null>(null);
   const [loading, setLoading] = useState(true);
-  const [loadingMessage, setLoadingMessage] = useState("Opening DMS...");
+  const [loadingMessage, setLoadingMessage] = useState("Opening CapDent...");
 
   async function refreshProfile() {
     try {
       setLoadingMessage("Loading clinic profile...");
-      const current = await withTimeout(getCurrentProfile(), 12000);
+      const current = await withTimeout(getCurrentProfile({ force: true }), 12000);
       setProfile(current);
       return current;
     } catch (error) {
@@ -75,6 +76,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setLoadingMessage("Checking login...");
     setSession(nextSession);
     if (!nextSession) {
+      invalidateSupabaseCache();
       setProfile(null);
       return;
     }
@@ -83,9 +85,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     let mounted = true;
+    let authChangeTimer: ReturnType<typeof setTimeout> | null = null;
     async function initAuth() {
       try {
-        setLoadingMessage("Opening DMS...");
+        setLoadingMessage("Opening CapDent...");
         if (await shouldForceSignedOut()) {
           await clearSupabaseAuthStorage();
           if (!mounted) return;
@@ -106,26 +109,35 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
     }
     initAuth();
-    const { data: listener } = supabase.auth.onAuthStateChange(async (event, nextSession) => {
+    const { data: listener } = supabase.auth.onAuthStateChange((event, nextSession) => {
       if (!mounted) return;
       if (event === "TOKEN_REFRESHED") {
         setSession(nextSession);
         return;
       }
-      try {
-        setLoading(true);
-        setLoadingMessage("Restoring clinic session...");
-        await loadSession(nextSession);
-      } catch (error) {
-        console.warn("Auth state load failed:", error);
-        setSession(null);
-        setProfile(null);
-      } finally {
-        if (mounted) setLoading(false);
-      }
+
+      // Supabase recommends keeping this callback synchronous. Profile queries
+      // are deferred so they cannot contend with the auth client's internal lock.
+      if (authChangeTimer) clearTimeout(authChangeTimer);
+      authChangeTimer = setTimeout(() => {
+        void (async () => {
+          try {
+            setLoading(true);
+            setLoadingMessage("Restoring clinic session...");
+            await loadSession(nextSession);
+          } catch (error) {
+            console.warn("Auth state load failed:", error);
+            setSession(null);
+            setProfile(null);
+          } finally {
+            if (mounted) setLoading(false);
+          }
+        })();
+      }, 0);
     });
     return () => {
       mounted = false;
+      if (authChangeTimer) clearTimeout(authChangeTimer);
       listener.subscription.unsubscribe();
     };
   }, []);
@@ -178,6 +190,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           10000
         );
         if (error) throw error;
+        invalidateSupabaseCache();
         await clearForceSignedOut();
         if (data.user && !data.user.email_confirmed_at) {
           await supabase.auth.signOut();
@@ -228,6 +241,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           console.warn("Sign out request failed:", error);
         } finally {
           await markForceSignedOut();
+          invalidateSupabaseCache();
           await clearSupabaseAuthStorage();
           setSession(null);
           setProfile(null);

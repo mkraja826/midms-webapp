@@ -146,7 +146,7 @@ export default function ClinicBrandingScreen() {
               {name || "Your Clinic Name"}
             </Text>
             <Text style={{ color: colors.muted, marginTop: 4 }}>
-              DMS clinic workspace
+              CapDent clinic workspace
             </Text>
           </View>
         </View>

@@ -371,7 +371,7 @@ export default function StaffManagementScreen() {
         ) : (
           <EmptyState
             title="No staff yet"
-            message="Invite your wife as working doctor and assistants as receptionists."
+            message="Invite working doctors and reception staff to this clinic workspace."
             icon="people-outline"
           />
         )}

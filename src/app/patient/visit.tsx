@@ -1,6 +1,6 @@
 import { Ionicons } from "@expo/vector-icons";
 import { router, useLocalSearchParams } from "expo-router";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Alert, Pressable, ScrollView, Text, TextInput, View } from "react-native";
 import { AppButton } from "@/components/AppButton";
 import { AppInput } from "@/components/AppInput";
@@ -9,7 +9,9 @@ import { Screen } from "@/components/Screen";
 import { SectionCard } from "@/components/SectionCard";
 import { StatusBadge } from "@/components/StatusBadge";
 import { colors } from "@/constants/colors";
-import { createAppointment, createInvoice, createVisit, getCurrentProfile, getPatients, supabase } from "@/lib/supabase";
+import { useAuth } from "@/lib/auth";
+import { searchPatientsPage } from "@/lib/patientDirectory";
+import { createAppointment, createInvoice, createVisit, getCurrentProfile, supabase } from "@/lib/supabase";
 import type { Patient, Profile } from "@/lib/supabase";
 
 type ComplaintKey = "Pain" | "Swelling" | "Cap issue" | "Wisdom tooth" | "Broken tooth" | "Review" | "Other";
@@ -138,8 +140,10 @@ function getErrorMessage(error: unknown) {
 }
 
 export default function AddVisitScreen() {
+  const { profile } = useAuth();
   const params = useLocalSearchParams<{ patient_id?: string }>();
   const incomingPatientId = typeof params.patient_id === "string" ? params.patient_id : "";
+  const isWorkingDoctor = profile?.role === "working_doctor" || profile?.role === "doctor";
 
   const dateOptions = useMemo(() => createDateOptions(90), []);
   const firstDateWithFutureSlot = useMemo(() => {
@@ -173,20 +177,44 @@ export default function AddVisitScreen() {
   const [loadingPatients, setLoadingPatients] = useState(true);
   const [loadingDoctors, setLoadingDoctors] = useState(true);
   const [saving, setSaving] = useState(false);
+  const patientRequestRef = useRef(0);
+  const patientSearchMountedRef = useRef(false);
 
-  async function loadPatients() {
+  async function loadPatients(searchText = patientSearch) {
+    const requestId = patientRequestRef.current + 1;
+    patientRequestRef.current = requestId;
+
     try {
       setLoadingPatients(true);
-      const rows = await getPatients();
-      setPatients(rows);
+      const result = await searchPatientsPage({
+        query: searchText,
+        page: 1,
+        pageSize: 12,
+      });
+      let rows = result.patients;
 
-      if (incomingPatientId && rows.some((patient) => patient.id === incomingPatientId)) {
-        setSelectedPatientId(incomingPatientId);
+      if (incomingPatientId && !rows.some((patient) => patient.id === incomingPatientId)) {
+        const { data, error } = await supabase
+          .from("patients")
+          .select("*")
+          .eq("id", incomingPatientId)
+          .maybeSingle<Patient>();
+
+        if (error) throw error;
+        if (data) rows = [data, ...rows];
+      }
+
+      if (requestId === patientRequestRef.current) {
+        setPatients(rows);
+
+        if (incomingPatientId && rows.some((patient) => patient.id === incomingPatientId)) {
+          setSelectedPatientId(incomingPatientId);
+        }
       }
     } catch (error) {
       Alert.alert("Patients load failed", getErrorMessage(error));
     } finally {
-      setLoadingPatients(false);
+      if (requestId === patientRequestRef.current) setLoadingPatients(false);
     }
   }
 
@@ -229,12 +257,25 @@ export default function AddVisitScreen() {
   }
 
   async function loadScreenData() {
-    await Promise.all([loadPatients(), loadDoctors()]);
+    await Promise.all([loadPatients(patientSearch), loadDoctors()]);
   }
 
   useEffect(() => {
-    loadScreenData();
+    void loadScreenData();
   }, [incomingPatientId]);
+
+  useEffect(() => {
+    if (!patientSearchMountedRef.current) {
+      patientSearchMountedRef.current = true;
+      return;
+    }
+
+    const timeout = setTimeout(() => {
+      void loadPatients(patientSearch);
+    }, 260);
+
+    return () => clearTimeout(timeout);
+  }, [patientSearch]);
 
   useEffect(() => {
     setTreatmentFlow("undecided");
@@ -323,22 +364,7 @@ export default function AddVisitScreen() {
     [doctors, selectedDoctorId]
   );
 
-  const filteredPatients = useMemo(() => {
-    const term = patientSearch.trim().toLowerCase();
-    const rows = !term
-      ? patients.slice(0, 12)
-      : patients
-          .filter((patient) => {
-            return (
-              patient.name.toLowerCase().includes(term) ||
-              (patient.phone || "").toLowerCase().includes(term) ||
-              (patient.patient_code || "").toLowerCase().includes(term)
-            );
-          })
-          .slice(0, 12);
-
-    return rows;
-  }, [patientSearch, patients]);
+  const filteredPatients = patients;
 
   const selectedDate = dateOptions.find((option) => option.key === selectedDateKey) || firstDateWithFutureSlot;
 
@@ -481,6 +507,12 @@ export default function AddVisitScreen() {
     const continuingExistingTreatment = hasActiveTreatment && selectedFlow === "ongoing";
     const creatingSeparateTreatment = hasActiveTreatment && selectedFlow === "new";
     const shouldCreateTreatment = !continuingExistingTreatment && Boolean(treatmentName.trim() || cost > 0);
+    const newTreatmentDueAfterVisit = shouldCreateTreatment ? Math.max(cost - paid, 0) : 0;
+    const existingTreatmentDueAfterVisit = continuingExistingTreatment
+      ? Math.max(activeTreatmentDue - ongoingCollected, 0)
+      : 0;
+    const shouldCompleteNewTreatment = shouldCreateTreatment && !followupDateTime && newTreatmentDueAfterVisit <= 0;
+    const shouldCompleteExistingTreatment = continuingExistingTreatment && !followupDateTime && existingTreatmentDueAfterVisit <= 0;
 
     if (hasActiveTreatment && selectedFlow === "undecided") {
       Alert.alert("Choose treatment type", "Select Ongoing Treatment or New Treatment from the Ongoing treatment check card, then press Save again.");
@@ -528,24 +560,22 @@ export default function AddVisitScreen() {
         chief_complaint: complaintSummary.trim(),
         diagnosis: undefined,
         doctor_notes: continuingExistingTreatment
-          ? `Ongoing treatment visit: ${primaryActiveTreatment?.treatment_name || "existing treatment"}. ${followupDateTime ? "Follow-up planned; treatment remains ongoing." : "No follow-up planned; treatment marked completed."}`
+          ? `Ongoing treatment visit: ${primaryActiveTreatment?.treatment_name || "existing treatment"}. ${
+              followupDateTime
+                ? "Follow-up planned; treatment remains ongoing."
+                : shouldCompleteExistingTreatment
+                  ? "No due and no follow-up; treatment marked completed."
+                  : "Pending due remains; treatment stays ongoing."
+            }`
           : undefined,
         next_appointment_date: followupDateTime ? followupDateTime.toISOString() : null,
         treatment_name: shouldCreateTreatment ? treatmentName.trim() : undefined,
         treatment_cost: shouldCreateTreatment ? cost : undefined,
         treatment_category: shouldCreateTreatment ? treatmentCategory.trim() || undefined : undefined,
+        treatment_status: shouldCompleteNewTreatment ? "completed" : undefined,
       });
 
 
-      if (continuingExistingTreatment && primaryActiveTreatment?.id) {
-        const { error: treatmentStatusError } = await supabase
-          .from("treatments")
-          .update({ status: followupDateTime ? "ongoing" : "completed" })
-          .eq("id", primaryActiveTreatment.id)
-          .eq("patient_id", selectedPatientId);
-
-        if (treatmentStatusError) throw treatmentStatusError;
-      }
       if (continuingExistingTreatment && ongoingCollected > 0) {
         const { error: paymentError } = await supabase.rpc("collect_reception_fee", {
           p_patient_id: selectedPatientId,
@@ -556,6 +586,16 @@ export default function AddVisitScreen() {
         });
 
         if (paymentError) throw paymentError;
+      }
+
+      if (continuingExistingTreatment && primaryActiveTreatment?.id) {
+        const { error: treatmentStatusError } = await supabase
+          .from("treatments")
+          .update({ status: shouldCompleteExistingTreatment ? "completed" : "ongoing" })
+          .eq("id", primaryActiveTreatment.id)
+          .eq("patient_id", selectedPatientId);
+
+        if (treatmentStatusError) throw treatmentStatusError;
       }
 
       if (shouldCreateTreatment && cost > 0) {
@@ -587,7 +627,9 @@ export default function AddVisitScreen() {
         continuingExistingTreatment
           ? followupDateTime
             ? "Visit saved under the existing treatment. Follow-up added, so treatment remains ongoing."
-            : "Visit saved under the existing treatment. No follow-up added, so treatment is marked completed."
+            : shouldCompleteExistingTreatment
+              ? "Visit saved under the existing treatment. No due and no follow-up, so treatment is marked completed."
+              : "Visit saved under the existing treatment. Pending due remains, so treatment stays ongoing."
           : `Visit saved under ${selectedDoctor?.name || "selected doctor"} and patient removed from waiting queue.`,
         [{ text: "Open Patient", onPress: () => router.replace(`/patient/${selectedPatientId}` as never) }]
       );
@@ -603,7 +645,9 @@ export default function AddVisitScreen() {
       <View style={{ gap: 6 }}>
         <Text style={{ color: colors.text, fontSize: 30, fontWeight: "900" }}>Add Visit</Text>
         <Text style={{ color: colors.muted, fontSize: 15, lineHeight: 21 }}>
-          Select patient, select treated doctor, add complaint/treatment, and complete the waiting queue.
+          {isWorkingDoctor
+            ? "Select patient, add complaint/treatment, and complete the waiting queue."
+            : "Select patient, select treated doctor, add complaint/treatment, and complete the waiting queue."}
         </Text>
       </View>
 
@@ -727,7 +771,7 @@ export default function AddVisitScreen() {
 
                 <Text style={{ color: colors.text, fontWeight: "900" }}>Treatment pending: {formatMoney(activeTreatmentDue)}</Text>
                 <Text style={{ color: colors.muted, fontSize: 12, lineHeight: 18 }}>
-                  Ongoing + no follow-up = marks existing treatment completed. Ongoing + follow-up = keeps it ongoing.
+                  Ongoing + no due + no follow-up = completed. Pending due or follow-up keeps it ongoing.
                 </Text>
               </View>
 
@@ -753,9 +797,52 @@ export default function AddVisitScreen() {
         </SectionCard>
       ) : null}
 
-      <SectionCard title="Treated By" subtitle="Reception can select the doctor when entering visit from oral instructions.">
+      <SectionCard
+        title="Treated By"
+        subtitle={isWorkingDoctor ? "Visit will be saved under your doctor profile." : "Select the doctor who treated this patient."}
+      >
         {loadingDoctors ? (
           <Text style={{ color: colors.muted }}>Loading doctors...</Text>
+        ) : isWorkingDoctor ? (
+          selectedDoctor ? (
+            <View
+              style={{
+                minHeight: 62,
+                borderRadius: 18,
+                borderWidth: 1,
+                borderColor: colors.primary,
+                backgroundColor: colors.primarySoft,
+                padding: 12,
+                flexDirection: "row",
+                alignItems: "center",
+                gap: 12,
+              }}
+            >
+              <View
+                style={{
+                  width: 42,
+                  height: 42,
+                  borderRadius: 15,
+                  backgroundColor: colors.primary,
+                  alignItems: "center",
+                  justifyContent: "center",
+                }}
+              >
+                <Ionicons name="medical-outline" size={21} color={colors.white} />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={{ color: colors.text, fontWeight: "900", fontSize: 16 }}>{selectedDoctor.name || "Doctor"}</Text>
+                <Text style={{ color: colors.muted, marginTop: 2 }}>Your visit entry</Text>
+              </View>
+              <StatusBadge label="Treating" tone="success" />
+            </View>
+          ) : (
+            <EmptyState
+              title="Doctor profile not found"
+              message="Ask the clinic owner to check that your staff profile is active."
+              icon="medical-outline"
+            />
+          )
         ) : doctors.length ? (
           <View style={{ gap: 10 }}>
             {doctors.map((doctor) => {

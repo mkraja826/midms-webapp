@@ -1,6 +1,6 @@
 {
   "expo": {
-    "name": "MiDMS",
+    "name": "CapDent",
     "slug": "dmsdms",
     "scheme": "dms",
     "version": "1.1.0",
@@ -24,8 +24,8 @@
       [
         "expo-image-picker",
         {
-          "cameraPermission": "MiDMS needs camera access to take patient photos, prescription photos, and X-ray images.",
-          "photosPermission": "MiDMS needs photo library access to upload patient photos, prescriptions, X-rays, and reports."
+          "cameraPermission": "CapDent needs camera access to take patient photos, prescription photos, and X-ray images.",
+          "photosPermission": "CapDent needs photo library access to upload patient photos, prescriptions, X-rays, and reports."
         }
       ],
       [
@@ -64,8 +64,8 @@
       "bundleIdentifier": "com.dms.clinic",
       "buildNumber": "2",
       "infoPlist": {
-        "NSCameraUsageDescription": "MiDMS needs camera access to take patient photos, prescription photos, and X-ray images.",
-        "NSPhotoLibraryUsageDescription": "MiDMS needs photo library access to upload patient photos, prescriptions, X-rays, and reports.",
+        "NSCameraUsageDescription": "CapDent needs camera access to take patient photos, prescription photos, and X-ray images.",
+        "NSPhotoLibraryUsageDescription": "CapDent needs photo library access to upload patient photos, prescriptions, X-rays, and reports.",
         "ITSAppUsesNonExemptEncryption": false
       }
     },

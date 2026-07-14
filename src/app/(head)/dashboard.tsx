@@ -1,23 +1,35 @@
 import { Ionicons } from "@expo/vector-icons";
 import { router } from "expo-router";
-import { useEffect, useMemo, useState, type ComponentProps } from "react";
+import { useEffect, useMemo, useState, type ComponentProps, type ReactNode } from "react";
 import { Alert, Pressable, Text, View } from "react-native";
-import { AppButton } from "@/components/AppButton";
 import { ClinicBrandHeader } from "@/components/ClinicBrandHeader";
 import { EmptyState } from "@/components/EmptyState";
 import { Screen } from "@/components/Screen";
-import { SectionCard } from "@/components/SectionCard";
 import { StatusBadge } from "@/components/StatusBadge";
 import { colors } from "@/constants/colors";
 import { useAuth } from "@/lib/auth";
-import { ClinicSubscription, getClinicSubscription, getSubscriptionDisplay } from "@/lib/subscription";
-import { DashboardStats, getDashboardStats, getRoleLabel, getWorkflowDashboardSummary } from "@/lib/supabase";
+import {
+  DashboardStats,
+  WorkflowDashboardSummary,
+  getDashboardStats,
+  getRoleLabel,
+  getWorkflowDashboardSummary,
+} from "@/lib/supabase";
 
-type AppointmentRow = any;
+type AppointmentRow = {
+  id: string;
+  patient_id: string;
+  appointment_time: string;
+  status?: string | null;
+  patients?: {
+    name?: string | null;
+    phone?: string | null;
+  } | null;
+};
 type IconName = ComponentProps<typeof Ionicons>["name"];
 
-function money(value?: number) {
-  return `₹${Math.round(Number(value || 0)).toLocaleString("en-IN")}`;
+function money(value?: number | null) {
+  return `\u20B9${Math.round(Number(value || 0)).toLocaleString("en-IN")}`;
 }
 
 function appointmentTime(value: string) {
@@ -29,31 +41,218 @@ function isWaitingStatus(status?: string | null) {
   return ["scheduled", "waiting", "checked_in", "booked"].includes(value);
 }
 
-function toneColors(tone: "success" | "warning" | "danger") {
-  if (tone === "danger") {
-    return {
-      background: colors.dangerSoft,
-      icon: colors.danger,
-      border: "#FECACA",
-    };
+export default function HeadDashboard() {
+  const { profile } = useAuth();
+  const [stats, setStats] = useState<DashboardStats | null>(null);
+  const [summary, setSummary] = useState<WorkflowDashboardSummary | null>(null);
+  const [loading, setLoading] = useState(true);
+
+  async function load(force = false) {
+    try {
+      setLoading(true);
+      const [data, row] = await Promise.all([
+        getDashboardStats({ force }),
+        getWorkflowDashboardSummary({ force }),
+      ]);
+
+      setStats(data);
+      setSummary(row);
+    } catch (error) {
+      Alert.alert("Dashboard load failed", error instanceof Error ? error.message : "Please try again.");
+    } finally {
+      setLoading(false);
+    }
   }
 
-  if (tone === "warning") {
-    return {
-      background: colors.warningSoft,
-      icon: colors.warning,
-      border: "#FDE68A",
-    };
-  }
+  useEffect(() => {
+    void load();
+  }, []);
 
-  return {
-    background: colors.successSoft,
-    icon: colors.success,
-    border: "#A7F3D0",
-  };
+  const appointments = useMemo<AppointmentRow[]>(
+    () => ((stats?.todayAppointmentList ?? []) as AppointmentRow[]),
+    [stats?.todayAppointmentList]
+  );
+  const waiting = appointments.filter((item) => isWaitingStatus(item.status));
+  const todayRevenue = summary?.today_revenue ?? stats?.todayRevenue ?? 0;
+  const pendingPayments = summary?.pending_payments ?? stats?.pendingPayments ?? 0;
+  const waitingCount = summary?.waiting_count ?? waiting.length;
+  const completedCount = summary?.completed_count ?? 0;
+  const patientCount = summary?.today_patient_count ?? waitingCount + completedCount;
+
+  const breakdownRows = [
+    { label: "OP consultation", value: summary?.op_fee_revenue_today, icon: "receipt-outline" as IconName },
+    { label: "Treatments", value: summary?.treatment_revenue_today, icon: "construct-outline" as IconName },
+    { label: "Medication", value: summary?.medication_revenue_today, icon: "medical-outline" as IconName },
+    { label: "X-ray", value: summary?.xray_revenue_today, icon: "scan-outline" as IconName },
+    { label: "Pending collected", value: summary?.pending_collected_today, icon: "wallet-outline" as IconName },
+    { label: "Other", value: summary?.other_revenue_today, icon: "cash-outline" as IconName },
+  ].filter((row) => Number(row.value || 0) > 0 || row.label !== "Other");
+
+  return (
+    <Screen refreshing={loading} onRefresh={() => load(true)}>
+      <ClinicBrandHeader
+        showManage
+        subtitle={`${getRoleLabel(profile?.role ?? "head_doctor")} - Owner Dashboard`}
+      />
+
+      <OwnerSummary
+        loading={loading}
+        revenue={todayRevenue}
+        pending={pendingPayments}
+        waiting={waitingCount}
+        completed={completedCount}
+      />
+
+      <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 10 }}>
+        <CompactMetric label="Patients Today" value={loading ? "..." : patientCount} icon="people-outline" />
+        <CompactMetric label="Waiting" value={loading ? "..." : waitingCount} icon="hourglass-outline" tone="warning" />
+        <CompactMetric label="Completed" value={loading ? "..." : completedCount} icon="checkmark-done-outline" tone="success" />
+        <CompactMetric label="Total Patients" value={loading ? "..." : stats?.totalPatients ?? 0} icon="person-outline" />
+      </View>
+
+      <DashboardSection title="Collections" subtitle="Today's split, kept simple for closing review.">
+        {summary ? (
+          <FlatListPanel>
+            {breakdownRows.map((row, index) => (
+              <DashboardRow
+                key={row.label}
+                title={row.label}
+                subtitle="Collected today"
+                value={money(row.value)}
+                icon={row.icon}
+                isLast={index === breakdownRows.length - 1}
+                onPress={() => router.push("/reports/payments" as never)}
+              />
+            ))}
+          </FlatListPanel>
+        ) : (
+          <EmptyState
+            title="Collection split loading"
+            message="Revenue totals are visible above. Detailed split appears when workflow summary is available."
+            icon="analytics-outline"
+          />
+        )}
+      </DashboardSection>
+
+      <DashboardSection title="Owner Priorities" subtitle="The few actions that matter during a working day.">
+        <FlatListPanel>
+          <DashboardRow
+            title="Payment Review"
+            subtitle="Collections, dues, and pending amount follow-up"
+            icon="wallet-outline"
+            tone="warning"
+            onPress={() => router.push("/reports/payments" as never)}
+          />
+          <DashboardRow
+            title="Clinic Intelligence"
+            subtitle="Owner insight preview now, deeper analytics later"
+            icon="sparkles-outline"
+            tone="success"
+            onPress={() => router.push("/reports/owner-review" as never)}
+          />
+          <DashboardRow
+            title="Patient Search"
+            subtitle="Open profile, history, visits, files, and payment status"
+            icon="search-outline"
+            onPress={() => router.push("/patient" as never)}
+          />
+          <DashboardRow
+            title="Ongoing Treatments"
+            subtitle="Review active treatment work and completion status"
+            icon="git-branch-outline"
+            onPress={() => router.push("/treatments/ongoing" as never)}
+          />
+          <DashboardRow
+            title="Staff"
+            subtitle="Invite staff and manage clinic access"
+            icon="people-circle-outline"
+            onPress={() => router.push("/staff" as never)}
+            isLast
+          />
+        </FlatListPanel>
+      </DashboardSection>
+
+      <DashboardSection title="Waiting Room" subtitle={`${waiting.length} active waiting patient${waiting.length === 1 ? "" : "s"} today.`}>
+        {waiting.length ? (
+          <FlatListPanel>
+            {waiting.map((item, index) => (
+              <WaitingRow
+                key={item.id}
+                item={item}
+                isLast={index === waiting.length - 1}
+              />
+            ))}
+          </FlatListPanel>
+        ) : (
+          <EmptyState title="No waiting patients" message="Reception check-ins will appear here." icon="checkmark-done-outline" />
+        )}
+      </DashboardSection>
+    </Screen>
+  );
 }
 
-function MoneyCard({
+function OwnerSummary({
+  loading,
+  revenue,
+  pending,
+  waiting,
+  completed,
+}: {
+  loading: boolean;
+  revenue: number;
+  pending: number;
+  waiting: number;
+  completed: number;
+}) {
+  return (
+    <View
+      style={{
+        borderRadius: 28,
+        padding: 18,
+        backgroundColor: colors.primary,
+        gap: 16,
+      }}
+    >
+      <View style={{ flexDirection: "row", alignItems: "flex-start", justifyContent: "space-between", gap: 14 }}>
+        <View style={{ flex: 1 }}>
+          <Text style={{ color: "rgba(255,255,255,0.76)", fontSize: 12, fontWeight: "900", textTransform: "uppercase" }}>
+            Today at the clinic
+          </Text>
+          <Text numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.74} style={{ color: colors.white, fontSize: 32, fontWeight: "900", marginTop: 8 }}>
+            {loading ? "Loading..." : money(revenue)}
+          </Text>
+          <Text style={{ color: "rgba(255,255,255,0.76)", lineHeight: 20, marginTop: 4, fontWeight: "700" }}>
+            {waiting ? `${waiting} waiting now` : "Queue clear"} - {completed} completed today
+          </Text>
+        </View>
+
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel="Open clinic report"
+          onPress={() => router.push("/reports/clinic" as never)}
+          hitSlop={8}
+          style={({ pressed }) => ({
+            width: 48,
+            height: 48,
+            borderRadius: 18,
+            backgroundColor: pressed ? "rgba(255,255,255,0.24)" : "rgba(255,255,255,0.16)",
+            alignItems: "center",
+            justifyContent: "center",
+          })}
+        >
+          <Ionicons name="analytics-outline" size={24} color={colors.white} />
+        </Pressable>
+      </View>
+
+      <View style={{ flexDirection: "row", gap: 10 }}>
+        <SummaryPill label="Collected" value={loading ? "..." : money(revenue)} icon="cash-outline" />
+        <SummaryPill label="Pending" value={loading ? "..." : money(pending)} icon="wallet-outline" warning />
+      </View>
+    </View>
+  );
+}
+
+function SummaryPill({
   label,
   value,
   icon,
@@ -68,349 +267,213 @@ function MoneyCard({
     <View
       style={{
         flex: 1,
-        borderRadius: 24,
-        padding: 16,
-        backgroundColor: colors.background,
-        borderWidth: 1,
-        borderColor: colors.border,
+        minHeight: 76,
+        borderRadius: 20,
+        padding: 12,
+        backgroundColor: "rgba(255,255,255,0.13)",
+        justifyContent: "space-between",
       }}
     >
-      <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
-        <Text style={{ color: colors.muted, fontWeight: "900", fontSize: 12, textTransform: "uppercase" }}>
+      <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 6 }}>
+        <Text style={{ color: "rgba(255,255,255,0.74)", fontSize: 11, fontWeight: "900", textTransform: "uppercase" }}>
           {label}
         </Text>
-        <Ionicons name={icon} size={22} color={warning ? colors.warning : colors.success} />
+        <Ionicons name={icon} size={17} color={warning ? colors.warningSoft : "rgba(255,255,255,0.82)"} />
       </View>
-
-      <Text style={{ color: colors.text, fontSize: 27, fontWeight: "900", marginTop: 12 }} numberOfLines={1}>
+      <Text numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.72} style={{ color: colors.white, fontSize: 18, fontWeight: "900", fontVariant: ["tabular-nums"] }}>
         {value}
       </Text>
     </View>
   );
 }
 
-function MiniStat({
+function CompactMetric({
   label,
   value,
   icon,
+  tone = "primary",
 }: {
   label: string;
   value: string | number;
   icon: IconName;
+  tone?: "primary" | "success" | "warning";
 }) {
+  const bg = tone === "success" ? colors.successSoft : tone === "warning" ? colors.warningSoft : colors.surface;
+  const fg = tone === "success" ? colors.success : tone === "warning" ? colors.warning : colors.primary;
+
   return (
     <View
       style={{
         flex: 1,
         minWidth: "46%",
-        borderRadius: 18,
+        minHeight: 82,
+        borderRadius: 20,
         padding: 12,
-        backgroundColor: colors.surfaceSoft,
+        backgroundColor: bg,
         borderWidth: 1,
         borderColor: colors.border,
+        justifyContent: "space-between",
       }}
     >
-      <Ionicons name={icon} size={19} color={colors.primary} />
-      <Text style={{ color: colors.text, fontSize: 20, fontWeight: "900", marginTop: 8 }} numberOfLines={1}>
-        {value}
-      </Text>
-      <Text style={{ color: colors.muted, fontSize: 11, fontWeight: "800", marginTop: 2 }} numberOfLines={1}>
-        {label}
-      </Text>
+      <Ionicons name={icon} size={20} color={fg} />
+      <View>
+        <Text numberOfLines={1} style={{ color: colors.text, fontSize: 20, fontWeight: "900", fontVariant: ["tabular-nums"] }}>
+          {value}
+        </Text>
+        <Text numberOfLines={1} style={{ color: colors.muted, fontSize: 11, fontWeight: "900", marginTop: 2 }}>
+          {label}
+        </Text>
+      </View>
     </View>
   );
 }
 
-function RevenueBreakdownRow({
-  label,
-  value,
-  icon,
+function DashboardSection({
+  title,
+  subtitle,
+  children,
 }: {
-  label: string;
-  value: string;
-  icon: IconName;
+  title: string;
+  subtitle?: string;
+  children: ReactNode;
 }) {
+  return (
+    <View style={{ gap: 10 }}>
+      <View style={{ gap: 3 }}>
+        <Text style={{ color: colors.text, fontSize: 18, fontWeight: "900" }}>{title}</Text>
+        {subtitle ? <Text style={{ color: colors.muted, lineHeight: 19 }}>{subtitle}</Text> : null}
+      </View>
+      {children}
+    </View>
+  );
+}
+
+function FlatListPanel({ children }: { children: ReactNode }) {
   return (
     <View
       style={{
-        flexDirection: "row",
-        alignItems: "center",
-        gap: 12,
-        padding: 12,
-        borderRadius: 18,
-        backgroundColor: colors.background,
-        borderWidth: 1,
+        backgroundColor: colors.surface,
+        borderTopWidth: 1,
+        borderBottomWidth: 1,
         borderColor: colors.border,
       }}
     >
+      {children}
+    </View>
+  );
+}
+
+function DashboardRow({
+  title,
+  subtitle,
+  icon,
+  value,
+  onPress,
+  tone = "primary",
+  isLast = false,
+}: {
+  title: string;
+  subtitle: string;
+  icon: IconName;
+  value?: string;
+  onPress: () => void;
+  tone?: "primary" | "success" | "warning";
+  isLast?: boolean;
+}) {
+  const iconColor = tone === "success" ? colors.success : tone === "warning" ? colors.warning : colors.primary;
+  const iconBg = tone === "success" ? colors.successSoft : tone === "warning" ? colors.warningSoft : colors.primarySoft;
+
+  return (
+    <Pressable
+      accessibilityRole="button"
+      accessibilityLabel={`${title}. ${subtitle}`}
+      onPress={onPress}
+      android_ripple={{ color: "rgba(15, 118, 110, 0.08)", borderless: false }}
+      style={({ pressed }) => ({
+        minHeight: 70,
+        paddingVertical: 12,
+        flexDirection: "row",
+        alignItems: "center",
+        gap: 12,
+        borderBottomWidth: isLast ? 0 : 1,
+        borderBottomColor: colors.border,
+        backgroundColor: pressed ? colors.surfaceSoft : colors.surface,
+      })}
+    >
       <View
         style={{
-          width: 38,
-          height: 38,
-          borderRadius: 14,
-          backgroundColor: colors.primarySoft,
+          width: 42,
+          height: 42,
+          borderRadius: 15,
+          backgroundColor: iconBg,
           alignItems: "center",
           justifyContent: "center",
         }}
       >
-        <Ionicons name={icon} size={19} color={colors.primary} />
+        <Ionicons name={icon} size={21} color={iconColor} />
       </View>
 
-      <Text style={{ flex: 1, color: colors.text, fontWeight: "900" }}>{label}</Text>
-      <Text style={{ color: colors.text, fontWeight: "900", fontSize: 16 }}>{value}</Text>
-    </View>
-  );
-}
+      <View style={{ flex: 1 }}>
+        <Text numberOfLines={1} style={{ color: colors.text, fontSize: 15, fontWeight: "900" }}>
+          {title}
+        </Text>
+        <Text numberOfLines={1} style={{ color: colors.muted, marginTop: 2, fontSize: 12 }}>
+          {subtitle}
+        </Text>
+      </View>
 
-function QuickAction({
-  title,
-  icon,
-  onPress,
-  primary,
-}: {
-  title: string;
-  icon: IconName;
-  onPress: () => void;
-  primary?: boolean;
-}) {
-  return (
-    <Pressable
-      onPress={onPress}
-      style={({ pressed }) => ({
-        width: "48%",
-        borderRadius: 20,
-        padding: 14,
-        minHeight: 96,
-        backgroundColor: primary ? colors.primary : pressed ? colors.surfaceSoft : colors.background,
-        borderWidth: 1,
-        borderColor: primary ? colors.primary : colors.border,
-        justifyContent: "space-between",
-        opacity: pressed ? 0.86 : 1,
-      })}
-    >
-      <Ionicons name={icon} size={24} color={primary ? "#fff" : colors.primary} />
-      <Text style={{ color: primary ? "#fff" : colors.text, fontWeight: "900", fontSize: 14 }} numberOfLines={2}>
-        {title}
-      </Text>
+      {value ? (
+        <Text numberOfLines={1} style={{ color: colors.text, fontSize: 15, fontWeight: "900", fontVariant: ["tabular-nums"] }}>
+          {value}
+        </Text>
+      ) : null}
+      <Ionicons name="chevron-forward" size={18} color={colors.muted} />
     </Pressable>
   );
 }
 
-export default function HeadDashboard() {
-  const { profile } = useAuth();
-  const [stats, setStats] = useState<DashboardStats | null>(null);
-  const [summary, setSummary] = useState<any>(null);
-  const [subscription, setSubscription] = useState<ClinicSubscription | null>(null);
-  const [loading, setLoading] = useState(true);
-
-  async function load() {
-    try {
-      setLoading(true);
-      const data = await getDashboardStats();
-      setStats(data);
-
-      const row = await getWorkflowDashboardSummary();
-      if (row) setSummary(row);
-
-      const plan = await getClinicSubscription();
-      setSubscription(plan);
-    } catch (error) {
-      Alert.alert("Dashboard load failed", error instanceof Error ? error.message : "Please try again.");
-    } finally {
-      setLoading(false);
-    }
-  }
-
-  useEffect(() => {
-    load();
-  }, []);
-
-  const appointments = useMemo(() => stats?.todayAppointmentList ?? [], [stats?.todayAppointmentList]);
-  const waiting = appointments.filter((item: AppointmentRow) => isWaitingStatus(item.status));
-
-  const todayRevenue = summary?.today_revenue ?? stats?.todayRevenue;
-  const pendingPayments = summary?.pending_payments ?? stats?.pendingPayments;
-  const waitingCount = summary?.waiting_count ?? waiting.length;
-  const completedCount = summary?.completed_count ?? 0;
-  const subscriptionInfo = getSubscriptionDisplay(subscription);
-  const subscriptionTone = toneColors(subscriptionInfo.tone);
-
-  const opRevenue = Number(summary?.op_fee_revenue_today || 0);
-  const xrayRevenue = Number(summary?.xray_revenue_today || 0);
-  const medicineRevenue = Number(summary?.medication_revenue_today || 0);
-  const treatmentRevenue = Number(summary?.treatment_revenue_today || 0);
-  const pendingCollected = Number(summary?.pending_collected_today || 0);
-  const otherRevenue = Number(summary?.other_revenue_today || 0);
-  const hasBreakdown = Boolean(summary);
-
+function WaitingRow({ item, isLast }: { item: AppointmentRow; isLast: boolean }) {
   return (
-    <Screen refreshing={loading} onRefresh={load}>
-      <ClinicBrandHeader
-        showManage
-        subtitle={`${getRoleLabel(profile?.role ?? "head_doctor")} • Owner Dashboard`}
-      />
-
+    <Pressable
+      accessibilityRole="button"
+      accessibilityLabel={`Open ${item.patients?.name || "patient"}`}
+      onPress={() => router.push(`/patient/${item.patient_id}` as never)}
+      android_ripple={{ color: "rgba(15, 118, 110, 0.08)", borderless: false }}
+      style={({ pressed }) => ({
+        minHeight: 68,
+        paddingVertical: 11,
+        flexDirection: "row",
+        alignItems: "center",
+        gap: 12,
+        borderBottomWidth: isLast ? 0 : 1,
+        borderBottomColor: colors.border,
+        backgroundColor: pressed ? colors.surfaceSoft : colors.surface,
+      })}
+    >
       <View
         style={{
-          borderRadius: 28,
-          padding: 18,
-          backgroundColor: colors.primary,
-          gap: 8,
+          width: 42,
+          height: 42,
+          borderRadius: 15,
+          backgroundColor: colors.warningSoft,
+          alignItems: "center",
+          justifyContent: "center",
         }}
       >
-        <Text style={{ color: "rgba(255,255,255,0.75)", fontWeight: "900", fontSize: 12, textTransform: "uppercase" }}>
-          Today Clinic Pulse
+        <Ionicons name="time-outline" size={21} color={colors.warning} />
+      </View>
+
+      <View style={{ flex: 1 }}>
+        <Text numberOfLines={1} style={{ color: colors.text, fontWeight: "900", fontSize: 15 }}>
+          {item.patients?.name || "Patient"}
         </Text>
-        <Text style={{ color: "#fff", fontSize: 25, fontWeight: "900" }}>
-          {loading ? "Loading..." : `${waitingCount} waiting • ${completedCount} completed`}
-        </Text>
-        <Text style={{ color: "rgba(255,255,255,0.76)", fontWeight: "700" }}>
-          Quick owner view with today’s money, pending dues, and clinic queue.
+        <Text numberOfLines={1} style={{ color: colors.muted, marginTop: 3 }}>
+          {appointmentTime(item.appointment_time)}
+          {item.patients?.phone ? ` - ${item.patients.phone}` : ""}
         </Text>
       </View>
 
-      <SectionCard title="Subscription" subtitle="Trial and renewal status for this clinic.">
-        <View
-          style={{
-            borderRadius: 22,
-            padding: 14,
-            backgroundColor: subscriptionTone.background,
-            borderWidth: 1,
-            borderColor: subscriptionTone.border,
-            flexDirection: "row",
-            alignItems: "center",
-            gap: 12,
-          }}
-        >
-          <View
-            style={{
-              width: 44,
-              height: 44,
-              borderRadius: 16,
-              backgroundColor: colors.white,
-              alignItems: "center",
-              justifyContent: "center",
-            }}
-          >
-            <Ionicons name="calendar-outline" size={23} color={subscriptionTone.icon} />
-          </View>
-
-          <View style={{ flex: 1 }}>
-            <Text style={{ color: colors.text, fontSize: 16, fontWeight: "900" }}>
-              {loading ? "Checking subscription..." : subscriptionInfo.title}
-            </Text>
-            <Text style={{ color: colors.muted, marginTop: 4, lineHeight: 19 }}>
-              {loading ? "Please wait while we load clinic trial details." : subscriptionInfo.subtitle}
-            </Text>
-          </View>
-        </View>
-      </SectionCard>
-
-      <View style={{ flexDirection: "row", gap: 10 }}>
-        <MoneyCard label="Revenue" value={loading ? "..." : money(todayRevenue)} icon="cash-outline" />
-        <MoneyCard label="Pending" value={loading ? "..." : money(pendingPayments)} icon="wallet-outline" warning />
-      </View>
-
-      <SectionCard title="Today Revenue Breakdown" subtitle="Owner-friendly split of today’s collections.">
-        {hasBreakdown ? (
-          <View style={{ gap: 10 }}>
-            <RevenueBreakdownRow label="OP consultation fees" value={money(opRevenue)} icon="receipt-outline" />
-            <RevenueBreakdownRow label="Medication fees" value={money(medicineRevenue)} icon="medical-outline" />
-            <RevenueBreakdownRow label="X-ray fees" value={money(xrayRevenue)} icon="scan-outline" />
-            <RevenueBreakdownRow label="Treatment fees" value={money(treatmentRevenue)} icon="hammer-outline" />
-            <RevenueBreakdownRow label="Pending collected" value={money(pendingCollected)} icon="wallet-outline" />
-            {otherRevenue > 0 ? (
-              <RevenueBreakdownRow label="Other collections" value={money(otherRevenue)} icon="cash-outline" />
-            ) : null}
-          </View>
-        ) : (
-          <EmptyState
-            title="Breakdown not available"
-            message="Today’s total revenue is still shown above. Detailed split will appear when workflow summary is available."
-            icon="analytics-outline"
-          />
-        )}
-      </SectionCard>
-
-      <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 10 }}>
-        <MiniStat label="Waiting" value={loading ? "..." : waitingCount} icon="hourglass-outline" />
-        <MiniStat label="Completed" value={loading ? "..." : completedCount} icon="checkmark-done-outline" />
-        <MiniStat label="Patients Today" value={loading ? "..." : summary?.today_patient_count ?? 0} icon="people-outline" />
-        <MiniStat label="Total Patients" value={loading ? "..." : stats?.totalPatients ?? 0} icon="person-outline" />
-      </View>
-
-      <SectionCard title="Quick Actions" subtitle="Most-used owner controls. Review Board catches missed follow-ups, OP waivers and patient detail edits.">
-        <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 10, justifyContent: "space-between" }}>
-          <QuickAction primary title="Owner Review" icon="clipboard-outline" onPress={() => router.push("/reports/owner-review" as never)} />
-          <QuickAction title="Clinic Report" icon="analytics-outline" onPress={() => router.push("/reports/clinic" as never)} />
-          <QuickAction title="Check-in" icon="send-outline" onPress={() => router.push("/reception/checkin" as never)} />
-          <QuickAction title="Patient Search" icon="search-outline" onPress={() => router.push("/patient" as never)} />
-          <QuickAction title="Book Appointment" icon="calendar-number-outline" onPress={() => router.push("/appointment/book" as never)} />
-          <QuickAction title="Reminders" icon="notifications-outline" onPress={() => router.push("/reminders" as never)} />
-          <QuickAction title="Staff" icon="people-circle-outline" onPress={() => router.push("/staff" as never)} />
-          <QuickAction title="Ongoing Treatments" icon="construct-outline" onPress={() => router.push("/treatments/ongoing" as never)} />
-          <QuickAction title="Legal & Account" icon="shield-checkmark-outline" onPress={() => router.push("/settings/legal" as never)} />
-        </View>
-      </SectionCard>
-
-      <SectionCard title="Waiting Queue" subtitle="Only latest 3 patients shown here.">
-        {waiting.length ? (
-          <View style={{ gap: 10 }}>
-            {waiting.slice(0, 3).map((item: AppointmentRow) => (
-              <Pressable
-                key={item.id}
-                onPress={() => router.push(`/patient/${item.patient_id}` as never)}
-                style={({ pressed }) => ({
-                  flexDirection: "row",
-                  alignItems: "center",
-                  gap: 12,
-                  padding: 12,
-                  borderRadius: 18,
-                  backgroundColor: pressed ? colors.surfaceSoft : colors.background,
-                  borderWidth: 1,
-                  borderColor: colors.border,
-                })}
-              >
-                <View
-                  style={{
-                    width: 42,
-                    height: 42,
-                    borderRadius: 16,
-                    backgroundColor: colors.warningSoft,
-                    alignItems: "center",
-                    justifyContent: "center",
-                  }}
-                >
-                  <Ionicons name="time-outline" size={21} color={colors.warning} />
-                </View>
-
-                <View style={{ flex: 1 }}>
-                  <Text numberOfLines={1} style={{ color: colors.text, fontWeight: "900", fontSize: 15 }}>
-                    {item.patients?.name || "Patient"}
-                  </Text>
-                  <Text numberOfLines={1} style={{ color: colors.muted, marginTop: 3 }}>
-                    {appointmentTime(item.appointment_time)}
-                    {item.patients?.phone ? ` • ${item.patients.phone}` : ""}
-                  </Text>
-                </View>
-
-                <StatusBadge label={item.status || "Waiting"} tone="warning" />
-              </Pressable>
-            ))}
-
-            {waiting.length > 3 ? (
-              <AppButton
-                title={`View all ${waiting.length}`}
-                icon="list-outline"
-                variant="secondary"
-                onPress={() => router.push("/patient" as never)}
-              />
-            ) : null}
-          </View>
-        ) : (
-          <EmptyState title="No waiting patients" message="Reception check-ins will appear here." icon="checkmark-done-outline" />
-        )}
-      </SectionCard>
-    </Screen>
+      <StatusBadge label={item.status || "Waiting"} tone="warning" />
+    </Pressable>
   );
 }

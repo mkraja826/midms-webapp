@@ -114,7 +114,7 @@ export default function LoginScreen() {
   const signupTitle = signupType === "clinic" ? "Create Clinic Account" : "Create Employee Account";
   const signupSubtitle =
     signupType === "clinic"
-      ? "Create the first owner account. After email verification, you can create the clinic and start the free 3-month trial."
+      ? "Create the first owner account. After email verification, start a simple clinic workspace on the Free plan."
       : "Create a staff account. After email verification, join your clinic using the invite code from the owner.";
 
   return (
@@ -150,7 +150,7 @@ export default function LoginScreen() {
           </View>
 
           <Text style={{ color: colors.primary, fontSize: 18, fontWeight: "900" }}>
-            MiDMS
+            CapDent
           </Text>
 
           <Text
@@ -174,7 +174,7 @@ export default function LoginScreen() {
             }}
           >
             {mode === "login"
-              ? "One app for clinic owners, working doctors, and receptionists."
+              ? "Simple dental clinic management for single-owner clinics and growing teams."
               : signupSubtitle}
           </Text>
         </View>
@@ -199,7 +199,7 @@ export default function LoginScreen() {
                   type="clinic"
                   title="Clinic"
                   icon="business-outline"
-                  subtitle="Create clinic profile after login"
+                  subtitle="Start owner workspace"
                 />
                 <SignupChoice
                   type="employee"

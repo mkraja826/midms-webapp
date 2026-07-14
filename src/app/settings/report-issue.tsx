@@ -51,7 +51,7 @@ export default function ReportIssueScreen() {
 
   const supportMessage = useMemo(() => {
     return [
-      "MiDMS Support Request",
+      "CapDent Support Request",
       "",
       `Issue Type: ${categoryLabel}`,
       `Reported At: ${supportNowLabel()}`,
@@ -80,7 +80,7 @@ export default function ReportIssueScreen() {
 
     try {
       setSending(true);
-      const subject = `MiDMS Support - ${categoryLabel}${profile?.clinic_id ? ` - ${profile.clinic_id}` : ""}`;
+      const subject = `CapDent Support - ${categoryLabel}${profile?.clinic_id ? ` - ${profile.clinic_id}` : ""}`;
       const url = buildMailUrl({ subject, body: supportMessage });
       await Linking.openURL(url);
     } catch {
@@ -117,7 +117,7 @@ export default function ReportIssueScreen() {
             }}
           >
             <Text style={{ color: colors.text, fontWeight: "900", fontSize: 16 }}>
-              MiDMS Support
+              CapDent Support
             </Text>
             <Text selectable style={{ color: colors.primary, fontWeight: "900" }}>
               {SUPPORT_EMAIL}

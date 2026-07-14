@@ -1,10 +1,14 @@
 import "react-native-url-polyfill/auto";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import * as FileSystem from "expo-file-system/legacy";
-import { createClient } from "@supabase/supabase-js";
+import { createClient, processLock } from "@supabase/supabase-js";
+import { AppState, Platform } from "react-native";
 
 const supabaseUrl = process.env.EXPO_PUBLIC_SUPABASE_URL ?? "";
-const supabaseAnonKey = process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY ?? "";
+const supabaseAnonKey =
+  process.env.EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY ??
+  process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY ??
+  "";
 const uploadProvider = (process.env.EXPO_PUBLIC_UPLOAD_PROVIDER ?? "supabase").toLowerCase();
 const shouldUseR2Storage = uploadProvider === "r2";
 const shouldRequireR2Storage = process.env.EXPO_PUBLIC_UPLOAD_STRICT_R2 === "true";
@@ -21,16 +25,120 @@ export const isSupabaseConfigured = hasRealSupabaseUrl && hasRealSupabaseKey;
 
 export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
   auth: {
-    storage: AsyncStorage,
+    ...(Platform.OS !== "web" ? { storage: AsyncStorage } : {}),
     autoRefreshToken: true,
     persistSession: true,
     detectSessionInUrl: false,
+    lock: processLock,
   },
 });
+
+// Native apps do not have a browser tab lifecycle, so refresh the session only
+// while the app is active. Register this once alongside the singleton client.
+if (Platform.OS !== "web") {
+  AppState.addEventListener("change", (state) => {
+    if (state === "active") {
+      supabase.auth.startAutoRefresh();
+    } else {
+      supabase.auth.stopAutoRefresh();
+    }
+  });
+}
 
 const supabaseProjectRef = supabaseUrl.match(/^https:\/\/([^.]+)\.supabase\.co/)?.[1];
 const supabaseAuthStorageKey = supabaseProjectRef ? `sb-${supabaseProjectRef}-auth-token` : null;
 const forceSignedOutKey = "midms.force-signed-out";
+const PROFILE_CACHE_TTL_MS = 60_000;
+const DASHBOARD_CACHE_TTL_MS = 20_000;
+const PATIENT_LIST_CACHE_TTL_MS = 45_000;
+const APPOINTMENT_CACHE_TTL_MS = 20_000;
+const PAYMENT_CACHE_TTL_MS = 20_000;
+const STAFF_CACHE_TTL_MS = 60_000;
+export const FREE_PATIENT_LIMIT = 100;
+export const FREE_PATIENT_NOTICE_REMAINING = 50;
+export const FREE_PATIENT_WARNING_REMAINING = 10;
+
+type CacheOptions = { force?: boolean };
+type AppDataCacheScope = "dashboard" | "patients" | "appointments" | "payments" | "staff";
+type QueryCacheEntry<T> = {
+  data: T;
+  expiresAt: number;
+};
+
+let cachedProfile:
+  | {
+      userId: string;
+      profile: Profile | null;
+      expiresAt: number;
+    }
+  | null = null;
+let profileLoadPromise: Promise<Profile | null> | null = null;
+const queryCache = new Map<string, QueryCacheEntry<unknown>>();
+const queryInflight = new Map<string, Promise<unknown>>();
+
+function clearQueryCache(scope?: AppDataCacheScope) {
+  if (!scope) {
+    queryCache.clear();
+    queryInflight.clear();
+    return;
+  }
+
+  const prefix = `${scope}:`;
+  Array.from(queryCache.keys()).forEach((key) => {
+    if (key.startsWith(prefix)) queryCache.delete(key);
+  });
+  Array.from(queryInflight.keys()).forEach((key) => {
+    if (key.startsWith(prefix)) queryInflight.delete(key);
+  });
+}
+
+function invalidateAppDataScopes(scopes: AppDataCacheScope[]) {
+  scopes.forEach((scope) => clearQueryCache(scope));
+}
+
+export function invalidateAppDataCache(scope?: AppDataCacheScope) {
+  clearQueryCache(scope);
+}
+
+async function cachedQuery<T>(
+  key: string,
+  ttlMs: number,
+  loader: () => Promise<T>,
+  options?: CacheOptions
+) {
+  const now = Date.now();
+  const cached = queryCache.get(key) as QueryCacheEntry<T> | undefined;
+
+  if (!options?.force && cached && cached.expiresAt > now) {
+    return cached.data;
+  }
+
+  const inflight = queryInflight.get(key) as Promise<T> | undefined;
+  if (!options?.force && inflight) {
+    return inflight;
+  }
+
+  const request = loader()
+    .then((data) => {
+      queryCache.set(key, {
+        data,
+        expiresAt: Date.now() + ttlMs,
+      });
+      return data;
+    })
+    .finally(() => {
+      queryInflight.delete(key);
+    });
+
+  queryInflight.set(key, request);
+  return request;
+}
+
+export function invalidateSupabaseCache() {
+  cachedProfile = null;
+  profileLoadPromise = null;
+  clearQueryCache();
+}
 
 export async function clearSupabaseAuthStorage() {
   try {
@@ -88,7 +196,18 @@ export type Role =
 
 export type NormalizedRole = "head_doctor" | "working_doctor" | "receptionist";
 
-export type AppointmentStatus = "scheduled" | "completed" | "cancelled" | "no_show";
+export type AppointmentStatus =
+  | "scheduled"
+  | "waiting"
+  | "checked_in"
+  | "booked"
+  | "completed"
+  | "done"
+  | "cancelled"
+  | "canceled"
+  | "no_show"
+  | "followup"
+  | "reminded";
 export type InvoiceStatus = "unpaid" | "partial" | "paid";
 export type PaymentCategory =
   | "op_fee"
@@ -281,6 +400,15 @@ export type WorkflowDashboardSummary = {
   today_patient_count?: number | null;
   waiting_count?: number | null;
   completed_count?: number | null;
+};
+
+export type ClinicPatientLimitStatus = {
+  count: number;
+  limit: number;
+  remaining: number | null;
+  unlimited: boolean;
+  level: "none" | "notice" | "warning" | "blocked";
+  message: string;
 };
 
 export type StaffInvite = {
@@ -707,10 +835,36 @@ async function uploadR2StorageObjectWithProgress(input: {
   };
 }
 
-export async function getCurrentProfile() {
+export async function getCurrentProfile(options?: CacheOptions) {
+  const now = Date.now();
+  if (!options?.force && cachedProfile && cachedProfile.expiresAt > now) {
+    return cachedProfile.profile;
+  }
+
+  if (!options?.force && profileLoadPromise) {
+    return profileLoadPromise;
+  }
+
+  profileLoadPromise = loadCurrentProfile();
+
+  try {
+    return await profileLoadPromise;
+  } finally {
+    profileLoadPromise = null;
+  }
+}
+
+async function loadCurrentProfile() {
   const { data: authData, error: authError } = await supabase.auth.getUser();
   if (authError) throw authError;
-  if (!authData.user) return null;
+  if (!authData.user) {
+    cachedProfile = {
+      userId: "",
+      profile: null,
+      expiresAt: Date.now() + PROFILE_CACHE_TTL_MS,
+    };
+    return null;
+  }
 
   const { data, error } = await supabase
     .from("profiles")
@@ -720,6 +874,11 @@ export async function getCurrentProfile() {
     .maybeSingle<Profile>();
 
   if (error) throw error;
+  cachedProfile = {
+    userId: authData.user.id,
+    profile: data,
+    expiresAt: Date.now() + PROFILE_CACHE_TTL_MS,
+  };
   return data;
 }
 
@@ -739,6 +898,7 @@ export async function createOwnerClinic(input: {
   });
 
   if (error) throw error;
+  invalidateSupabaseCache();
   return data as Profile;
 }
 
@@ -748,164 +908,194 @@ export async function acceptStaffInviteByCode(code: string) {
   });
 
   if (error) throw error;
+  invalidateSupabaseCache();
   return data as Profile;
 }
 
 export async function acceptStaffInvite() {
   const { data, error } = await supabase.rpc("accept_staff_invite");
   if (error) throw error;
+  invalidateSupabaseCache();
   return data as Profile;
 }
 
-export async function getDashboardStats(): Promise<DashboardStats> {
-  const todayStart = startOfToday();
-  const todayEnd = endOfToday();
+export async function getDashboardStats(options?: CacheOptions): Promise<DashboardStats> {
+  return cachedQuery(
+    "dashboard:stats",
+    DASHBOARD_CACHE_TTL_MS,
+    async () => {
+      const todayStart = startOfToday();
+      const todayEnd = endOfToday();
 
-  const [
-    patients,
-    appointments,
-    invoices,
-    todayPayments,
-    todayInvoices,
-    pendingCharges,
-    paidChargesToday,
-  ] = await Promise.all([
-    safeDashboardQuery(
-      "Dashboard patients query failed",
-      supabase
+      const [
+        patients,
+        appointments,
+        invoices,
+        todayPayments,
+        todayInvoices,
+        pendingCharges,
+        paidChargesToday,
+      ] = await Promise.all([
+        safeDashboardQuery(
+          "Dashboard patients query failed",
+          supabase
+            .from("patients")
+            .select("*", { count: "exact" })
+            .order("created_at", { ascending: false })
+            .limit(5)
+        ),
+
+        safeDashboardQuery(
+          "Dashboard appointments query failed",
+          supabase
+            .from("appointments")
+            .select("id,clinic_id,patient_id,doctor_id,appointment_time,status,notes,created_at,patients(id,name,phone)")
+            .gte("appointment_time", todayStart)
+            .lte("appointment_time", todayEnd)
+            .in("status", ["scheduled", "waiting", "checked_in", "booked"])
+            .order("appointment_time", { ascending: true })
+        ),
+
+        safeDashboardQuery(
+          "Dashboard invoices query failed",
+          supabase
+            .from("invoices")
+            .select("total_amount, paid_amount, due_amount, status")
+            .gt("due_amount", 0)
+            .in("status", ["unpaid", "partial"])
+        ),
+
+        safeDashboardQuery(
+          "Dashboard payments query failed",
+          supabase
+            .from("payments")
+            .select("amount, created_at")
+            .gte("created_at", todayStart)
+            .lte("created_at", todayEnd)
+        ),
+
+        safeDashboardQuery(
+          "Dashboard today invoices query failed",
+          supabase
+            .from("invoices")
+            .select("paid_amount, created_at")
+            .gte("created_at", todayStart)
+            .lte("created_at", todayEnd)
+        ),
+
+        safeDashboardQuery(
+          "Dashboard pending charges query failed",
+          supabase
+            .from("charges")
+            .select("amount, payment_status")
+            .in("payment_status", ["pending", "partial"])
+        ),
+
+        safeDashboardQuery(
+          "Dashboard paid charges query failed",
+          supabase
+            .from("charges")
+            .select("amount, payment_status, created_at")
+            .eq("payment_status", "paid")
+            .gte("created_at", todayStart)
+            .lte("created_at", todayEnd)
+        ),
+      ]);
+
+      const patientRows = patients.error || !Array.isArray(patients.data) ? [] : patients.data;
+      const appointmentRows =
+        appointments.error || !Array.isArray(appointments.data) ? [] : appointments.data;
+      const invoiceRows = invoices.error || !Array.isArray(invoices.data) ? [] : invoices.data;
+      const todayPaymentRows =
+        todayPayments.error || !Array.isArray(todayPayments.data) ? [] : todayPayments.data;
+      const todayInvoiceRows =
+        todayInvoices.error || !Array.isArray(todayInvoices.data) ? [] : todayInvoices.data;
+      const pendingChargeRows =
+        pendingCharges.error || !Array.isArray(pendingCharges.data) ? [] : pendingCharges.data;
+      const paidChargeRows =
+        paidChargesToday.error || !Array.isArray(paidChargesToday.data) ? [] : paidChargesToday.data;
+
+      const paymentRevenue = todayPaymentRows.reduce(
+        (sum: number, row: { amount?: number | string | null }) => sum + Number(row.amount || 0),
+        0
+      );
+
+      const invoicePaidToday = todayInvoiceRows.reduce(
+        (sum: number, row: { paid_amount?: number | string | null }) =>
+          sum + Number(row.paid_amount || 0),
+        0
+      );
+
+      const paidChargesRevenue = paidChargeRows.reduce(
+        (sum: number, row: { amount?: number | string | null }) => sum + Number(row.amount || 0),
+        0
+      );
+
+      // Prefer actual payments. If no payment rows exist yet, fallback to invoices/charges.
+      const todayRevenue =
+        paymentRevenue > 0 ? paymentRevenue : invoicePaidToday + paidChargesRevenue;
+
+      const invoicePending = invoiceRows.reduce(
+        (sum: number, row: { due_amount?: number | string | null }) =>
+          sum + Number(row.due_amount || 0),
+        0
+      );
+
+      const chargePending = pendingChargeRows.reduce(
+        (sum: number, row: { amount?: number | string | null }) => sum + Number(row.amount || 0),
+        0
+      );
+
+      return {
+        totalPatients: patients.count ?? 0,
+        recentPatients: patientRows as Patient[],
+        todayAppointments: appointmentRows.length,
+        todayAppointmentList: appointmentRows as Appointment[],
+        pendingPayments: invoicePending + chargePending,
+        todayRevenue,
+      };
+    },
+    options
+  );
+}
+
+export async function getWorkflowDashboardSummary(
+  options?: CacheOptions
+): Promise<WorkflowDashboardSummary | null> {
+  return cachedQuery(
+    "dashboard:workflow-summary",
+    DASHBOARD_CACHE_TTL_MS,
+    async () => {
+      const result = await safeDashboardQuery(
+        "Dashboard workflow summary query failed",
+        supabase.rpc("get_workflow_dashboard_summary")
+      );
+
+      if (result.error) return null;
+
+      const row = Array.isArray(result.data) ? result.data[0] : result.data;
+      return (row ?? null) as WorkflowDashboardSummary | null;
+    },
+    options
+  );
+}
+
+
+export async function getPatients(options?: CacheOptions) {
+  return cachedQuery(
+    "patients:list",
+    PATIENT_LIST_CACHE_TTL_MS,
+    async () => {
+      const { data, error } = await supabase
         .from("patients")
-        .select("*", { count: "exact" })
-        .order("created_at", { ascending: false })
-        .limit(5)
-    ),
+        .select("*")
+        .order("created_at", { ascending: false });
 
-    safeDashboardQuery(
-      "Dashboard appointments query failed",
-      supabase
-        .from("appointments")
-        .select("*, patients(id,name,phone)")
-        .gte("appointment_time", todayStart)
-        .lte("appointment_time", todayEnd)
-        .order("appointment_time", { ascending: true })
-    ),
-
-    safeDashboardQuery(
-      "Dashboard invoices query failed",
-      supabase
-        .from("invoices")
-        .select("total_amount, paid_amount, due_amount, status")
-    ),
-
-    safeDashboardQuery(
-      "Dashboard payments query failed",
-      supabase
-        .from("payments")
-        .select("amount, created_at")
-        .gte("created_at", todayStart)
-        .lte("created_at", todayEnd)
-    ),
-
-    safeDashboardQuery(
-      "Dashboard today invoices query failed",
-      supabase
-        .from("invoices")
-        .select("paid_amount, created_at")
-        .gte("created_at", todayStart)
-        .lte("created_at", todayEnd)
-    ),
-
-    safeDashboardQuery(
-      "Dashboard pending charges query failed",
-      supabase
-        .from("charges")
-        .select("amount, payment_status")
-        .in("payment_status", ["pending", "partial"])
-    ),
-
-    safeDashboardQuery(
-      "Dashboard paid charges query failed",
-      supabase
-        .from("charges")
-        .select("amount, payment_status, created_at")
-        .eq("payment_status", "paid")
-        .gte("created_at", todayStart)
-        .lte("created_at", todayEnd)
-    ),
-  ]);
-
-  const patientRows = patients.error || !Array.isArray(patients.data) ? [] : patients.data;
-  const appointmentRows =
-    appointments.error || !Array.isArray(appointments.data) ? [] : appointments.data;
-  const invoiceRows = invoices.error || !Array.isArray(invoices.data) ? [] : invoices.data;
-  const todayPaymentRows =
-    todayPayments.error || !Array.isArray(todayPayments.data) ? [] : todayPayments.data;
-  const todayInvoiceRows =
-    todayInvoices.error || !Array.isArray(todayInvoices.data) ? [] : todayInvoices.data;
-  const pendingChargeRows =
-    pendingCharges.error || !Array.isArray(pendingCharges.data) ? [] : pendingCharges.data;
-  const paidChargeRows =
-    paidChargesToday.error || !Array.isArray(paidChargesToday.data) ? [] : paidChargesToday.data;
-
-  const paymentRevenue = todayPaymentRows.reduce(
-    (sum: number, row: { amount?: number | string | null }) => sum + Number(row.amount || 0),
-    0
+      if (error) throw error;
+      return data as Patient[];
+    },
+    options
   );
-
-  const invoicePaidToday = todayInvoiceRows.reduce(
-    (sum: number, row: { paid_amount?: number | string | null }) => sum + Number(row.paid_amount || 0),
-    0
-  );
-
-  const paidChargesRevenue = paidChargeRows.reduce(
-    (sum: number, row: { amount?: number | string | null }) => sum + Number(row.amount || 0),
-    0
-  );
-
-  // Prefer actual payments. If no payment rows exist yet, fallback to invoices/charges.
-  const todayRevenue =
-    paymentRevenue > 0 ? paymentRevenue : invoicePaidToday + paidChargesRevenue;
-
-  const invoicePending = invoiceRows.reduce(
-    (sum: number, row: { due_amount?: number | string | null }) => sum + Number(row.due_amount || 0),
-    0
-  );
-
-  const chargePending = pendingChargeRows.reduce(
-    (sum: number, row: { amount?: number | string | null }) => sum + Number(row.amount || 0),
-    0
-  );
-
-  return {
-    totalPatients: patients.count ?? 0,
-    recentPatients: patientRows as Patient[],
-    todayAppointments: appointmentRows.length,
-    todayAppointmentList: appointmentRows as Appointment[],
-    pendingPayments: invoicePending + chargePending,
-    todayRevenue,
-  };
-}
-
-export async function getWorkflowDashboardSummary(): Promise<WorkflowDashboardSummary | null> {
-  const result = await safeDashboardQuery(
-    "Dashboard workflow summary query failed",
-    supabase.rpc("get_workflow_dashboard_summary")
-  );
-
-  if (result.error) return null;
-
-  const row = Array.isArray(result.data) ? result.data[0] : result.data;
-  return (row ?? null) as WorkflowDashboardSummary | null;
-}
-
-
-export async function getPatients() {
-  const { data, error } = await supabase
-    .from("patients")
-    .select("*")
-    .order("created_at", { ascending: false });
-
-  if (error) throw error;
-  return data as Patient[];
 }
 
 export async function searchPatients(query: string) {
@@ -1006,6 +1196,94 @@ export async function searchPatientsAdvanced(input: {
   return data as Patient[];
 }
 
+function paidSubscriptionAllowsUnlimitedPatients(subscription: any) {
+  if (!subscription) return false;
+
+  const planName = String(subscription.plan_name || "").toLowerCase();
+  const status = String(subscription.status || "").toLowerCase();
+  const googleStatus = String(subscription.google_play_status || "").toLowerCase();
+
+  if (status !== "active" && status !== "grace_period") return false;
+  if (googleStatus === "cancelled" || googleStatus === "expired" || googleStatus === "account_hold") return false;
+
+  return planName !== "free";
+}
+
+function patientLimitMessage(remaining: number) {
+  if (remaining <= 0) {
+    return "Free patient limit reached. Start the Professional 3-month free trial to continue adding new patients.";
+  }
+
+  if (remaining <= FREE_PATIENT_WARNING_REMAINING) {
+    return `Only ${remaining} patient slot${remaining === 1 ? "" : "s"} remaining on Free. Start the Professional 3-month free trial to continue without limits.`;
+  }
+
+  if (remaining <= FREE_PATIENT_NOTICE_REMAINING) {
+    return `${remaining} patient slots remaining on Free. Professional gives unlimited patient records after the 3-month free trial.`;
+  }
+
+  return `${remaining} patient slots remaining on Free.`;
+}
+
+async function getClinicPatientLimitStatusForClinic(clinicId: string): Promise<ClinicPatientLimitStatus> {
+  const [{ count, error: countError }, { data: subscription, error: subscriptionError }] = await Promise.all([
+    supabase.from("patients").select("id", { count: "exact", head: true }).eq("clinic_id", clinicId),
+    supabase
+      .from("clinic_subscriptions")
+      .select("plan_name,status,google_play_status")
+      .eq("clinic_id", clinicId)
+      .maybeSingle(),
+  ]);
+
+  if (countError) throw countError;
+  if (subscriptionError) throw subscriptionError;
+
+  const patientCount = count ?? 0;
+  const unlimited = paidSubscriptionAllowsUnlimitedPatients(subscription);
+
+  if (unlimited) {
+    return {
+      count: patientCount,
+      limit: FREE_PATIENT_LIMIT,
+      remaining: null,
+      unlimited: true,
+      level: "none",
+      message: "Paid plan active. Patient records are unlimited.",
+    };
+  }
+
+  const remaining = Math.max(FREE_PATIENT_LIMIT - patientCount, 0);
+  const level =
+    remaining <= 0
+      ? "blocked"
+      : remaining <= FREE_PATIENT_WARNING_REMAINING
+      ? "warning"
+      : remaining <= FREE_PATIENT_NOTICE_REMAINING
+      ? "notice"
+      : "none";
+
+  return {
+    count: patientCount,
+    limit: FREE_PATIENT_LIMIT,
+    remaining,
+    unlimited: false,
+    level,
+    message: patientLimitMessage(remaining),
+  };
+}
+
+export async function getClinicPatientLimitStatus() {
+  const profile = await getCurrentProfile();
+  if (!profile?.clinic_id) throw new Error("Clinic profile not found");
+  return getClinicPatientLimitStatusForClinic(profile.clinic_id);
+}
+
+async function assertCanCreatePatient(clinicId: string) {
+  const usage = await getClinicPatientLimitStatusForClinic(clinicId);
+  if (usage.level === "blocked") throw new Error(usage.message);
+  return usage;
+}
+
 export async function createPatient(input: {
   name: string;
   gender?: string;
@@ -1018,6 +1296,7 @@ export async function createPatient(input: {
 }) {
   const profile = await getCurrentProfile();
   if (!profile?.clinic_id) throw new Error("Clinic profile not found");
+  await assertCanCreatePatient(profile.clinic_id);
 
   const { medical_history, ...patientInput } = input;
 
@@ -1033,6 +1312,7 @@ export async function createPatient(input: {
 
   if (error) throw error;
 
+  invalidateAppDataScopes(["dashboard", "patients"]);
   await createMedicalHistory(patient.id, medical_history ?? {});
   return patient;
 }
@@ -1065,6 +1345,7 @@ export async function createOldPatient(input: {
 }) {
   const profile = await getCurrentProfile();
   if (!profile?.clinic_id) throw new Error("Clinic profile not found");
+  await assertCanCreatePatient(profile.clinic_id);
 
   const registeredAt = optionalDateToIso(input.registered_date);
   const lastVisitAt = optionalDateToIso(input.last_visit_date);
@@ -1087,6 +1368,7 @@ export async function createOldPatient(input: {
 
   if (error) throw error;
 
+  invalidateAppDataScopes(["dashboard", "patients", "payments"]);
   await createMedicalHistory(patient.id, medical_history ?? {});
 
   if (lastVisitAt || old_record_notes?.trim()) {
@@ -1097,7 +1379,7 @@ export async function createOldPatient(input: {
       visit_date: lastVisitAt ?? new Date().toISOString(),
       chief_complaint: "Old patient record",
       diagnosis: null,
-      doctor_notes: old_record_notes?.trim() || "Old clinic record imported into DMS.",
+      doctor_notes: old_record_notes?.trim() || "Old clinic record imported into CapDent.",
       next_appointment_date: null,
     });
 
@@ -1118,6 +1400,7 @@ export async function createOldPatient(input: {
     if (invoiceError) throw invoiceError;
   }
 
+  invalidateAppDataScopes(["dashboard", "patients", "payments"]);
   return patient;
 }
 
@@ -1157,6 +1440,7 @@ export async function updatePatient(id: string, input: Partial<Patient>) {
     .single<Patient>();
 
   if (error) throw error;
+  invalidateAppDataScopes(["dashboard", "patients", "appointments", "payments"]);
   return data;
 }
 
@@ -1270,19 +1554,27 @@ export async function createAppointment(input: {
     .single<Appointment>();
 
   if (error) throw error;
+  invalidateAppDataScopes(["dashboard", "appointments"]);
   return data;
 }
 
-export async function getTodayAppointments() {
-  const { data, error } = await supabase
-    .from("appointments")
-    .select("*, patients(id,name,phone)")
-    .gte("appointment_time", startOfToday())
-    .lte("appointment_time", endOfToday())
-    .order("appointment_time", { ascending: true });
+export async function getTodayAppointments(options?: CacheOptions) {
+  return cachedQuery(
+    "appointments:today",
+    APPOINTMENT_CACHE_TTL_MS,
+    async () => {
+      const { data, error } = await supabase
+        .from("appointments")
+        .select("*, patients(id,name,phone)")
+        .gte("appointment_time", startOfToday())
+        .lte("appointment_time", endOfToday())
+        .order("appointment_time", { ascending: true });
 
-  if (error) throw error;
-  return data as Appointment[];
+      if (error) throw error;
+      return data as Appointment[];
+    },
+    options
+  );
 }
 
 export async function updateAppointmentStatus(id: string, status: AppointmentStatus) {
@@ -1294,6 +1586,52 @@ export async function updateAppointmentStatus(id: string, status: AppointmentSta
     .single<Appointment>();
 
   if (error) throw error;
+  invalidateAppDataScopes(["dashboard", "appointments"]);
+  return data;
+}
+
+async function appointmentNotePatch(id: string, note?: string) {
+  const cleanNote = note?.trim();
+  if (!cleanNote) return {};
+
+  const { data, error } = await supabase
+    .from("appointments")
+    .select("notes")
+    .eq("id", id)
+    .single<Pick<Appointment, "notes">>();
+
+  if (error) throw error;
+
+  return {
+    notes: [data?.notes?.trim(), cleanNote].filter(Boolean).join("\n"),
+  };
+}
+
+export async function rescheduleAppointment(id: string, appointment_time: string, note?: string) {
+  const noteUpdate = await appointmentNotePatch(id, note);
+  const { data, error } = await supabase
+    .from("appointments")
+    .update({ appointment_time, status: "scheduled", ...noteUpdate })
+    .eq("id", id)
+    .select("*")
+    .single<Appointment>();
+
+  if (error) throw error;
+  invalidateAppDataScopes(["dashboard", "appointments"]);
+  return data;
+}
+
+export async function closeWaitingAppointment(id: string, note?: string) {
+  const noteUpdate = await appointmentNotePatch(id, note);
+  const { data, error } = await supabase
+    .from("appointments")
+    .update({ status: "no_show", ...noteUpdate })
+    .eq("id", id)
+    .select("*")
+    .single<Appointment>();
+
+  if (error) throw error;
+  invalidateAppDataScopes(["dashboard", "appointments"]);
   return data;
 }
 
@@ -1307,11 +1645,12 @@ export async function createVisit(input: {
   treatment_name?: string;
   treatment_cost?: number;
   treatment_category?: string;
+  treatment_status?: Treatment["status"];
 }) {
   const profile = await getCurrentProfile();
   if (!profile?.clinic_id) throw new Error("Clinic profile not found");
 
-  const { doctor_id, treatment_name, treatment_cost, treatment_category, ...visitInput } = input;
+  const { doctor_id, treatment_name, treatment_cost, treatment_category, treatment_status, ...visitInput } = input;
 
   const { data: visit, error } = await supabase
     .from("patient_visits")
@@ -1333,11 +1672,12 @@ export async function createVisit(input: {
       visit_id: visit.id,
       treatment_name,
       cost: treatment_cost,
-      status: "planned",
+      status: treatment_status ?? "planned",
       category: treatment_category,
     });
   }
 
+  invalidateAppDataScopes(["dashboard", "patients", "appointments"]);
   return visit;
 }
 
@@ -1380,6 +1720,7 @@ export async function createTreatment(input: {
     .single<Treatment>();
 
   if (error) throw error;
+  invalidateAppDataScopes(["dashboard", "patients"]);
   return data;
 }
 
@@ -1618,6 +1959,7 @@ export async function createInvoice(input: {
   }
 
   if (response.error) throw response.error;
+  invalidateAppDataScopes(["dashboard", "payments"]);
 
   if (paid > 0) {
     let paymentResponse = await supabase
@@ -1649,6 +1991,7 @@ export async function createInvoice(input: {
     if (paymentResponse.error) throw paymentResponse.error;
   }
 
+  invalidateAppDataScopes(["dashboard", "payments"]);
   return response.data;
 }
 
@@ -1694,6 +2037,7 @@ export async function addPayment(input: {
   }
 
   if (paymentResponse.error) throw paymentResponse.error;
+  invalidateAppDataScopes(["dashboard", "payments"]);
 
   const paid = Number(invoice.paid_amount) + Number(input.amount);
   const due = Math.max(Number(invoice.total_amount) - paid, 0);
@@ -1710,6 +2054,7 @@ export async function addPayment(input: {
     .single<Invoice>();
 
   if (updateError) throw updateError;
+  invalidateAppDataScopes(["dashboard", "payments"]);
   return data;
 }
 
@@ -1724,35 +2069,56 @@ export async function getPatientInvoices(patientId: string) {
   return data as Invoice[];
 }
 
-export async function getPendingPayments() {
-  const { data, error } = await supabase
-    .from("invoices")
-    .select("*, patients(id,name,phone)")
-    .gt("due_amount", 0)
-    .order("created_at", { ascending: false });
+export async function getPendingPayments(options?: CacheOptions) {
+  return cachedQuery(
+    "payments:pending",
+    PAYMENT_CACHE_TTL_MS,
+    async () => {
+      const { data, error } = await supabase
+        .from("invoices")
+        .select("*, patients(id,name,phone)")
+        .gt("due_amount", 0)
+        .order("created_at", { ascending: false });
 
-  if (error) throw error;
-  return data as Invoice[];
+      if (error) throw error;
+      return data as Invoice[];
+    },
+    options
+  );
 }
 
-export async function getStaff() {
-  const { data, error } = await supabase
-    .from("profiles")
-    .select("*")
-    .order("created_at", { ascending: false });
+export async function getStaff(options?: CacheOptions) {
+  return cachedQuery(
+    "staff:list",
+    STAFF_CACHE_TTL_MS,
+    async () => {
+      const { data, error } = await supabase
+        .from("profiles")
+        .select("*")
+        .order("created_at", { ascending: false });
 
-  if (error) throw error;
-  return data as Profile[];
+      if (error) throw error;
+      return data as Profile[];
+    },
+    options
+  );
 }
 
-export async function getStaffInvites() {
-  const { data, error } = await supabase
-    .from("staff_invites")
-    .select("*")
-    .order("created_at", { ascending: false });
+export async function getStaffInvites(options?: CacheOptions) {
+  return cachedQuery(
+    "staff:invites",
+    STAFF_CACHE_TTL_MS,
+    async () => {
+      const { data, error } = await supabase
+        .from("staff_invites")
+        .select("*")
+        .order("created_at", { ascending: false });
 
-  if (error) throw error;
-  return data as StaffInvite[];
+      if (error) throw error;
+      return data as StaffInvite[];
+    },
+    options
+  );
 }
 
 export async function createStaffInvite(input: {
@@ -1769,6 +2135,7 @@ export async function createStaffInvite(input: {
   });
 
   if (error) throw error;
+  invalidateAppDataCache("staff");
   return data as StaffInvite;
 }
 
@@ -1778,5 +2145,6 @@ export async function sendStaffInviteEmail(inviteId: string) {
   });
 
   if (error) throw error;
+  invalidateAppDataCache("staff");
   return data as { ok: boolean };
 }

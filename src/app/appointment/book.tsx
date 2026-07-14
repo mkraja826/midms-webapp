@@ -1,6 +1,6 @@
 import { Ionicons } from "@expo/vector-icons";
-import { router } from "expo-router";
-import { useEffect, useMemo, useState } from "react";
+import { router, useLocalSearchParams } from "expo-router";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   Alert,
   Pressable,
@@ -16,11 +16,12 @@ import { Screen } from "@/components/Screen";
 import { SectionCard } from "@/components/SectionCard";
 import { StatusBadge } from "@/components/StatusBadge";
 import { colors } from "@/constants/colors";
+import { searchPatientsPage } from "@/lib/patientDirectory";
 import {
   createAppointment,
   createPatient,
-  getPatients,
   Patient,
+  supabase,
 } from "@/lib/supabase";
 
 type DateOption = {
@@ -118,6 +119,8 @@ function formatSelectedDate(date: Date, slot: { label: string; hour: number; min
 }
 
 export default function BookAppointmentScreen() {
+  const params = useLocalSearchParams<{ patient_id?: string }>();
+  const incomingPatientId = typeof params.patient_id === "string" ? params.patient_id : "";
   const dateOptions = useMemo(() => createDateOptions(90), []);
   const firstDateWithFutureSlot = useMemo(() => {
     return (
@@ -142,46 +145,100 @@ export default function BookAppointmentScreen() {
 
   const [loadingPatients, setLoadingPatients] = useState(true);
   const [saving, setSaving] = useState(false);
+  const patientRequestRef = useRef(0);
+  const patientSearchMountedRef = useRef(false);
 
-  async function loadPatients() {
+  async function loadPatients(searchText = patientSearch) {
+    const requestId = patientRequestRef.current + 1;
+    patientRequestRef.current = requestId;
+
     try {
       setLoadingPatients(true);
-      const rows = await getPatients();
-      setPatients(rows);
+      const result = await searchPatientsPage({
+        query: searchText,
+        page: 1,
+        pageSize: 10,
+      });
+
+      if (requestId === patientRequestRef.current) {
+        setPatients(result.patients);
+      }
+
+      return result.patients;
     } catch (error) {
       Alert.alert(
         "Patients load failed",
         error instanceof Error ? error.message : "Please try again."
       );
+
+      return [];
     } finally {
-      setLoadingPatients(false);
+      if (requestId === patientRequestRef.current) setLoadingPatients(false);
+    }
+  }
+
+  async function selectPatientById(patientId: string) {
+    try {
+      const rows = await loadPatients("");
+      const found = rows.find((patient) => patient.id === patientId);
+
+      if (found) {
+        setSelectedPatientId(found.id);
+        return;
+      }
+
+      const { data, error } = await supabase
+        .from("patients")
+        .select("id,clinic_id,patient_code,name,gender,age,dob,phone,email,address,emergency_contact,created_at")
+        .eq("id", patientId)
+        .maybeSingle();
+
+      if (error) throw error;
+
+      if (!data) {
+        Alert.alert("Patient not found", "Open appointment booking from the patient profile again.");
+        return;
+      }
+
+      const patient = data as Patient;
+      setPatients((current) => (current.some((item) => item.id === patient.id) ? current : [patient, ...current]));
+      setSelectedPatientId(patient.id);
+    } catch (error) {
+      Alert.alert(
+        "Patient load failed",
+        error instanceof Error ? error.message : "Please try again."
+      );
     }
   }
 
   useEffect(() => {
-    loadPatients();
-  }, []);
+    if (incomingPatientId) {
+      void selectPatientById(incomingPatientId);
+      return;
+    }
+
+    void loadPatients("");
+  }, [incomingPatientId]);
+
+  useEffect(() => {
+    if (!patientSearchMountedRef.current) {
+      patientSearchMountedRef.current = true;
+      return;
+    }
+
+    const timeout = setTimeout(() => {
+      void loadPatients(patientSearch);
+    }, 260);
+
+    return () => clearTimeout(timeout);
+  }, [patientSearch]);
 
   const selectedPatient = useMemo(
     () => patients.find((patient) => patient.id === selectedPatientId) || null,
     [patients, selectedPatientId]
   );
 
-  const filteredPatients = useMemo(() => {
-    const term = patientSearch.trim().toLowerCase();
-
-    if (!term) return patients.slice(0, 10);
-
-    return patients
-      .filter((patient) => {
-        return (
-          patient.name.toLowerCase().includes(term) ||
-          (patient.phone || "").toLowerCase().includes(term) ||
-          (patient.patient_code || "").toLowerCase().includes(term)
-        );
-      })
-      .slice(0, 10);
-  }, [patientSearch, patients]);
+  const filteredPatients = patients;
 
   const selectedDate =
     dateOptions.find((option) => option.key === selectedDateKey) || firstDateWithFutureSlot;

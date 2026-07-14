@@ -1,4 +1,5 @@
 import { router } from "expo-router";
+import { useState } from "react";
 import { Alert, ScrollView, Text, View } from "react-native";
 import { AppButton } from "@/components/AppButton";
 import { SectionCard } from "@/components/SectionCard";
@@ -8,23 +9,20 @@ import { getDashboardPath } from "@/lib/supabase";
 
 export default function LegalAccountScreen() {
   const { profile, signOut } = useAuth();
+  const [loggingOut, setLoggingOut] = useState(false);
   const homePath = getDashboardPath(profile?.role ?? "receptionist");
+  const canManageSubscription = profile?.role === "head_doctor" || profile?.role === "owner";
 
-  function confirmLogout() {
-    Alert.alert("Logout", "Sign out from this device?", [
-      { text: "Cancel", style: "cancel" },
-      {
-        text: "Logout",
-        style: "destructive",
-        onPress: async () => {
-          try {
-            await signOut();
-          } catch (error) {
-            Alert.alert("Logout failed", error instanceof Error ? error.message : "Please try again.");
-          }
-        },
-      },
-    ]);
+  async function logout() {
+    if (loggingOut) return;
+
+    try {
+      setLoggingOut(true);
+      await signOut();
+    } catch (error) {
+      Alert.alert("Logout failed", error instanceof Error ? error.message : "Please try again.");
+      setLoggingOut(false);
+    }
   }
 
   return (
@@ -32,7 +30,7 @@ export default function LegalAccountScreen() {
       <SectionCard title="Legal & Account" subtitle="Privacy, terms, support, optional features, and account deletion.">
         <View style={{ gap: 12 }}>
           <Text style={{ color: colors.text, fontWeight: "900", fontSize: 16 }}>
-            DMS Play Store compliance
+            CapDent Play Store compliance
           </Text>
           <Text style={{ color: colors.muted, lineHeight: 21 }}>
             Access privacy information, terms, account/data deletion, support, and clinic optional feature settings.
@@ -40,12 +38,23 @@ export default function LegalAccountScreen() {
         </View>
       </SectionCard>
 
-      <AppButton
-        title="Clinic Optional Features"
-        variant="secondary"
-        icon="options-outline"
-        onPress={() => router.push("/settings/account" as never)}
-      />
+      {canManageSubscription ? (
+        <AppButton
+          title="Subscription Plans"
+          variant="secondary"
+          icon="card-outline"
+          onPress={() => router.push("/settings/subscription" as never)}
+        />
+      ) : null}
+
+      {canManageSubscription ? (
+        <AppButton
+          title="Clinic Optional Features"
+          variant="secondary"
+          icon="options-outline"
+          onPress={() => router.push("/settings/account" as never)}
+        />
+      ) : null}
 
       <AppButton
         title="Report Issue / Support"
@@ -72,7 +81,9 @@ export default function LegalAccountScreen() {
         title="Logout"
         variant="secondary"
         icon="log-out-outline"
-        onPress={confirmLogout}
+        onPress={logout}
+        loading={loggingOut}
+        loadingTitle="Logging out..."
       />
 
       <AppButton

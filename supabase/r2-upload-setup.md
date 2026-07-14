@@ -1,6 +1,6 @@
 # Cloudflare R2 Upload Setup
 
-DMS can upload patient files to Cloudflare R2 through a Supabase Edge Function. The mobile app never stores R2 secret keys.
+CapDent can upload patient files to Cloudflare R2 through a Supabase Edge Function. The mobile app never stores R2 secret keys.
 
 ## 1. Cloudflare R2
 
@@ -82,4 +82,4 @@ EXPO_PUBLIC_UPLOAD_PROVIDER=r2
 
 Restart Expo after changing `.env`.
 
-If `EXPO_PUBLIC_UPLOAD_PROVIDER` is missing or set to `supabase`, DMS keeps using Supabase Storage.
+If `EXPO_PUBLIC_UPLOAD_PROVIDER` is missing or set to `supabase`, CapDent keeps using Supabase Storage.

@@ -239,7 +239,7 @@ function buildExcelHtml(input: {
 <html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:x="urn:schemas-microsoft-com:office:excel" xmlns="http://www.w3.org/TR/REC-html40">
 <head>
   <meta charset="UTF-8" />
-  <!--[if gte mso 9]><xml><x:ExcelWorkbook><x:ExcelWorksheets><x:ExcelWorksheet><x:Name>MiDMS Export</x:Name><x:WorksheetOptions><x:DisplayGridlines/></x:WorksheetOptions></x:ExcelWorksheet></x:ExcelWorksheets></x:ExcelWorkbook></xml><![endif]-->
+  <!--[if gte mso 9]><xml><x:ExcelWorkbook><x:ExcelWorksheets><x:ExcelWorksheet><x:Name>CapDent Export</x:Name><x:WorksheetOptions><x:DisplayGridlines/></x:WorksheetOptions></x:ExcelWorksheet></x:ExcelWorksheets></x:ExcelWorkbook></xml><![endif]-->
   <style>
     body { font-family: Arial, sans-serif; }
     h1 { font-size: 20px; margin-bottom: 4px; }
@@ -472,7 +472,7 @@ export async function buildOwnerExport(rangeKey: ExportRangeKey): Promise<OwnerE
     appointments: appointments.length,
   };
 
-  const title = `MiDMS Owner Export - ${range.label}`;
+  const title = `CapDent Owner Export - ${range.label}`;
   const exportText = [
     title,
     `Generated: ${generatedAt}`,
@@ -494,7 +494,7 @@ export async function buildOwnerExport(rangeKey: ExportRangeKey): Promise<OwnerE
   ].join("\n");
 
   const excelHtml = buildExcelHtml({ title, rangeLabel: range.label, generatedAt, summary, sections });
-  const excelFileName = `midms-owner-export-${safeFilePart(range.label)}-${new Date().toISOString().slice(0, 10)}.xls`;
+  const excelFileName = `capdent-owner-export-${safeFilePart(range.label)}-${new Date().toISOString().slice(0, 10)}.xls`;
 
   return {
     title,

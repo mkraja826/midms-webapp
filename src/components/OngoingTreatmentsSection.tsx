@@ -1,7 +1,7 @@
 import { Ionicons } from "@expo/vector-icons";
 import { router } from "expo-router";
-import { useEffect, useState } from "react";
-import { Alert, Pressable, Text, View } from "react-native";
+import { useEffect, useMemo, useState } from "react";
+import { Alert, Pressable, Text, TextInput, View } from "react-native";
 import { AppButton } from "@/components/AppButton";
 import { EmptyState } from "@/components/EmptyState";
 import { SectionCard } from "@/components/SectionCard";
@@ -43,16 +43,34 @@ function dateLabel(value?: string | null) {
   });
 }
 
+function searchableText(item: OngoingTreatmentItem) {
+  return [
+    item.patientName,
+    item.patientPhone,
+    item.patientCode,
+    item.treatmentName,
+    item.category,
+    item.doctorName,
+    statusLabel(item.status),
+  ]
+    .filter(Boolean)
+    .join(" ")
+    .toLowerCase();
+}
+
 export function OngoingTreatmentsSection({
   allowStatusUpdates,
+  allowCompleteUpdates,
   doctorOnly,
   limit = 6,
 }: {
   allowStatusUpdates?: boolean;
+  allowCompleteUpdates?: boolean;
   doctorOnly?: boolean;
   limit?: number;
 }) {
   const [items, setItems] = useState<OngoingTreatmentItem[]>([]);
+  const [search, setSearch] = useState("");
   const [loading, setLoading] = useState(true);
   const [updatingId, setUpdatingId] = useState<string | null>(null);
 
@@ -85,22 +103,79 @@ export function OngoingTreatmentsSection({
     }
   }
 
+  const cleanSearch = search.trim().toLowerCase();
+  const filteredItems = useMemo(() => {
+    if (!cleanSearch) return items;
+
+    return items.filter((item) => searchableText(item).includes(cleanSearch));
+  }, [cleanSearch, items]);
+
   return (
     <SectionCard
       title="Ongoing Treatments"
       subtitle="Planned and ongoing treatments with outstanding payment and next-sitting actions."
     >
+      <View
+        style={{
+          minHeight: 52,
+          borderRadius: 18,
+          borderWidth: 1,
+          borderColor: colors.border,
+          backgroundColor: colors.background,
+          flexDirection: "row",
+          alignItems: "center",
+          paddingHorizontal: 13,
+          gap: 10,
+        }}
+      >
+        <Ionicons name="search-outline" size={21} color={colors.muted} />
+        <TextInput
+          value={search}
+          onChangeText={setSearch}
+          placeholder="Search patient, phone, code, or treatment"
+          placeholderTextColor={colors.muted}
+          autoCapitalize="none"
+          autoCorrect={false}
+          returnKeyType="search"
+          style={{
+            flex: 1,
+            minHeight: 52,
+            color: colors.text,
+            fontSize: 15,
+          }}
+        />
+        {search ? (
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="Clear ongoing treatment search"
+            hitSlop={8}
+            onPress={() => setSearch("")}
+          >
+            <Ionicons name="close-circle" size={22} color={colors.muted} />
+          </Pressable>
+        ) : null}
+      </View>
+
+      {!loading && items.length ? (
+        <Text style={{ color: colors.muted, fontSize: 12, fontWeight: "800" }}>
+          {cleanSearch
+            ? `${filteredItems.length} of ${items.length} matching`
+            : `${items.length} active treatment${items.length === 1 ? "" : "s"}`}
+        </Text>
+      ) : null}
+
       {loading ? (
         <View style={{ padding: 14, borderRadius: 18, backgroundColor: colors.background, borderWidth: 1, borderColor: colors.border }}>
           <Text style={{ color: colors.muted, fontWeight: "800" }}>Loading ongoing treatments...</Text>
         </View>
-      ) : items.length ? (
+      ) : filteredItems.length ? (
         <View style={{ gap: 10 }}>
-          {items.map((item) => (
+          {filteredItems.map((item) => (
             <TreatmentCard
               key={item.id}
               item={item}
               allowStatusUpdates={allowStatusUpdates}
+              allowCompleteUpdates={allowCompleteUpdates}
               updating={updatingId === item.id}
               onUpdateStatus={(status) => updateStatus(item, status)}
             />
@@ -112,6 +187,14 @@ export function OngoingTreatmentsSection({
             onPress={() => router.push("/reports/treatments" as never)}
           />
         </View>
+      ) : items.length ? (
+        <EmptyState
+          title="No matching treatment"
+          message="Try patient name, phone number, patient code, treatment name, or doctor name."
+          icon="search-outline"
+          actionTitle="Clear Search"
+          onAction={() => setSearch("")}
+        />
       ) : (
         <EmptyState
           title="No outstanding treatments"
@@ -126,14 +209,18 @@ export function OngoingTreatmentsSection({
 function TreatmentCard({
   item,
   allowStatusUpdates,
+  allowCompleteUpdates,
   updating,
   onUpdateStatus,
 }: {
   item: OngoingTreatmentItem;
   allowStatusUpdates?: boolean;
+  allowCompleteUpdates?: boolean;
   updating?: boolean;
   onUpdateStatus: (status: OngoingTreatmentStatus) => void;
 }) {
+  const canComplete = Boolean(allowStatusUpdates || allowCompleteUpdates);
+
   return (
     <View
       style={{
@@ -173,6 +260,7 @@ function TreatmentCard({
           </Text>
           <Text numberOfLines={1} style={{ color: colors.muted, marginTop: 3 }}>
             {item.patientName}
+            {item.patientPhone ? ` • ${item.patientPhone}` : ""}
             {item.patientCode ? ` • ${item.patientCode}` : ""}
           </Text>
           <Text numberOfLines={1} style={{ color: colors.muted, marginTop: 2, fontSize: 12 }}>
@@ -184,19 +272,10 @@ function TreatmentCard({
         <StatusBadge label={statusLabel(item.status)} tone={statusTone(item.status)} />
       </Pressable>
 
-      <View style={{ flexDirection: "row", gap: 10 }}>
-        <View style={{ flex: 1, padding: 12, borderRadius: 16, backgroundColor: colors.surfaceSoft, borderWidth: 1, borderColor: colors.border }}>
-          <Text style={{ color: colors.muted, fontSize: 11, fontWeight: "900", textTransform: "uppercase" }}>Treatment</Text>
-          <Text style={{ color: colors.text, fontSize: 18, fontWeight: "900", marginTop: 4 }}>{money(item.cost)}</Text>
-        </View>
-        <View style={{ flex: 1, padding: 12, borderRadius: 16, backgroundColor: item.paymentCleared ? colors.successSoft : colors.warningSoft, borderWidth: 1, borderColor: colors.border }}>
-          <Text style={{ color: colors.muted, fontSize: 11, fontWeight: "900", textTransform: "uppercase" }}>
-            {item.paymentCleared ? "Payment" : "Outstanding"}
-          </Text>
-          <Text style={{ color: item.paymentCleared ? colors.success : colors.warning, fontSize: 18, fontWeight: "900", marginTop: 4 }}>
-            {item.paymentCleared ? "Paid" : money(item.dueAmount)}
-          </Text>
-        </View>
+      <View style={{ flexDirection: "row", gap: 10, flexWrap: "wrap" }}>
+        <AmountTile label="Treatment" value={money(item.totalAmount || item.cost)} />
+        <AmountTile label="Paid" value={money(item.paidAmount)} tone="success" />
+        <AmountTile label={item.paymentCleared ? "Due" : "Due Now"} value={money(item.dueAmount)} tone={item.paymentCleared ? "success" : "warning"} />
       </View>
 
       <View style={{ flexDirection: "row", gap: 8, flexWrap: "wrap" }}>
@@ -216,18 +295,18 @@ function TreatmentCard({
         />
         {!item.paymentCleared ? (
           <AppButton
-            title="Collect"
+            title="Collect Due"
             icon="cash-outline"
             variant="secondary"
-            onPress={() => router.push({ pathname: "/payment/fee", params: { fee_type: "treatment_fee" } } as never)}
+            onPress={() => router.push({ pathname: "/patient/payment", params: { patient_id: item.patientId } } as never)}
             style={{ flex: 1, minWidth: "30%" }}
           />
         ) : null}
       </View>
 
-      {allowStatusUpdates ? (
+      {canComplete ? (
         <View style={{ flexDirection: "row", gap: 8 }}>
-          {item.status === "planned" ? (
+          {allowStatusUpdates && item.status === "planned" ? (
             <AppButton
               title="Start"
               icon="play-outline"
@@ -237,15 +316,51 @@ function TreatmentCard({
               style={{ flex: 1 }}
             />
           ) : null}
-          <AppButton
-            title="Complete"
-            icon="checkmark-done-outline"
-            loading={updating}
-            onPress={() => onUpdateStatus("completed")}
-            style={{ flex: 1 }}
-          />
+          {canComplete ? (
+            <AppButton
+              title="Complete"
+              icon="checkmark-done-outline"
+              loading={updating}
+              onPress={() => onUpdateStatus("completed")}
+              style={{ flex: 1 }}
+            />
+          ) : null}
         </View>
       ) : null}
+    </View>
+  );
+}
+
+function AmountTile({
+  label,
+  value,
+  tone = "default",
+}: {
+  label: string;
+  value: string;
+  tone?: "default" | "success" | "warning";
+}) {
+  const backgroundColor = tone === "success" ? colors.successSoft : tone === "warning" ? colors.warningSoft : colors.surfaceSoft;
+  const valueColor = tone === "success" ? colors.success : tone === "warning" ? colors.warning : colors.text;
+
+  return (
+    <View
+      style={{
+        flex: 1,
+        minWidth: "30%",
+        padding: 12,
+        borderRadius: 16,
+        backgroundColor,
+        borderWidth: 1,
+        borderColor: colors.border,
+      }}
+    >
+      <Text style={{ color: colors.muted, fontSize: 11, fontWeight: "900", textTransform: "uppercase" }}>
+        {label}
+      </Text>
+      <Text style={{ color: valueColor, fontSize: 17, fontWeight: "900", marginTop: 4 }}>
+        {value}
+      </Text>
     </View>
   );
 }

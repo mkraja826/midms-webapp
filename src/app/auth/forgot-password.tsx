@@ -37,7 +37,7 @@ export default function ForgotPasswordScreen() {
           Forgot Password
         </Text>
         <Text style={{ color: colors.muted, fontSize: 15, lineHeight: 21 }}>
-          Enter the email used for DMS. The message is kept private for clinic security.
+          Enter the email used for CapDent. The message is kept private for clinic security.
         </Text>
       </View>
 

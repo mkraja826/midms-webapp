@@ -31,12 +31,12 @@ export function StatusBadge({
       style={{
         alignSelf: "flex-start",
         backgroundColor: bg,
-        paddingHorizontal: 10,
-        paddingVertical: 6,
+        paddingHorizontal: 9,
+        paddingVertical: 5,
         borderRadius: 999,
       }}
     >
-      <Text style={{ color: fg, fontSize: 12, fontWeight: "900" }}>{label}</Text>
+      <Text style={{ color: fg, fontSize: 12, fontWeight: "800" }}>{label}</Text>
     </View>
   );
 }

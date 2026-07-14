@@ -1,6 +1,6 @@
 import { Ionicons } from "@expo/vector-icons";
 import { Pressable, Text, View } from "react-native";
-import { colors } from "@/constants/colors";
+import { colors, radius } from "@/constants/colors";
 
 type Props = {
   icon: keyof typeof Ionicons.glyphMap;
@@ -11,7 +11,11 @@ type Props = {
 export function QuickAction({ icon, label, onPress }: Props) {
   return (
     <Pressable
+      accessibilityRole="button"
+      accessibilityLabel={label}
       onPress={onPress}
+      hitSlop={6}
+      android_ripple={{ color: "rgba(15, 118, 110, 0.10)", borderless: false }}
       style={({ pressed }) => ({
         flex: 1,
         minWidth: 102,
@@ -19,7 +23,7 @@ export function QuickAction({ icon, label, onPress }: Props) {
         gap: 8,
         borderWidth: 1,
         borderColor: colors.border,
-        borderRadius: 14,
+        borderRadius: radius.md,
         padding: 12,
         backgroundColor: pressed ? colors.primarySoft : colors.card,
       })}

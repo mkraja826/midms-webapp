@@ -11,7 +11,7 @@ import {
   getClinicFeatureSettings,
 } from "@/lib/clinicOptions";
 import { uploadPatientProfilePhoto } from "@/lib/patientProfilePhoto";
-import { createPatient } from "@/lib/supabase";
+import { ClinicPatientLimitStatus, createPatient, getClinicPatientLimitStatus } from "@/lib/supabase";
 
 export default function AddPatientScreen() {
   const [form, setForm] = useState({
@@ -34,6 +34,7 @@ export default function AddPatientScreen() {
     blood_pressure: false,
   });
   const [features, setFeatures] = useState(DEFAULT_CLINIC_FEATURE_SETTINGS);
+  const [limitStatus, setLimitStatus] = useState<ClinicPatientLimitStatus | null>(null);
   const [photoUri, setPhotoUri] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
 
@@ -51,8 +52,18 @@ export default function AddPatientScreen() {
     }
   }
 
+  async function loadLimitStatus() {
+    try {
+      const usage = await getClinicPatientLimitStatus();
+      setLimitStatus(usage);
+    } catch (error) {
+      console.warn("Patient limit load failed:", error);
+    }
+  }
+
   useEffect(() => {
     loadFeatures();
+    loadLimitStatus();
   }, []);
 
   async function pickPatientPhoto() {
@@ -68,13 +79,39 @@ export default function AddPatientScreen() {
     setPhotoUri(result.assets[0].uri);
   }
 
-  async function save() {
+  async function save(skipLimitWarning = false) {
     if (!form.name.trim() || !form.phone.trim()) {
       Alert.alert("Required fields", "Full name and phone are required.");
       return;
     }
-    setSaving(true);
+
     try {
+      if (!skipLimitWarning) {
+        const usage = await getClinicPatientLimitStatus();
+        setLimitStatus(usage);
+
+        if (usage.level === "blocked") {
+          Alert.alert("Free patient limit reached", usage.message, [
+            { text: "Cancel", style: "cancel" },
+            { text: "View Plans", onPress: () => router.push("/settings/subscription" as never) },
+          ]);
+          return;
+        }
+
+        if (usage.level === "warning") {
+          Alert.alert("Free patient slots low", usage.message, [
+            { text: "Cancel", style: "cancel" },
+            { text: "Continue", onPress: () => void save(true) },
+          ]);
+          return;
+        }
+
+        if (usage.level === "notice") {
+          Alert.alert("Free patient slots", usage.message);
+        }
+      }
+
+      setSaving(true);
       const patient = await createPatient({
         name: form.name.trim(),
         gender: form.gender.trim(),
@@ -95,6 +132,16 @@ export default function AddPatientScreen() {
         await uploadPatientProfilePhoto(patient.id, photoUri);
       }
 
+      const nextUsage = await getClinicPatientLimitStatus();
+      setLimitStatus(nextUsage);
+
+      if (!nextUsage.unlimited && (nextUsage.level === "notice" || nextUsage.level === "warning")) {
+        Alert.alert("Patient saved", nextUsage.message, [
+          { text: "Open Patient", onPress: () => router.replace({ pathname: "/patient/[id]", params: { id: patient.id } }) },
+        ]);
+        return;
+      }
+
       router.replace({ pathname: "/patient/[id]", params: { id: patient.id } });
     } catch (error) {
       Alert.alert("Patient save failed", error instanceof Error ? error.message : "Unable to add patient.");
@@ -105,6 +152,22 @@ export default function AddPatientScreen() {
 
   return (
     <ScrollView contentInsetAdjustmentBehavior="automatic" contentContainerStyle={{ padding: 16, gap: 16 }}>
+      {limitStatus && !limitStatus.unlimited && limitStatus.level !== "none" ? (
+        <SectionCard
+          title={limitStatus.level === "blocked" ? "Free Patient Limit Reached" : "Free Patient Slots"}
+          subtitle={limitStatus.message}
+        >
+          {limitStatus.level === "blocked" ? (
+            <AppButton
+              title="View Plans"
+              icon="card-outline"
+              variant="secondary"
+              onPress={() => router.push("/settings/subscription" as never)}
+            />
+          ) : null}
+        </SectionCard>
+      ) : null}
+
       <SectionCard title="Patient Details" subtitle="Name and phone are required. Add age and contact details if available.">
         {features.enable_patient_photos ? (
           <View style={{ alignItems: "center", gap: 10 }}>

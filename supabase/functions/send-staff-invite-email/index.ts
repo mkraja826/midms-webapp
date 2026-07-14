@@ -20,9 +20,9 @@ Deno.serve(async (req) => {
 
   try {
     const resendApiKey = Deno.env.get("RESEND_API_KEY");
-    const fromEmail = Deno.env.get("INVITE_FROM_EMAIL") ?? "DMS <onboarding@resend.dev>";
-    const appName = Deno.env.get("APP_NAME") ?? "DMS";
-    const appUrl = Deno.env.get("APP_URL") ?? "Open the DMS mobile app";
+    const fromEmail = Deno.env.get("INVITE_FROM_EMAIL") ?? "CapDent <onboarding@resend.dev>";
+    const appName = Deno.env.get("APP_NAME") ?? "CapDent";
+    const appUrl = Deno.env.get("APP_URL") ?? "Open the CapDent mobile app";
     const supabaseUrl = Deno.env.get("SUPABASE_URL");
     const supabaseAnonKey = Deno.env.get("SUPABASE_ANON_KEY");
     const authHeader = req.headers.get("Authorization");
@@ -68,7 +68,7 @@ Deno.serve(async (req) => {
       `${profile.name} has invited you to join ${clinicName} as ${roleLabel} in ${appName}.`,
       "",
       "How to join:",
-      "1. Open the DMS app.",
+      "1. Open the CapDent app.",
       `2. Create a staff account using this email: ${invite.email}`,
       "3. Log in and tap Join Invited Clinic.",
       "",
@@ -81,7 +81,7 @@ Deno.serve(async (req) => {
         <p>Hello <strong>${invite.name}</strong>,</p>
         <p>${profile.name} has invited you to join <strong>${clinicName}</strong> as <strong>${roleLabel}</strong>.</p>
         <ol>
-          <li>Open the DMS app.</li>
+          <li>Open the CapDent app.</li>
           <li>Create a staff account using <strong>${invite.email}</strong>.</li>
           <li>Log in and tap <strong>Join Invited Clinic</strong>.</li>
         </ol>

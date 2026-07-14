@@ -1,7 +1,11 @@
-import { GOOGLE_PLAY_MONTHLY_PRODUCT_ID } from "@/lib/googlePlayBilling";
+import {
+  GOOGLE_PLAY_INTELLIGENCE_PRODUCT_ID,
+  GOOGLE_PLAY_PROFESSIONAL_PRODUCT_ID,
+} from "@/lib/googlePlayBilling";
 import { getCurrentProfile, supabase } from "@/lib/supabase";
 
-export type ClinicSubscriptionStatus = "trial" | "active" | "expired" | "cancelled" | "grace_period";
+export type ClinicSubscriptionStatus = "free" | "trial" | "active" | "expired" | "cancelled" | "grace_period";
+export type ClinicPlanName = "free" | "professional" | "clinic_intelligence";
 export type SubscriptionBillingCycle = "monthly" | "yearly";
 export type SubscriptionPaymentStatus = "pending_review" | "approved" | "rejected" | "cancelled";
 export type SubscriptionBillingProvider = "google_play" | "manual";
@@ -15,9 +19,11 @@ export type GooglePlaySubscriptionStatus =
   | "cancelled"
   | "pending_verification";
 
-export const SUBSCRIPTION_MONTHLY_AMOUNT = 799;
-export const SUBSCRIPTION_YEARLY_AMOUNT = SUBSCRIPTION_MONTHLY_AMOUNT * 12;
-export const GOOGLE_PLAY_TRIAL_MONTHS = 3;
+export const FREE_PLAN_AMOUNT = 0;
+export const SUBSCRIPTION_PROFESSIONAL_AMOUNT = 799;
+export const SUBSCRIPTION_INTELLIGENCE_AMOUNT = 1500;
+export const SUBSCRIPTION_MONTHLY_AMOUNT = SUBSCRIPTION_PROFESSIONAL_AMOUNT;
+export const SUBSCRIPTION_YEARLY_AMOUNT = SUBSCRIPTION_PROFESSIONAL_AMOUNT * 12;
 
 export type ClinicSubscription = {
   id: string;
@@ -90,12 +96,47 @@ export function subscriptionPaymentStatusTone(status?: SubscriptionPaymentStatus
   return "warning" as const;
 }
 
+export function getClinicPlanName(subscription: ClinicSubscription | null): ClinicPlanName {
+  const planName = String(subscription?.plan_name || "").toLowerCase();
+  const productId = String(subscription?.google_play_product_id || "").toLowerCase();
+
+  if (planName === "clinic_intelligence" || productId === GOOGLE_PLAY_INTELLIGENCE_PRODUCT_ID) {
+    return "clinic_intelligence";
+  }
+
+  if (
+    planName === "professional" ||
+    planName === "google_play_monthly" ||
+    productId === GOOGLE_PLAY_PROFESSIONAL_PRODUCT_ID
+  ) {
+    return "professional";
+  }
+
+  return "free";
+}
+
+export function getClinicPlanLabel(plan: ClinicPlanName) {
+  if (plan === "clinic_intelligence") return "Clinic Intelligence";
+  if (plan === "professional") return "Professional";
+  return "Free";
+}
+
+export function getClinicPlanPrice(plan: ClinicPlanName) {
+  if (plan === "clinic_intelligence") return SUBSCRIPTION_INTELLIGENCE_AMOUNT;
+  if (plan === "professional") return SUBSCRIPTION_PROFESSIONAL_AMOUNT;
+  return FREE_PLAN_AMOUNT;
+}
+
+export function hasClinicIntelligenceAccess(subscription: ClinicSubscription | null) {
+  return getClinicPlanName(subscription) === "clinic_intelligence" && subscription?.status === "active";
+}
+
 export function hasGooglePlayAutopay(subscription: ClinicSubscription | null) {
   return Boolean(subscription?.google_play_purchase_token && subscription?.billing_provider === "google_play");
 }
 
 export function googlePlayBillingStatusLabel(status?: GooglePlaySubscriptionStatus | null) {
-  if (status === "trial_started") return "Google Play trial started";
+  if (status === "trial_started") return "Google Play linked";
   if (status === "active") return "Google Play active";
   if (status === "grace_period") return "Google Play grace period";
   if (status === "account_hold") return "Google Play account hold";
@@ -216,141 +257,147 @@ export function getSubscriptionAccess(subscription: ClinicSubscription | null): 
     return {
       allowed: true,
       blocked: false,
-      reason: "Subscription row was not loaded. Access is kept open so pilot clinics are not blocked by migration issues.",
-      statusLabel: "Not loaded",
+      reason: "Free plan access is available. Upgrade is optional for paid owner tools.",
+      statusLabel: "Free",
     };
   }
 
+  const plan = getClinicPlanName(subscription);
+  const planLabel = getClinicPlanLabel(plan);
+
   if (subscription.status === "cancelled" || subscription.google_play_status === "cancelled") {
     return {
-      allowed: false,
-      blocked: true,
-      reason: "This clinic subscription is cancelled. Owner renewal through Google Play is required to continue using MiDMS.",
-      statusLabel: "Cancelled",
+      allowed: true,
+      blocked: false,
+      reason: "Paid access is cancelled. Core clinic work continues on the Free plan.",
+      statusLabel: "Free",
     };
   }
 
   if (subscription.google_play_status === "account_hold") {
     return {
-      allowed: false,
-      blocked: true,
-      reason: "Google Play payment is unresolved. The owner must fix the payment method in Google Play to continue using MiDMS.",
-      statusLabel: "Account hold",
+      allowed: true,
+      blocked: false,
+      reason: "Google Play payment needs attention. Core clinic work continues on the Free plan.",
+      statusLabel: "Payment issue",
     };
   }
 
   if (subscription.status === "expired" || subscription.google_play_status === "expired") {
     return {
-      allowed: false,
-      blocked: true,
-      reason: "This clinic subscription is expired. Start or renew the MiDMS subscription through Google Play.",
-      statusLabel: "Expired",
-    };
-  }
-
-  if (subscription.status === "trial" && isExpiredDate(subscription.trial_ends_at)) {
-    return {
-      allowed: false,
-      blocked: true,
-      reason: "The free trial period has ended. Google Play subscription is required to continue using MiDMS.",
-      statusLabel: "Trial ended",
+      allowed: true,
+      blocked: false,
+      reason: "Paid access is expired. Core clinic work continues on the Free plan.",
+      statusLabel: "Free",
     };
   }
 
   if (subscription.status === "active" && isExpiredDate(subscription.current_period_end)) {
     return {
-      allowed: false,
-      blocked: true,
-      reason: "The current paid period has ended. Google Play renewal is required to continue using MiDMS.",
-      statusLabel: "Payment due",
+      allowed: true,
+      blocked: false,
+      reason: "The stored paid period has ended. Core clinic work continues on the Free plan until Google Play status is refreshed.",
+      statusLabel: "Free",
     };
   }
 
   if (subscription.status === "grace_period" && isExpiredDate(subscription.current_period_end)) {
     return {
-      allowed: false,
-      blocked: true,
-      reason: "The grace period has ended. Google Play renewal is required to continue using MiDMS.",
-      statusLabel: "Grace ended",
+      allowed: true,
+      blocked: false,
+      reason: "The grace period ended. Core clinic work continues on the Free plan.",
+      statusLabel: "Free",
     };
   }
 
   return {
     allowed: true,
     blocked: false,
-    reason: "Clinic access is active.",
+    reason: plan === "free" ? "Free plan access is active." : `${planLabel} access is active.`,
     statusLabel:
-      subscription.status === "trial"
-        ? hasGooglePlayAutopay(subscription)
-          ? "Google Play trial"
-          : "Trial active"
+      plan === "free"
+        ? "Free"
         : subscription.status === "active"
-        ? "Active"
+        ? planLabel
         : subscription.status === "grace_period"
         ? "Grace period"
-        : subscription.status,
+        : planLabel,
   };
 }
 
 export function getSubscriptionDisplay(subscription: ClinicSubscription | null) {
   if (!subscription) {
     return {
-      title: "Trial not loaded",
-      subtitle: "Run the subscription SQL migration before testing new clinic trials.",
+      title: "Free plan active",
+      subtitle: "Start clean with core clinic management. Upgrade when the clinic grows beyond the starting setup.",
       tone: "warning" as const,
       daysLeft: null as number | null,
       renewalDate: "Not set",
-      priceText: "₹799/month after 3-month free trial",
+      priceText: "Free",
     };
   }
 
   const status = subscription.status;
   const access = getSubscriptionAccess(subscription);
+  const plan = getClinicPlanName(subscription);
+  const planLabel = getClinicPlanLabel(plan);
   const googlePlayReady = hasGooglePlayAutopay(subscription);
-  const daysLeft =
-    status === "trial" ? daysUntil(subscription.trial_ends_at) : daysUntil(subscription.current_period_end);
-  const renewalDate =
-    status === "trial"
-      ? formatPlanDate(subscription.trial_ends_at)
-      : formatPlanDate(subscription.current_period_end);
-  const productId = subscription.google_play_product_id || GOOGLE_PLAY_MONTHLY_PRODUCT_ID;
-  const priceText = `₹${Math.round(Number(subscription.monthly_price || 799)).toLocaleString("en-IN")}/month`;
+  const daysLeft = daysUntil(subscription.current_period_end);
+  const renewalDate = formatPlanDate(subscription.current_period_end);
+  const price =
+    Number(subscription.monthly_price || 0) > 0 ? Number(subscription.monthly_price) : getClinicPlanPrice(plan);
+  const priceText = plan === "free" ? "Free" : `\u20B9${Math.round(price).toLocaleString("en-IN")}/month`;
 
-  if (access.blocked) {
+  if (status === "cancelled" || subscription.google_play_status === "cancelled") {
     return {
-      title: access.statusLabel,
-      subtitle: access.reason,
-      tone: "danger" as const,
+      title: "Free plan active",
+      subtitle: "Paid access is cancelled. Core clinic management remains available on the Free plan.",
+      tone: "warning" as const,
       daysLeft,
       renewalDate,
-      priceText,
+      priceText: "Free",
     };
   }
 
-  if (status === "trial") {
-    const safeDaysLeft = daysLeft ?? 0;
+  if (status === "expired" || subscription.google_play_status === "expired") {
     return {
-      title: googlePlayReady
-        ? `Google Play trial active • ${safeDaysLeft > 0 ? `${safeDaysLeft} days left` : "trial period"}`
-        : safeDaysLeft > 0
-        ? `Free trial active • ${safeDaysLeft} days left`
-        : "Free trial active",
-      subtitle: googlePlayReady
-        ? `Autopay is linked to ${productId}. Google Play renews after ${renewalDate} unless the owner cancels.`
-        : `Trial ends on ${renewalDate}. Start Google Play free trial now so billing continues automatically after 3 months.`,
-      tone: googlePlayReady ? ("success" as const) : safeDaysLeft <= 10 ? ("warning" as const) : ("success" as const),
+      title: "Free plan active",
+      subtitle: "Paid access is expired. Core clinic management remains available on the Free plan.",
+      tone: "warning" as const,
       daysLeft,
       renewalDate,
-      priceText,
+      priceText: "Free",
+    };
+  }
+
+  if (subscription.google_play_status === "account_hold") {
+    return {
+      title: "Free plan active",
+      subtitle: "Google Play payment needs attention. Core clinic work continues while paid features wait for renewal.",
+      tone: "warning" as const,
+      daysLeft,
+      renewalDate,
+      priceText: "Free",
+    };
+  }
+
+  if (plan === "free" || status === "free") {
+    return {
+      title: "Free plan active",
+      subtitle: "Built for new single-owner clinics to start professionally without costly software.",
+      tone: "success" as const,
+      daysLeft: null,
+      renewalDate: "No renewal needed",
+      priceText: "Free",
     };
   }
 
   if (status === "active") {
     return {
-      title: googlePlayReady ? "Google Play subscription active" : "Subscription active",
+      title: googlePlayReady ? `${planLabel} active` : `${planLabel} enabled`,
       subtitle: googlePlayReady
-        ? `Autopay is active through Google Play. Current period ends on ${renewalDate}. ${priceText}.`
-        : `Current period ends on ${renewalDate}. ${priceText}.`,
+        ? `Auto-renewal is active through Google Play. Current period ends on ${renewalDate}. ${priceText}.`
+        : `Paid plan is active. Current period ends on ${renewalDate}. ${priceText}.`,
       tone: "success" as const,
       daysLeft,
       renewalDate,
@@ -358,23 +405,10 @@ export function getSubscriptionDisplay(subscription: ClinicSubscription | null) 
     };
   }
 
-  if (status === "grace_period") {
-    return {
-      title: "Grace period active",
-      subtitle: googlePlayReady
-        ? `Ask owner to fix Google Play payment before ${renewalDate}. ${priceText}.`
-        : `Renew before ${renewalDate} to avoid interruption. ${priceText}.`,
-      tone: "warning" as const,
-      daysLeft,
-      renewalDate,
-      priceText,
-    };
-  }
-
   return {
-    title: status === "cancelled" ? "Subscription cancelled" : "Subscription expired",
-    subtitle: "Google Play subscription is required to continue after the trial/subscription period.",
-    tone: "danger" as const,
+    title: access.statusLabel,
+    subtitle: access.reason,
+    tone: status === "grace_period" ? ("warning" as const) : ("success" as const),
     daysLeft,
     renewalDate,
     priceText,

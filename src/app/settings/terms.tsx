@@ -15,11 +15,11 @@ function openTermsPage() {
 export default function TermsScreen() {
   return (
     <ScrollView contentInsetAdjustmentBehavior="automatic" contentContainerStyle={{ padding: 16, gap: 16 }}>
-      <SectionCard title="Terms & Conditions" subtitle="Dental Management System usage terms.">
+      <SectionCard title="Terms & Conditions" subtitle="CapDent usage terms.">
         <View style={{ gap: 12 }}>
           <Text style={{ color: colors.text, fontWeight: "900", fontSize: 16 }}>1. Purpose</Text>
           <Text style={{ color: colors.muted, lineHeight: 21 }}>
-            DMS is a clinic management tool for dental clinics to manage patients, appointments, visits, payments,
+            CapDent is a clinic management tool for dental clinics to manage patients, appointments, visits, payments,
             prescriptions, X-rays, photos, reminders, and clinic staff workflows.
           </Text>
 
@@ -31,7 +31,7 @@ export default function TermsScreen() {
 
           <Text style={{ color: colors.text, fontWeight: "900", fontSize: 16 }}>3. Medical Disclaimer</Text>
           <Text style={{ color: colors.muted, lineHeight: 21 }}>
-            DMS does not provide medical advice, diagnosis, or treatment. All clinical decisions must be made by
+            CapDent does not provide medical advice, diagnosis, or treatment. All clinical decisions must be made by
             qualified dental professionals.
           </Text>
 
@@ -49,7 +49,7 @@ export default function TermsScreen() {
 
           <Text style={{ color: colors.text, fontWeight: "900", fontSize: 16 }}>6. Changes</Text>
           <Text style={{ color: colors.muted, lineHeight: 21 }}>
-            These terms may be updated as DMS improves. Continued use of the app means the clinic accepts the latest
+            These terms may be updated as CapDent improves. Continued use of the app means the clinic accepts the latest
             version of these terms.
           </Text>
         </View>
