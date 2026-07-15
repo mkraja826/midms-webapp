@@ -6,9 +6,11 @@ import { ActionCard } from "@/components/ActionCard";
 import { AppButton } from "@/components/AppButton";
 import { ClinicBrandHeader } from "@/components/ClinicBrandHeader";
 import { EmptyState } from "@/components/EmptyState";
+import { RescheduleAppointmentModal } from "@/components/RescheduleAppointmentModal";
 import { Screen } from "@/components/Screen";
 import { SectionCard } from "@/components/SectionCard";
 import { StatCard } from "@/components/StatCard";
+import { WaitingAppointmentActions } from "@/components/WaitingAppointmentActions";
 import { WorkflowBottomNav } from "@/components/WorkflowBottomNav";
 import { colors } from "@/constants/colors";
 import { receptionWorkflowNavItems } from "@/constants/workflowNav";
@@ -59,17 +61,6 @@ function appointmentDateTime(value: string) {
   });
 }
 
-function nextFutureSameTime(value: string, daysToAdd = 1) {
-  const date = new Date(value);
-  date.setDate(date.getDate() + daysToAdd);
-
-  while (date.getTime() <= Date.now()) {
-    date.setDate(date.getDate() + 1);
-  }
-
-  return date;
-}
-
 function startOfToday() {
   const date = new Date();
   date.setHours(0, 0, 0, 0);
@@ -94,6 +85,7 @@ export default function ReceptionDashboard() {
   const [features, setFeatures] = useState<ClinicFeatureSettings>(DEFAULT_CLINIC_FEATURE_SETTINGS);
   const [loading, setLoading] = useState(true);
   const [busyAppointmentId, setBusyAppointmentId] = useState<string | null>(null);
+  const [rescheduleItem, setRescheduleItem] = useState<AppointmentRow | null>(null);
 
   async function load(force = false) {
     try {
@@ -145,29 +137,13 @@ export default function ReceptionDashboard() {
         nextTime.toISOString(),
         `Rescheduled by reception from ${appointmentDateTime(item.appointment_time)} to ${appointmentDateTime(nextTime.toISOString())}.`
       );
+      setRescheduleItem(null);
       await load(true);
     } catch (error) {
       Alert.alert("Reschedule failed", error instanceof Error ? error.message : "Please try again.");
     } finally {
       setBusyAppointmentId(null);
     }
-  }
-
-  function confirmReschedule(item: AppointmentRow) {
-    const nextTime = nextFutureSameTime(item.appointment_time, 1);
-    const name = item.patients?.name || "this patient";
-
-    Alert.alert(
-      "Reschedule appointment",
-      `Move ${name} to ${appointmentDateTime(nextTime.toISOString())}?`,
-      [
-        { text: "Cancel", style: "cancel" },
-        {
-          text: "Reschedule",
-          onPress: () => void performReschedule(item, nextTime),
-        },
-      ]
-    );
   }
 
   async function performComplete(item: AppointmentRow) {
@@ -341,22 +317,11 @@ export default function ReceptionDashboard() {
               ) : null}
             </View>
 
-            <View style={{ flexDirection: "row", gap: 10 }}>
-              <AppButton
-                title="Reschedule"
-                icon="calendar-number-outline"
-                variant="secondary"
-                loading={busyAppointmentId === next.id}
-                onPress={() => confirmReschedule(next)}
-                style={{ flex: 1 }}
-              />
-              <AppButton
-                title="Completed"
-                icon="checkmark-done-outline"
-                variant="secondary"
-                loading={busyAppointmentId === next.id}
-                onPress={() => confirmComplete(next)}
-                style={{ flex: 1 }}
+            <View style={{ alignItems: "flex-end" }}>
+              <WaitingAppointmentActions
+                busy={busyAppointmentId === next.id}
+                onReschedule={() => setRescheduleItem(next)}
+                onCompleted={() => confirmComplete(next)}
               />
             </View>
           </View>
@@ -382,7 +347,7 @@ export default function ReceptionDashboard() {
                 showPhoto={features.enable_patient_photos}
                 busy={busyAppointmentId === item.id}
                 onPress={() => router.push(`/patient/${item.patient_id}` as never)}
-                onReschedule={() => confirmReschedule(item)}
+                onReschedule={() => setRescheduleItem(item)}
                 onCompleted={() => confirmComplete(item)}
               />
             ))}
@@ -391,6 +356,17 @@ export default function ReceptionDashboard() {
           <EmptyState title="No waiting patients" message="Use Quick Check-in to send patient to doctor queue." icon="people-outline" />
         )}
       </SectionCard>
+
+      <RescheduleAppointmentModal
+        visible={Boolean(rescheduleItem)}
+        patientName={rescheduleItem?.patients?.name}
+        currentAppointmentTime={rescheduleItem?.appointment_time}
+        saving={Boolean(rescheduleItem && busyAppointmentId === rescheduleItem.id)}
+        onClose={() => setRescheduleItem(null)}
+        onConfirm={(nextTime) => {
+          if (rescheduleItem) void performReschedule(rescheduleItem, nextTime);
+        }}
+      />
     </Screen>
   );
 }
@@ -444,54 +420,12 @@ function AppointmentItem({
         </View>
       </Pressable>
 
-      <View style={{ flexDirection: "row", gap: 8 }}>
-        <Pressable
-          disabled={busy}
-          onPress={onReschedule}
-          accessibilityRole="button"
-          accessibilityLabel="Reschedule appointment"
-          style={({ pressed }) => ({
-            flex: 1,
-            minHeight: 36,
-            paddingHorizontal: 10,
-            borderRadius: 12,
-            backgroundColor: pressed ? colors.surfaceSoft : colors.primarySoft,
-            alignItems: "center",
-            justifyContent: "center",
-            flexDirection: "row",
-            gap: 6,
-            opacity: busy ? 0.55 : 1,
-          })}
-        >
-          <Ionicons name="calendar-number-outline" size={16} color={colors.primary} />
-          <Text numberOfLines={1} style={{ color: colors.primary, fontSize: 12, fontWeight: "900" }}>
-            Reschedule
-          </Text>
-        </Pressable>
-
-        <Pressable
-          disabled={busy}
-          onPress={onCompleted}
-          accessibilityRole="button"
-          accessibilityLabel="Mark appointment completed"
-          style={({ pressed }) => ({
-            flex: 1,
-            minHeight: 36,
-            paddingHorizontal: 10,
-            borderRadius: 12,
-            backgroundColor: pressed ? colors.surfaceSoft : colors.successSoft,
-            alignItems: "center",
-            justifyContent: "center",
-            flexDirection: "row",
-            gap: 6,
-            opacity: busy ? 0.55 : 1,
-          })}
-        >
-          <Ionicons name="checkmark-done-outline" size={16} color={colors.success} />
-          <Text numberOfLines={1} style={{ color: colors.success, fontSize: 12, fontWeight: "900" }}>
-            Completed
-          </Text>
-        </Pressable>
+      <View style={{ alignItems: "flex-end" }}>
+        <WaitingAppointmentActions
+          busy={busy}
+          onReschedule={onReschedule}
+          onCompleted={onCompleted}
+        />
       </View>
     </View>
   );
