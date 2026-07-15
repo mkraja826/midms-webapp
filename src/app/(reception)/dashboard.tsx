@@ -9,7 +9,6 @@ import { EmptyState } from "@/components/EmptyState";
 import { Screen } from "@/components/Screen";
 import { SectionCard } from "@/components/SectionCard";
 import { StatCard } from "@/components/StatCard";
-import { StatusBadge } from "@/components/StatusBadge";
 import { WorkflowBottomNav } from "@/components/WorkflowBottomNav";
 import { colors } from "@/constants/colors";
 import { receptionWorkflowNavItems } from "@/constants/workflowNav";
@@ -20,7 +19,6 @@ import {
   getClinicFeatureSettings,
 } from "@/lib/clinicOptions";
 import {
-  closeWaitingAppointment,
   DashboardStats,
   getDashboardStats,
   getRoleLabel,
@@ -172,38 +170,6 @@ export default function ReceptionDashboard() {
     );
   }
 
-  async function performCloseWaiting(item: AppointmentRow) {
-    try {
-      setBusyAppointmentId(item.id);
-      await closeWaitingAppointment(
-        item.id,
-        `Closed by reception as no-show on ${appointmentDateTime(new Date().toISOString())}.`
-      );
-      await load(true);
-    } catch (error) {
-      Alert.alert("Close waiting failed", error instanceof Error ? error.message : "Please try again.");
-    } finally {
-      setBusyAppointmentId(null);
-    }
-  }
-
-  function confirmCloseWaiting(item: AppointmentRow) {
-    const name = item.patients?.name || "this patient";
-
-    Alert.alert(
-      "Close waiting?",
-      `${name} will be marked as no-show and removed from the waiting queue.`,
-      [
-        { text: "Cancel", style: "cancel" },
-        {
-          text: "Close waiting",
-          style: "destructive",
-          onPress: () => void performCloseWaiting(item),
-        },
-      ]
-    );
-  }
-
   async function performComplete(item: AppointmentRow) {
     try {
       setBusyAppointmentId(item.id);
@@ -343,20 +309,18 @@ export default function ReceptionDashboard() {
                 size={48}
               />
 
-              <View style={{ flex: 1 }}>
+              <View style={{ flex: 1, minWidth: 0 }}>
                 <Text style={{ color: colors.text, fontSize: 14, fontWeight: "900" }}>
                   Next Waiting Patient
                 </Text>
                 <Text numberOfLines={1} style={{ color: colors.text, fontSize: 20, fontWeight: "900", marginTop: 2 }}>
                   {next.patients?.name || "Patient"}
                 </Text>
-                <Text style={{ color: colors.muted, marginTop: 2 }}>
+                <Text numberOfLines={1} style={{ color: colors.muted, marginTop: 2 }}>
                   {appointmentTime(next.appointment_time)}
                   {next.patients?.phone ? ` • ${next.patients.phone}` : ""}
                 </Text>
               </View>
-
-              <StatusBadge label={next.status || "Waiting"} tone="warning" />
             </View>
 
             <View style={{ flexDirection: "row", gap: 10 }}>
@@ -379,7 +343,7 @@ export default function ReceptionDashboard() {
 
             <View style={{ flexDirection: "row", gap: 10 }}>
               <AppButton
-                title="Move Tomorrow"
+                title="Reschedule"
                 icon="calendar-number-outline"
                 variant="secondary"
                 loading={busyAppointmentId === next.id}
@@ -387,11 +351,11 @@ export default function ReceptionDashboard() {
                 style={{ flex: 1 }}
               />
               <AppButton
-                title="No-show"
-                icon="close-circle-outline"
+                title="Completed"
+                icon="checkmark-done-outline"
                 variant="secondary"
                 loading={busyAppointmentId === next.id}
-                onPress={() => confirmCloseWaiting(next)}
+                onPress={() => confirmComplete(next)}
                 style={{ flex: 1 }}
               />
             </View>
