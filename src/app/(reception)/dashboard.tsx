@@ -389,20 +389,28 @@ function AppointmentItem({
   return (
     <View
       style={{
-        padding: 12,
+        minHeight: 70,
+        padding: 10,
         borderRadius: 18,
         backgroundColor: colors.background,
         borderWidth: 1,
         borderColor: colors.border,
-        gap: 10,
+        flexDirection: "row",
+        alignItems: "center",
+        gap: 8,
       }}
     >
       <Pressable
+        accessibilityRole="button"
+        accessibilityLabel={`Open ${item.patients?.name || "patient"}`}
         onPress={onPress}
         style={({ pressed }) => ({
+          flex: 1,
+          minWidth: 0,
+          minHeight: 50,
           flexDirection: "row",
           alignItems: "center",
-          gap: 12,
+          gap: 10,
           borderRadius: 14,
           backgroundColor: pressed ? colors.surfaceSoft : colors.background,
         })}
@@ -420,13 +428,11 @@ function AppointmentItem({
         </View>
       </Pressable>
 
-      <View style={{ alignItems: "flex-end" }}>
-        <WaitingAppointmentActions
-          busy={busy}
-          onReschedule={onReschedule}
-          onCompleted={onCompleted}
-        />
-      </View>
+      <WaitingAppointmentActions
+        busy={busy}
+        onReschedule={onReschedule}
+        onCompleted={onCompleted}
+      />
     </View>
   );
 }
