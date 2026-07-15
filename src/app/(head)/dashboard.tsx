@@ -4,8 +4,9 @@ import { useEffect, useMemo, useState, type ComponentProps, type ReactNode } fro
 import { Alert, Pressable, Text, useWindowDimensions, View } from "react-native";
 import { ClinicBrandHeader } from "@/components/ClinicBrandHeader";
 import { EmptyState } from "@/components/EmptyState";
+import { RescheduleAppointmentModal } from "@/components/RescheduleAppointmentModal";
 import { Screen } from "@/components/Screen";
-import { StatusBadge } from "@/components/StatusBadge";
+import { WaitingAppointmentActions } from "@/components/WaitingAppointmentActions";
 import { colors } from "@/constants/colors";
 import { useAuth } from "@/lib/auth";
 import {
@@ -14,6 +15,8 @@ import {
   getDashboardStats,
   getRoleLabel,
   getWorkflowDashboardSummary,
+  rescheduleAppointment,
+  updateAppointmentStatus,
 } from "@/lib/supabase";
 
 type AppointmentRow = {
@@ -29,11 +32,21 @@ type AppointmentRow = {
 type IconName = ComponentProps<typeof Ionicons>["name"];
 
 function money(value?: number | null) {
-  return `\u20B9${Math.round(Number(value || 0)).toLocaleString("en-IN")}`;
+  return `₹${Math.round(Number(value || 0)).toLocaleString("en-IN")}`;
 }
 
 function appointmentTime(value: string) {
   return new Date(value).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+}
+
+function appointmentDateTime(value: string) {
+  return new Date(value).toLocaleString([], {
+    weekday: "short",
+    month: "short",
+    day: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
 }
 
 function isWaitingStatus(status?: string | null) {
@@ -47,6 +60,8 @@ export default function HeadDashboard() {
   const [stats, setStats] = useState<DashboardStats | null>(null);
   const [summary, setSummary] = useState<WorkflowDashboardSummary | null>(null);
   const [loading, setLoading] = useState(true);
+  const [busyAppointmentId, setBusyAppointmentId] = useState<string | null>(null);
+  const [rescheduleItem, setRescheduleItem] = useState<AppointmentRow | null>(null);
   const metricBasis = width < 380 ? "100%" : "47%";
 
   async function load(force = false) {
@@ -69,6 +84,51 @@ export default function HeadDashboard() {
   useEffect(() => {
     void load();
   }, []);
+
+  async function performReschedule(item: AppointmentRow, nextTime: Date) {
+    try {
+      setBusyAppointmentId(item.id);
+      await rescheduleAppointment(
+        item.id,
+        nextTime.toISOString(),
+        `Rescheduled by owner from ${appointmentDateTime(item.appointment_time)} to ${appointmentDateTime(nextTime.toISOString())}.`
+      );
+      setRescheduleItem(null);
+      await load(true);
+    } catch (error) {
+      Alert.alert("Reschedule failed", error instanceof Error ? error.message : "Please try again.");
+    } finally {
+      setBusyAppointmentId(null);
+    }
+  }
+
+  async function performComplete(item: AppointmentRow) {
+    try {
+      setBusyAppointmentId(item.id);
+      await updateAppointmentStatus(item.id, "completed");
+      await load(true);
+    } catch (error) {
+      Alert.alert("Complete failed", error instanceof Error ? error.message : "Please try again.");
+    } finally {
+      setBusyAppointmentId(null);
+    }
+  }
+
+  function confirmComplete(item: AppointmentRow) {
+    const name = item.patients?.name || "this patient";
+
+    Alert.alert(
+      "Mark completed?",
+      `${name} will be removed from the waiting room and counted as completed.`,
+      [
+        { text: "Cancel", style: "cancel" },
+        {
+          text: "Completed",
+          onPress: () => void performComplete(item),
+        },
+      ]
+    );
+  }
 
   const appointments = useMemo<AppointmentRow[]>(
     () => ((stats?.todayAppointmentList ?? []) as AppointmentRow[]),
@@ -181,7 +241,10 @@ export default function HeadDashboard() {
               <WaitingRow
                 key={item.id}
                 item={item}
+                busy={busyAppointmentId === item.id}
                 isLast={index === waiting.length - 1}
+                onReschedule={() => setRescheduleItem(item)}
+                onCompleted={() => confirmComplete(item)}
               />
             ))}
           </FlatListPanel>
@@ -189,6 +252,17 @@ export default function HeadDashboard() {
           <EmptyState title="No waiting patients" message="Reception check-ins will appear here." icon="checkmark-done-outline" />
         )}
       </DashboardSection>
+
+      <RescheduleAppointmentModal
+        visible={Boolean(rescheduleItem)}
+        patientName={rescheduleItem?.patients?.name}
+        currentAppointmentTime={rescheduleItem?.appointment_time}
+        saving={Boolean(rescheduleItem && busyAppointmentId === rescheduleItem.id)}
+        onClose={() => setRescheduleItem(null)}
+        onConfirm={(nextTime) => {
+          if (rescheduleItem) void performReschedule(rescheduleItem, nextTime);
+        }}
+      />
     </Screen>
   );
 }
@@ -454,49 +528,78 @@ function DashboardRow({
   );
 }
 
-function WaitingRow({ item, isLast }: { item: AppointmentRow; isLast: boolean }) {
+function WaitingRow({
+  item,
+  busy,
+  isLast,
+  onReschedule,
+  onCompleted,
+}: {
+  item: AppointmentRow;
+  busy: boolean;
+  isLast: boolean;
+  onReschedule: () => void;
+  onCompleted: () => void;
+}) {
   return (
-    <Pressable
-      accessibilityRole="button"
-      accessibilityLabel={`Open ${item.patients?.name || "patient"}`}
-      onPress={() => router.push(`/patient/${item.patient_id}` as never)}
-      android_ripple={{ color: "rgba(15, 118, 110, 0.08)", borderless: false }}
-      style={({ pressed }) => ({
-        minHeight: 68,
+    <View
+      style={{
+        minHeight: 74,
         paddingHorizontal: 14,
         paddingVertical: 11,
         flexDirection: "row",
         alignItems: "center",
-        gap: 12,
+        gap: 10,
         borderBottomWidth: isLast ? 0 : 1,
         borderBottomColor: colors.border,
-        backgroundColor: pressed ? colors.surfaceSoft : colors.surface,
-      })}
+        backgroundColor: colors.surface,
+      }}
     >
-      <View
-        style={{
-          width: 42,
-          height: 42,
-          borderRadius: 15,
-          backgroundColor: colors.warningSoft,
+      <Pressable
+        accessibilityRole="button"
+        accessibilityLabel={`Open ${item.patients?.name || "patient"}`}
+        onPress={() => router.push(`/patient/${item.patient_id}` as never)}
+        android_ripple={{ color: "rgba(15, 118, 110, 0.08)", borderless: false }}
+        style={({ pressed }) => ({
+          flex: 1,
+          minWidth: 0,
+          minHeight: 52,
+          borderRadius: 14,
+          flexDirection: "row",
           alignItems: "center",
-          justifyContent: "center",
-        }}
+          gap: 12,
+          backgroundColor: pressed ? colors.surfaceSoft : colors.surface,
+        })}
       >
-        <Ionicons name="time-outline" size={21} color={colors.warning} />
-      </View>
+        <View
+          style={{
+            width: 42,
+            height: 42,
+            borderRadius: 15,
+            backgroundColor: colors.warningSoft,
+            alignItems: "center",
+            justifyContent: "center",
+          }}
+        >
+          <Ionicons name="time-outline" size={21} color={colors.warning} />
+        </View>
 
-      <View style={{ flex: 1, minWidth: 0 }}>
-        <Text numberOfLines={1} style={{ color: colors.text, fontWeight: "900", fontSize: 15 }}>
-          {item.patients?.name || "Patient"}
-        </Text>
-        <Text numberOfLines={1} style={{ color: colors.muted, marginTop: 3 }}>
-          {appointmentTime(item.appointment_time)}
-          {item.patients?.phone ? ` - ${item.patients.phone}` : ""}
-        </Text>
-      </View>
+        <View style={{ flex: 1, minWidth: 0 }}>
+          <Text numberOfLines={1} style={{ color: colors.text, fontWeight: "900", fontSize: 15 }}>
+            {item.patients?.name || "Patient"}
+          </Text>
+          <Text numberOfLines={1} style={{ color: colors.muted, marginTop: 3 }}>
+            {appointmentTime(item.appointment_time)}
+            {item.patients?.phone ? ` - ${item.patients.phone}` : ""}
+          </Text>
+        </View>
+      </Pressable>
 
-      <StatusBadge label={item.status || "Waiting"} tone="warning" />
-    </Pressable>
+      <WaitingAppointmentActions
+        busy={busy}
+        onReschedule={onReschedule}
+        onCompleted={onCompleted}
+      />
+    </View>
   );
 }
