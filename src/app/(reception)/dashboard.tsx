@@ -27,6 +27,7 @@ import {
   getWorkflowDashboardSummary,
   rescheduleAppointment,
   supabase,
+  updateAppointmentStatus,
 } from "@/lib/supabase";
 
 type AppointmentRow = {
@@ -86,14 +87,6 @@ function endOfToday() {
 function isWaitingStatus(status?: string | null) {
   const value = String(status || "").toLowerCase();
   return ["scheduled", "waiting", "checked_in", "booked"].includes(value);
-}
-
-function tone(status?: string | null) {
-  const value = String(status || "").toLowerCase();
-  if (["completed", "done"].includes(value)) return "success";
-  if (["cancelled", "canceled"].includes(value)) return "danger";
-  if (isWaitingStatus(value)) return "warning";
-  return undefined;
 }
 
 export default function ReceptionDashboard() {
@@ -206,6 +199,34 @@ export default function ReceptionDashboard() {
           text: "Close waiting",
           style: "destructive",
           onPress: () => void performCloseWaiting(item),
+        },
+      ]
+    );
+  }
+
+  async function performComplete(item: AppointmentRow) {
+    try {
+      setBusyAppointmentId(item.id);
+      await updateAppointmentStatus(item.id, "completed");
+      await load(true);
+    } catch (error) {
+      Alert.alert("Complete failed", error instanceof Error ? error.message : "Please try again.");
+    } finally {
+      setBusyAppointmentId(null);
+    }
+  }
+
+  function confirmComplete(item: AppointmentRow) {
+    const name = item.patients?.name || "this patient";
+
+    Alert.alert(
+      "Mark completed?",
+      `${name} will be removed from the waiting room and counted as completed.`,
+      [
+        { text: "Cancel", style: "cancel" },
+        {
+          text: "Completed",
+          onPress: () => void performComplete(item),
         },
       ]
     );
@@ -395,11 +416,10 @@ export default function ReceptionDashboard() {
                 key={item.id}
                 item={item}
                 showPhoto={features.enable_patient_photos}
-                showMedication={features.enable_prescription_medications}
                 busy={busyAppointmentId === item.id}
                 onPress={() => router.push(`/patient/${item.patient_id}` as never)}
                 onReschedule={() => confirmReschedule(item)}
-                onCloseWaiting={() => confirmCloseWaiting(item)}
+                onCompleted={() => confirmComplete(item)}
               />
             ))}
           </View>
@@ -415,103 +435,101 @@ function AppointmentItem({
   item,
   onPress,
   onReschedule,
-  onCloseWaiting,
+  onCompleted,
   showPhoto,
-  showMedication,
   busy,
 }: {
   item: AppointmentRow;
   onPress: () => void;
   onReschedule: () => void;
-  onCloseWaiting: () => void;
+  onCompleted: () => void;
   showPhoto: boolean;
-  showMedication: boolean;
   busy: boolean;
 }) {
   return (
-    <Pressable
-      onPress={onPress}
-      style={({ pressed }) => ({
-        flexDirection: "row",
-        alignItems: "center",
-        gap: 12,
+    <View
+      style={{
         padding: 12,
         borderRadius: 18,
-        backgroundColor: pressed ? colors.surfaceSoft : colors.background,
+        backgroundColor: colors.background,
         borderWidth: 1,
         borderColor: colors.border,
-      })}
+        gap: 10,
+      }}
     >
-      <PatientAvatar photoUrl={showPhoto ? item.patients?.photo_url : null} />
+      <Pressable
+        onPress={onPress}
+        style={({ pressed }) => ({
+          flexDirection: "row",
+          alignItems: "center",
+          gap: 12,
+          borderRadius: 14,
+          backgroundColor: pressed ? colors.surfaceSoft : colors.background,
+        })}
+      >
+        <PatientAvatar photoUrl={showPhoto ? item.patients?.photo_url : null} />
 
-      <View style={{ flex: 1 }}>
-        <Text numberOfLines={1} style={{ color: colors.text, fontWeight: "900", fontSize: 16 }}>
-          {item.patients?.name || "Patient"}
-        </Text>
-        <Text numberOfLines={1} style={{ color: colors.muted, marginTop: 3 }}>
-          {appointmentTime(item.appointment_time)}
-          {item.patients?.phone ? ` • ${item.patients.phone}` : ""}
-        </Text>
-      </View>
+        <View style={{ flex: 1, minWidth: 0 }}>
+          <Text numberOfLines={1} style={{ color: colors.text, fontWeight: "900", fontSize: 16 }}>
+            {item.patients?.name || "Patient"}
+          </Text>
+          <Text numberOfLines={1} style={{ color: colors.muted, marginTop: 3 }}>
+            {appointmentTime(item.appointment_time)}
+            {item.patients?.phone ? ` • ${item.patients.phone}` : ""}
+          </Text>
+        </View>
+      </Pressable>
 
-      {showMedication ? (
+      <View style={{ flexDirection: "row", gap: 8 }}>
         <Pressable
-          onPress={() => router.push({ pathname: "/patient/medications", params: { patient_id: item.patient_id } } as never)}
-          hitSlop={8}
-          style={{
-            width: 38,
-            height: 38,
-            borderRadius: 999,
-            backgroundColor: colors.primarySoft,
+          disabled={busy}
+          onPress={onReschedule}
+          accessibilityRole="button"
+          accessibilityLabel="Reschedule appointment"
+          style={({ pressed }) => ({
+            flex: 1,
+            minHeight: 36,
+            paddingHorizontal: 10,
+            borderRadius: 12,
+            backgroundColor: pressed ? colors.surfaceSoft : colors.primarySoft,
             alignItems: "center",
             justifyContent: "center",
-          }}
+            flexDirection: "row",
+            gap: 6,
+            opacity: busy ? 0.55 : 1,
+          })}
         >
-          <Ionicons name="medical-outline" size={18} color={colors.primary} />
+          <Ionicons name="calendar-number-outline" size={16} color={colors.primary} />
+          <Text numberOfLines={1} style={{ color: colors.primary, fontSize: 12, fontWeight: "900" }}>
+            Reschedule
+          </Text>
         </Pressable>
-      ) : null}
 
-      <Pressable
-        disabled={busy}
-        onPress={onReschedule}
-        hitSlop={8}
-        accessibilityRole="button"
-        accessibilityLabel="Move appointment to tomorrow"
-        style={{
-          width: 38,
-          height: 38,
-          borderRadius: 999,
-          backgroundColor: colors.primarySoft,
-          alignItems: "center",
-          justifyContent: "center",
-          opacity: busy ? 0.55 : 1,
-        }}
-      >
-        <Ionicons name="calendar-number-outline" size={18} color={colors.primary} />
-      </Pressable>
-
-      <Pressable
-        disabled={busy}
-        onPress={onCloseWaiting}
-        hitSlop={8}
-        accessibilityRole="button"
-        accessibilityLabel="Close waiting as no-show"
-        style={{
-          width: 38,
-          height: 38,
-          borderRadius: 999,
-          backgroundColor: colors.warningSoft,
-          alignItems: "center",
-          justifyContent: "center",
-          opacity: busy ? 0.55 : 1,
-        }}
-      >
-        <Ionicons name="close-circle-outline" size={18} color={colors.warning} />
-      </Pressable>
-
-      <StatusBadge label={item.status || "Waiting"} tone={tone(item.status) as any} />
-      <Ionicons name="chevron-forward" size={18} color={colors.muted} />
-    </Pressable>
+        <Pressable
+          disabled={busy}
+          onPress={onCompleted}
+          accessibilityRole="button"
+          accessibilityLabel="Mark appointment completed"
+          style={({ pressed }) => ({
+            flex: 1,
+            minHeight: 36,
+            paddingHorizontal: 10,
+            borderRadius: 12,
+            backgroundColor: pressed ? colors.surfaceSoft : colors.successSoft,
+            alignItems: "center",
+            justifyContent: "center",
+            flexDirection: "row",
+            gap: 6,
+            opacity: busy ? 0.55 : 1,
+          })}
+        >
+          <Ionicons name="checkmark-done-outline" size={16} color={colors.success} />
+          <Text numberOfLines={1} style={{ color: colors.success, fontSize: 12, fontWeight: "900" }}>
+            Completed
+          </Text>
+        </Pressable>
+      </View>
+    </View>
   );
 }
 
