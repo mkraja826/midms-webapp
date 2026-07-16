@@ -42,7 +42,7 @@
     ],
     "android": {
       "package": "com.dms.clinic",
-      "versionCode": 14,
+      "versionCode": 16,
       "allowBackup": false,
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
