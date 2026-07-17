@@ -1,7 +1,19 @@
 import { Ionicons } from "@expo/vector-icons";
 import { router } from "expo-router";
-import { useEffect, useMemo, useState, type ComponentProps, type ReactNode } from "react";
-import { Alert, Pressable, Text, useWindowDimensions, View } from "react-native";
+import {
+  useEffect,
+  useMemo,
+  useState,
+  type ComponentProps,
+  type ReactNode,
+} from "react";
+import {
+  Alert,
+  Pressable,
+  Text,
+  useWindowDimensions,
+  View,
+} from "react-native";
 import { ClinicBrandHeader } from "@/components/ClinicBrandHeader";
 import { EmptyState } from "@/components/EmptyState";
 import { RescheduleAppointmentModal } from "@/components/RescheduleAppointmentModal";
@@ -9,6 +21,11 @@ import { Screen } from "@/components/Screen";
 import { WaitingAppointmentActions } from "@/components/WaitingAppointmentActions";
 import { colors } from "@/constants/colors";
 import { useAuth } from "@/lib/auth";
+import {
+  formatClinicMoney,
+  getDefaultClinicPreferences,
+} from "@/lib/clinicLocale";
+import { getClinicPreferences } from "@/lib/clinicPreferences";
 import {
   DashboardStats,
   WorkflowDashboardSummary,
@@ -31,12 +48,11 @@ type AppointmentRow = {
 };
 type IconName = ComponentProps<typeof Ionicons>["name"];
 
-function money(value?: number | null) {
-  return `₹${Math.round(Number(value || 0)).toLocaleString("en-IN")}`;
-}
-
 function appointmentTime(value: string) {
-  return new Date(value).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+  return new Date(value).toLocaleTimeString([], {
+    hour: "2-digit",
+    minute: "2-digit",
+  });
 }
 
 function appointmentDateTime(value: string) {
@@ -59,23 +75,35 @@ export default function HeadDashboard() {
   const { width } = useWindowDimensions();
   const [stats, setStats] = useState<DashboardStats | null>(null);
   const [summary, setSummary] = useState<WorkflowDashboardSummary | null>(null);
+  const [currencyCode, setCurrencyCode] = useState(
+    getDefaultClinicPreferences().currencyCode
+  );
   const [loading, setLoading] = useState(true);
   const [busyAppointmentId, setBusyAppointmentId] = useState<string | null>(null);
   const [rescheduleItem, setRescheduleItem] = useState<AppointmentRow | null>(null);
   const metricBasis = width < 380 ? "100%" : "47%";
+  const money = (value?: number | null) =>
+    formatClinicMoney(value, currencyCode);
 
   async function load(force = false) {
     try {
       setLoading(true);
-      const [data, row] = await Promise.all([
+      const [data, row, clinicPreferences] = await Promise.all([
         getDashboardStats({ force }),
         getWorkflowDashboardSummary({ force }),
+        getClinicPreferences({ force }).catch(() =>
+          getDefaultClinicPreferences()
+        ),
       ]);
 
       setStats(data);
       setSummary(row);
+      setCurrencyCode(clinicPreferences.currencyCode);
     } catch (error) {
-      Alert.alert("Dashboard load failed", error instanceof Error ? error.message : "Please try again.");
+      Alert.alert(
+        "Dashboard load failed",
+        error instanceof Error ? error.message : "Please try again."
+      );
     } finally {
       setLoading(false);
     }
@@ -91,12 +119,17 @@ export default function HeadDashboard() {
       await rescheduleAppointment(
         item.id,
         nextTime.toISOString(),
-        `Rescheduled by owner from ${appointmentDateTime(item.appointment_time)} to ${appointmentDateTime(nextTime.toISOString())}.`
+        `Rescheduled by owner from ${appointmentDateTime(
+          item.appointment_time
+        )} to ${appointmentDateTime(nextTime.toISOString())}.`
       );
       setRescheduleItem(null);
       await load(true);
     } catch (error) {
-      Alert.alert("Reschedule failed", error instanceof Error ? error.message : "Please try again.");
+      Alert.alert(
+        "Reschedule failed",
+        error instanceof Error ? error.message : "Please try again."
+      );
     } finally {
       setBusyAppointmentId(null);
     }
@@ -108,7 +141,10 @@ export default function HeadDashboard() {
       await updateAppointmentStatus(item.id, "completed");
       await load(true);
     } catch (error) {
-      Alert.alert("Complete failed", error instanceof Error ? error.message : "Please try again.");
+      Alert.alert(
+        "Complete failed",
+        error instanceof Error ? error.message : "Please try again."
+      );
     } finally {
       setBusyAppointmentId(null);
     }
@@ -131,30 +167,58 @@ export default function HeadDashboard() {
   }
 
   const appointments = useMemo<AppointmentRow[]>(
-    () => ((stats?.todayAppointmentList ?? []) as AppointmentRow[]),
+    () => (stats?.todayAppointmentList ?? []) as AppointmentRow[],
     [stats?.todayAppointmentList]
   );
   const waiting = appointments.filter((item) => isWaitingStatus(item.status));
   const todayRevenue = summary?.today_revenue ?? stats?.todayRevenue ?? 0;
-  const pendingPayments = summary?.pending_payments ?? stats?.pendingPayments ?? 0;
+  const pendingPayments =
+    summary?.pending_payments ?? stats?.pendingPayments ?? 0;
   const waitingCount = summary?.waiting_count ?? waiting.length;
   const completedCount = summary?.completed_count ?? 0;
-  const patientCount = summary?.today_patient_count ?? waitingCount + completedCount;
+  const patientCount =
+    summary?.today_patient_count ?? waitingCount + completedCount;
 
   const breakdownRows = [
-    { label: "OP consultation", value: summary?.op_fee_revenue_today, icon: "receipt-outline" as IconName },
-    { label: "Treatments", value: summary?.treatment_revenue_today, icon: "construct-outline" as IconName },
-    { label: "Medication", value: summary?.medication_revenue_today, icon: "medical-outline" as IconName },
-    { label: "X-ray", value: summary?.xray_revenue_today, icon: "scan-outline" as IconName },
-    { label: "Pending collected", value: summary?.pending_collected_today, icon: "wallet-outline" as IconName },
-    { label: "Other", value: summary?.other_revenue_today, icon: "cash-outline" as IconName },
+    {
+      label: "OP consultation",
+      value: summary?.op_fee_revenue_today,
+      icon: "receipt-outline" as IconName,
+    },
+    {
+      label: "Treatments",
+      value: summary?.treatment_revenue_today,
+      icon: "construct-outline" as IconName,
+    },
+    {
+      label: "Medication",
+      value: summary?.medication_revenue_today,
+      icon: "medical-outline" as IconName,
+    },
+    {
+      label: "X-ray",
+      value: summary?.xray_revenue_today,
+      icon: "scan-outline" as IconName,
+    },
+    {
+      label: "Pending collected",
+      value: summary?.pending_collected_today,
+      icon: "wallet-outline" as IconName,
+    },
+    {
+      label: "Other",
+      value: summary?.other_revenue_today,
+      icon: "cash-outline" as IconName,
+    },
   ].filter((row) => Number(row.value || 0) > 0 || row.label !== "Other");
 
   return (
     <Screen refreshing={loading} onRefresh={() => load(true)}>
       <ClinicBrandHeader
         showManage
-        subtitle={`${getRoleLabel(profile?.role ?? "head_doctor")} - Owner Dashboard`}
+        subtitle={`${getRoleLabel(
+          profile?.role ?? "head_doctor"
+        )} - Owner Dashboard`}
       />
 
       <OwnerSummary
@@ -163,16 +227,42 @@ export default function HeadDashboard() {
         pending={pendingPayments}
         waiting={waitingCount}
         completed={completedCount}
+        currencyCode={currencyCode}
       />
 
       <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 10 }}>
-        <CompactMetric basis={metricBasis} label="Patients Today" value={loading ? "..." : patientCount} icon="people-outline" />
-        <CompactMetric basis={metricBasis} label="Waiting" value={loading ? "..." : waitingCount} icon="hourglass-outline" tone="warning" />
-        <CompactMetric basis={metricBasis} label="Completed" value={loading ? "..." : completedCount} icon="checkmark-done-outline" tone="success" />
-        <CompactMetric basis={metricBasis} label="Total Patients" value={loading ? "..." : stats?.totalPatients ?? 0} icon="person-outline" />
+        <CompactMetric
+          basis={metricBasis}
+          label="Patients Today"
+          value={loading ? "..." : patientCount}
+          icon="people-outline"
+        />
+        <CompactMetric
+          basis={metricBasis}
+          label="Waiting"
+          value={loading ? "..." : waitingCount}
+          icon="hourglass-outline"
+          tone="warning"
+        />
+        <CompactMetric
+          basis={metricBasis}
+          label="Completed"
+          value={loading ? "..." : completedCount}
+          icon="checkmark-done-outline"
+          tone="success"
+        />
+        <CompactMetric
+          basis={metricBasis}
+          label="Total Patients"
+          value={loading ? "..." : stats?.totalPatients ?? 0}
+          icon="person-outline"
+        />
       </View>
 
-      <DashboardSection title="Collections" subtitle="Today's split, kept simple for closing review.">
+      <DashboardSection
+        title="Collections"
+        subtitle="Today's split, kept simple for closing review."
+      >
         {summary ? (
           <FlatListPanel>
             {breakdownRows.map((row, index) => (
@@ -196,7 +286,10 @@ export default function HeadDashboard() {
         )}
       </DashboardSection>
 
-      <DashboardSection title="Owner Priorities" subtitle="The few actions that matter during a working day.">
+      <DashboardSection
+        title="Owner Priorities"
+        subtitle="The few actions that matter during a working day."
+      >
         <FlatListPanel>
           <DashboardRow
             title="Payment Review"
@@ -234,7 +327,12 @@ export default function HeadDashboard() {
         </FlatListPanel>
       </DashboardSection>
 
-      <DashboardSection title="Waiting Room" subtitle={`${waiting.length} active waiting patient${waiting.length === 1 ? "" : "s"} today.`}>
+      <DashboardSection
+        title="Waiting Room"
+        subtitle={`${waiting.length} active waiting patient${
+          waiting.length === 1 ? "" : "s"
+        } today.`}
+      >
         {waiting.length ? (
           <FlatListPanel>
             {waiting.map((item, index) => (
@@ -249,7 +347,11 @@ export default function HeadDashboard() {
             ))}
           </FlatListPanel>
         ) : (
-          <EmptyState title="No waiting patients" message="Reception check-ins will appear here." icon="checkmark-done-outline" />
+          <EmptyState
+            title="No waiting patients"
+            message="Reception check-ins will appear here."
+            icon="checkmark-done-outline"
+          />
         )}
       </DashboardSection>
 
@@ -257,7 +359,9 @@ export default function HeadDashboard() {
         visible={Boolean(rescheduleItem)}
         patientName={rescheduleItem?.patients?.name}
         currentAppointmentTime={rescheduleItem?.appointment_time}
-        saving={Boolean(rescheduleItem && busyAppointmentId === rescheduleItem.id)}
+        saving={Boolean(
+          rescheduleItem && busyAppointmentId === rescheduleItem.id
+        )}
         onClose={() => setRescheduleItem(null)}
         onConfirm={(nextTime) => {
           if (rescheduleItem) void performReschedule(rescheduleItem, nextTime);
@@ -273,15 +377,19 @@ function OwnerSummary({
   pending,
   waiting,
   completed,
+  currencyCode,
 }: {
   loading: boolean;
   revenue: number;
   pending: number;
   waiting: number;
   completed: number;
+  currencyCode: string;
 }) {
   const { width } = useWindowDimensions();
   const stackPills = width < 360;
+  const money = (value?: number | null) =>
+    formatClinicMoney(value, currencyCode);
 
   return (
     <View
@@ -292,16 +400,48 @@ function OwnerSummary({
         gap: 16,
       }}
     >
-      <View style={{ flexDirection: "row", alignItems: "flex-start", justifyContent: "space-between", gap: 14 }}>
+      <View
+        style={{
+          flexDirection: "row",
+          alignItems: "flex-start",
+          justifyContent: "space-between",
+          gap: 14,
+        }}
+      >
         <View style={{ flex: 1 }}>
-          <Text style={{ color: "rgba(255,255,255,0.76)", fontSize: 12, fontWeight: "900", textTransform: "uppercase" }}>
+          <Text
+            style={{
+              color: "rgba(255,255,255,0.76)",
+              fontSize: 12,
+              fontWeight: "900",
+              textTransform: "uppercase",
+            }}
+          >
             Today at the clinic
           </Text>
-          <Text numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.74} style={{ color: colors.white, fontSize: 32, fontWeight: "900", marginTop: 8 }}>
+          <Text
+            numberOfLines={1}
+            adjustsFontSizeToFit
+            minimumFontScale={0.74}
+            style={{
+              color: colors.white,
+              fontSize: 32,
+              fontWeight: "900",
+              marginTop: 8,
+            }}
+          >
             {loading ? "Loading..." : money(revenue)}
           </Text>
-          <Text style={{ color: "rgba(255,255,255,0.76)", lineHeight: 20, marginTop: 4, fontWeight: "700" }}>
-            {waiting ? `${waiting} waiting now` : "Queue clear"} - {completed} completed today
+          <Text
+            style={{
+              color: "rgba(255,255,255,0.76)",
+              lineHeight: 20,
+              marginTop: 4,
+              fontWeight: "700",
+            }}
+          >
+            {waiting ? `${waiting} waiting now` : "Queue clear"} - {completed}{" "}
+            completed today
           </Text>
         </View>
 
@@ -314,18 +454,35 @@ function OwnerSummary({
             width: 48,
             height: 48,
             borderRadius: 18,
-            backgroundColor: pressed ? "rgba(255,255,255,0.24)" : "rgba(255,255,255,0.16)",
+            backgroundColor: pressed
+              ? "rgba(255,255,255,0.24)"
+              : "rgba(255,255,255,0.16)",
             alignItems: "center",
             justifyContent: "center",
           })}
         >
-          <Ionicons name="analytics-outline" size={24} color={colors.white} />
+          <Ionicons
+            name="analytics-outline"
+            size={24}
+            color={colors.white}
+          />
         </Pressable>
       </View>
 
-      <View style={{ flexDirection: stackPills ? "column" : "row", gap: 10 }}>
-        <SummaryPill label="Collected" value={loading ? "..." : money(revenue)} icon="cash-outline" />
-        <SummaryPill label="Pending" value={loading ? "..." : money(pending)} icon="wallet-outline" warning />
+      <View
+        style={{ flexDirection: stackPills ? "column" : "row", gap: 10 }}
+      >
+        <SummaryPill
+          label="Collected"
+          value={loading ? "..." : money(revenue)}
+          icon="cash-outline"
+        />
+        <SummaryPill
+          label="Pending"
+          value={loading ? "..." : money(pending)}
+          icon="wallet-outline"
+          warning
+        />
       </View>
     </View>
   );
@@ -353,13 +510,41 @@ function SummaryPill({
         justifyContent: "space-between",
       }}
     >
-      <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 6 }}>
-        <Text style={{ color: "rgba(255,255,255,0.74)", fontSize: 11, fontWeight: "900", textTransform: "uppercase" }}>
+      <View
+        style={{
+          flexDirection: "row",
+          alignItems: "center",
+          justifyContent: "space-between",
+          gap: 6,
+        }}
+      >
+        <Text
+          style={{
+            color: "rgba(255,255,255,0.74)",
+            fontSize: 11,
+            fontWeight: "900",
+            textTransform: "uppercase",
+          }}
+        >
           {label}
         </Text>
-        <Ionicons name={icon} size={17} color={warning ? colors.warningSoft : "rgba(255,255,255,0.82)"} />
+        <Ionicons
+          name={icon}
+          size={17}
+          color={warning ? colors.warningSoft : "rgba(255,255,255,0.82)"}
+        />
       </View>
-      <Text numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.72} style={{ color: colors.white, fontSize: 18, fontWeight: "900", fontVariant: ["tabular-nums"] }}>
+      <Text
+        numberOfLines={1}
+        adjustsFontSizeToFit
+        minimumFontScale={0.72}
+        style={{
+          color: colors.white,
+          fontSize: 18,
+          fontWeight: "900",
+          fontVariant: ["tabular-nums"],
+        }}
+      >
         {value}
       </Text>
     </View>
@@ -379,8 +564,18 @@ function CompactMetric({
   icon: IconName;
   tone?: "primary" | "success" | "warning";
 }) {
-  const bg = tone === "success" ? colors.successSoft : tone === "warning" ? colors.warningSoft : colors.surface;
-  const fg = tone === "success" ? colors.success : tone === "warning" ? colors.warning : colors.primary;
+  const bg =
+    tone === "success"
+      ? colors.successSoft
+      : tone === "warning"
+      ? colors.warningSoft
+      : colors.surface;
+  const fg =
+    tone === "success"
+      ? colors.success
+      : tone === "warning"
+      ? colors.warning
+      : colors.primary;
 
   return (
     <View
@@ -399,10 +594,26 @@ function CompactMetric({
     >
       <Ionicons name={icon} size={20} color={fg} />
       <View>
-        <Text numberOfLines={1} style={{ color: colors.text, fontSize: 20, fontWeight: "900", fontVariant: ["tabular-nums"] }}>
+        <Text
+          numberOfLines={1}
+          style={{
+            color: colors.text,
+            fontSize: 20,
+            fontWeight: "900",
+            fontVariant: ["tabular-nums"],
+          }}
+        >
           {value}
         </Text>
-        <Text numberOfLines={1} style={{ color: colors.muted, fontSize: 11, fontWeight: "900", marginTop: 2 }}>
+        <Text
+          numberOfLines={1}
+          style={{
+            color: colors.muted,
+            fontSize: 11,
+            fontWeight: "900",
+            marginTop: 2,
+          }}
+        >
           {label}
         </Text>
       </View>
@@ -422,8 +633,14 @@ function DashboardSection({
   return (
     <View style={{ gap: 10 }}>
       <View style={{ gap: 3 }}>
-        <Text style={{ color: colors.text, fontSize: 18, fontWeight: "900" }}>{title}</Text>
-        {subtitle ? <Text style={{ color: colors.muted, lineHeight: 19 }}>{subtitle}</Text> : null}
+        <Text style={{ color: colors.text, fontSize: 18, fontWeight: "900" }}>
+          {title}
+        </Text>
+        {subtitle ? (
+          <Text style={{ color: colors.muted, lineHeight: 19 }}>
+            {subtitle}
+          </Text>
+        ) : null}
       </View>
       {children}
     </View>
@@ -463,15 +680,28 @@ function DashboardRow({
   tone?: "primary" | "success" | "warning";
   isLast?: boolean;
 }) {
-  const iconColor = tone === "success" ? colors.success : tone === "warning" ? colors.warning : colors.primary;
-  const iconBg = tone === "success" ? colors.successSoft : tone === "warning" ? colors.warningSoft : colors.primarySoft;
+  const iconColor =
+    tone === "success"
+      ? colors.success
+      : tone === "warning"
+      ? colors.warning
+      : colors.primary;
+  const iconBg =
+    tone === "success"
+      ? colors.successSoft
+      : tone === "warning"
+      ? colors.warningSoft
+      : colors.primarySoft;
 
   return (
     <Pressable
       accessibilityRole="button"
       accessibilityLabel={`${title}. ${subtitle}`}
       onPress={onPress}
-      android_ripple={{ color: "rgba(15, 118, 110, 0.08)", borderless: false }}
+      android_ripple={{
+        color: "rgba(15, 118, 110, 0.08)",
+        borderless: false,
+      }}
       style={({ pressed }) => ({
         minHeight: 70,
         paddingHorizontal: 14,
@@ -498,10 +728,16 @@ function DashboardRow({
       </View>
 
       <View style={{ flex: 1, minWidth: 0 }}>
-        <Text numberOfLines={1} style={{ color: colors.text, fontSize: 15, fontWeight: "900" }}>
+        <Text
+          numberOfLines={1}
+          style={{ color: colors.text, fontSize: 15, fontWeight: "900" }}
+        >
           {title}
         </Text>
-        <Text numberOfLines={1} style={{ color: colors.muted, marginTop: 2, fontSize: 12 }}>
+        <Text
+          numberOfLines={1}
+          style={{ color: colors.muted, marginTop: 2, fontSize: 12 }}
+        >
           {subtitle}
         </Text>
       </View>
@@ -559,7 +795,10 @@ function WaitingRow({
         accessibilityRole="button"
         accessibilityLabel={`Open ${item.patients?.name || "patient"}`}
         onPress={() => router.push(`/patient/${item.patient_id}` as never)}
-        android_ripple={{ color: "rgba(15, 118, 110, 0.08)", borderless: false }}
+        android_ripple={{
+          color: "rgba(15, 118, 110, 0.08)",
+          borderless: false,
+        }}
         style={({ pressed }) => ({
           flex: 1,
           minWidth: 0,
@@ -585,10 +824,16 @@ function WaitingRow({
         </View>
 
         <View style={{ flex: 1, minWidth: 0 }}>
-          <Text numberOfLines={1} style={{ color: colors.text, fontWeight: "900", fontSize: 15 }}>
+          <Text
+            numberOfLines={1}
+            style={{ color: colors.text, fontWeight: "900", fontSize: 15 }}
+          >
             {item.patients?.name || "Patient"}
           </Text>
-          <Text numberOfLines={1} style={{ color: colors.muted, marginTop: 3 }}>
+          <Text
+            numberOfLines={1}
+            style={{ color: colors.muted, marginTop: 3 }}
+          >
             {appointmentTime(item.appointment_time)}
             {item.patients?.phone ? ` - ${item.patients.phone}` : ""}
           </Text>
