@@ -8,14 +8,19 @@ import { Screen } from "@/components/Screen";
 import { SectionCard } from "@/components/SectionCard";
 import { StatCard } from "@/components/StatCard";
 import { colors } from "@/constants/colors";
-import { DashboardStats, getDashboardStats, getWorkflowDashboardSummary } from "@/lib/supabase";
-
-function money(value?: number) {
-  return `₹${Math.round(Number(value || 0)).toLocaleString("en-IN")}`;
-}
+import {
+  formatClinicMoney,
+  getDefaultClinicPreferences,
+} from "@/lib/clinicLocale";
+import { getClinicPreferences } from "@/lib/clinicPreferences";
+import {
+  DashboardStats,
+  getDashboardStats,
+  getWorkflowDashboardSummary,
+} from "@/lib/supabase";
 
 function todayLabel() {
-  return new Date().toLocaleDateString("en-IN", {
+  return new Date().toLocaleDateString(undefined, {
     weekday: "long",
     day: "2-digit",
     month: "short",
@@ -26,17 +31,29 @@ function todayLabel() {
 export default function ClinicReportScreen() {
   const [stats, setStats] = useState<DashboardStats | null>(null);
   const [summary, setSummary] = useState<any>(null);
+  const [currencyCode, setCurrencyCode] = useState(
+    getDefaultClinicPreferences().currencyCode
+  );
   const [loading, setLoading] = useState(true);
+  const money = (value?: number | string | null) =>
+    formatClinicMoney(value, currencyCode);
 
   async function load() {
     try {
       setLoading(true);
-      const data = await getDashboardStats();
+      const [data, row, preferences] = await Promise.all([
+        getDashboardStats(),
+        getWorkflowDashboardSummary(),
+        getClinicPreferences().catch(() => getDefaultClinicPreferences()),
+      ]);
       setStats(data);
-      const row = await getWorkflowDashboardSummary();
       if (row) setSummary(row);
+      setCurrencyCode(preferences.currencyCode);
     } catch (error) {
-      Alert.alert("Report load failed", error instanceof Error ? error.message : "Please try again.");
+      Alert.alert(
+        "Report load failed",
+        error instanceof Error ? error.message : "Please try again."
+      );
     } finally {
       setLoading(false);
     }
@@ -46,34 +63,94 @@ export default function ClinicReportScreen() {
     load();
   }, []);
 
-  const todayAppointments = useMemo(() => stats?.todayAppointmentList ?? [], [stats?.todayAppointmentList]);
+  const todayAppointments = useMemo(
+    () => stats?.todayAppointmentList ?? [],
+    [stats?.todayAppointmentList]
+  );
 
   const revenueRows = [
-    { label: "OP Fees", value: summary?.op_fee_revenue_today, icon: "receipt-outline" as const },
-    { label: "X-ray", value: summary?.xray_revenue_today, icon: "scan-outline" as const },
-    { label: "Medication", value: summary?.medication_revenue_today, icon: "medical-outline" as const },
-    { label: "Treatment", value: summary?.treatment_revenue_today, icon: "hammer-outline" as const },
-    { label: "Pending Paid", value: summary?.pending_collected_today, icon: "checkmark-circle-outline" as const },
-    { label: "Other", value: summary?.other_revenue_today, icon: "wallet-outline" as const },
+    {
+      label: "OP Fees",
+      value: summary?.op_fee_revenue_today,
+      icon: "receipt-outline" as const,
+    },
+    {
+      label: "X-ray",
+      value: summary?.xray_revenue_today,
+      icon: "scan-outline" as const,
+    },
+    {
+      label: "Medication",
+      value: summary?.medication_revenue_today,
+      icon: "medical-outline" as const,
+    },
+    {
+      label: "Treatment",
+      value: summary?.treatment_revenue_today,
+      icon: "hammer-outline" as const,
+    },
+    {
+      label: "Pending Paid",
+      value: summary?.pending_collected_today,
+      icon: "checkmark-circle-outline" as const,
+    },
+    {
+      label: "Other",
+      value: summary?.other_revenue_today,
+      icon: "wallet-outline" as const,
+    },
   ];
 
   return (
     <Screen refreshing={loading} onRefresh={load}>
       <View style={{ gap: 6 }}>
-        <Text style={{ color: colors.text, fontSize: 30, fontWeight: "900" }}>Clinic Report</Text>
+        <Text style={{ color: colors.text, fontSize: 30, fontWeight: "900" }}>
+          Clinic Report
+        </Text>
         <Text style={{ color: colors.muted, fontSize: 15, lineHeight: 21 }}>
-          Owner summary for {todayLabel()}. Use this before closing the clinic day.
+          Owner summary for {todayLabel()}. Use this before closing the clinic
+          day.
         </Text>
       </View>
 
       <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 10 }}>
-        <StatCard label="Today Revenue" value={loading ? "..." : money(summary?.today_revenue ?? stats?.todayRevenue)} icon="cash-outline" tone="success" />
-        <StatCard label="Pending Due" value={loading ? "..." : money(summary?.pending_payments ?? stats?.pendingPayments)} icon="wallet-outline" tone="warning" />
-        <StatCard label="Patients Today" value={loading ? "..." : summary?.today_patient_count ?? 0} icon="people-outline" />
-        <StatCard label="Completed" value={loading ? "..." : summary?.completed_count ?? 0} icon="checkmark-done-outline" tone="success" />
+        <StatCard
+          label="Today Revenue"
+          value={
+            loading
+              ? "..."
+              : money(summary?.today_revenue ?? stats?.todayRevenue)
+          }
+          icon="cash-outline"
+          tone="success"
+        />
+        <StatCard
+          label="Pending Due"
+          value={
+            loading
+              ? "..."
+              : money(summary?.pending_payments ?? stats?.pendingPayments)
+          }
+          icon="wallet-outline"
+          tone="warning"
+        />
+        <StatCard
+          label="Patients Today"
+          value={loading ? "..." : summary?.today_patient_count ?? 0}
+          icon="people-outline"
+        />
+        <StatCard
+          label="Completed"
+          value={loading ? "..." : summary?.completed_count ?? 0}
+          icon="checkmark-done-outline"
+          tone="success"
+        />
       </View>
 
-      <SectionCard title="Revenue Breakdown" subtitle="Check each collection type before closing daily accounts.">
+      <SectionCard
+        title="Revenue Breakdown"
+        subtitle="Check each collection type before closing daily accounts."
+      >
         <View style={{ gap: 10 }}>
           {revenueRows.map((row) => (
             <View
@@ -101,40 +178,113 @@ export default function ClinicReportScreen() {
               >
                 <Ionicons name={row.icon} size={20} color={colors.primary} />
               </View>
-              <Text style={{ flex: 1, color: colors.text, fontWeight: "900" }}>{row.label}</Text>
-              <Text style={{ color: colors.text, fontWeight: "900", fontSize: 16 }}>{loading ? "..." : money(row.value)}</Text>
+              <Text style={{ flex: 1, color: colors.text, fontWeight: "900" }}>
+                {row.label}
+              </Text>
+              <Text
+                style={{ color: colors.text, fontWeight: "900", fontSize: 16 }}
+              >
+                {loading ? "..." : money(row.value)}
+              </Text>
             </View>
           ))}
         </View>
       </SectionCard>
 
-      <SectionCard title="Daily Workflow" subtitle="Quick health check for queue, visits, appointments, and patient load.">
+      <SectionCard
+        title="Daily Workflow"
+        subtitle="Quick health check for queue, visits, appointments, and patient load."
+      >
         <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 10 }}>
-          <StatCard label="Waiting" value={loading ? "..." : summary?.waiting_count ?? 0} icon="hourglass-outline" tone="warning" />
-          <StatCard label="Appointments" value={loading ? "..." : todayAppointments.length} icon="calendar-number-outline" />
-          <StatCard label="Total Patients" value={loading ? "..." : stats?.totalPatients ?? 0} icon="person-outline" />
-          <StatCard label="Old Pending" value={loading ? "..." : money(summary?.pending_payments ?? stats?.pendingPayments)} icon="alert-circle-outline" tone="warning" />
+          <StatCard
+            label="Waiting"
+            value={loading ? "..." : summary?.waiting_count ?? 0}
+            icon="hourglass-outline"
+            tone="warning"
+          />
+          <StatCard
+            label="Appointments"
+            value={loading ? "..." : todayAppointments.length}
+            icon="calendar-number-outline"
+          />
+          <StatCard
+            label="Total Patients"
+            value={loading ? "..." : stats?.totalPatients ?? 0}
+            icon="person-outline"
+          />
+          <StatCard
+            label="Old Pending"
+            value={
+              loading
+                ? "..."
+                : money(summary?.pending_payments ?? stats?.pendingPayments)
+            }
+            icon="alert-circle-outline"
+            tone="warning"
+          />
         </View>
       </SectionCard>
 
-      <SectionCard title="Owner Tools" subtitle="Review follow-ups, treatments, staff work, payments, activity and exports.">
+      <SectionCard
+        title="Owner Tools"
+        subtitle="Review follow-ups, treatments, staff work, payments, activity and exports."
+      >
         <View style={{ gap: 10 }}>
-          <View style={{ padding: 14, borderRadius: 20, backgroundColor: colors.primarySoft, borderWidth: 1, borderColor: colors.border, gap: 6 }}>
-            <Text style={{ color: colors.text, fontWeight: "900", fontSize: 16 }}>
-              Follow-up + treatment review + staff performance + payment review + activity + Excel
+          <View
+            style={{
+              padding: 14,
+              borderRadius: 20,
+              backgroundColor: colors.primarySoft,
+              borderWidth: 1,
+              borderColor: colors.border,
+              gap: 6,
+            }}
+          >
+            <Text
+              style={{ color: colors.text, fontWeight: "900", fontSize: 16 }}
+            >
+              Follow-up + treatment review + staff performance + payment review
+              + activity + Excel
             </Text>
             <Text style={{ color: colors.muted, lineHeight: 20 }}>
-              Track due follow-ups, open treatments, staff work, collections, staff actions and owner-friendly export data.
+              Track due follow-ups, open treatments, staff work, collections,
+              staff actions and owner-friendly export data.
             </Text>
           </View>
 
-          <View style={{ padding: 14, borderRadius: 20, backgroundColor: colors.warningSoft, borderWidth: 1, borderColor: colors.border, gap: 8 }}>
-            <View style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
-              <Ionicons name="shield-checkmark-outline" size={24} color={colors.warning} />
+          <View
+            style={{
+              padding: 14,
+              borderRadius: 20,
+              backgroundColor: colors.warningSoft,
+              borderWidth: 1,
+              borderColor: colors.border,
+              gap: 8,
+            }}
+          >
+            <View
+              style={{ flexDirection: "row", alignItems: "center", gap: 10 }}
+            >
+              <Ionicons
+                name="shield-checkmark-outline"
+                size={24}
+                color={colors.warning}
+              />
               <View style={{ flex: 1 }}>
-                <Text style={{ color: colors.text, fontWeight: "900", fontSize: 16 }}>Owner Review Board</Text>
-                <Text style={{ color: colors.muted, marginTop: 2, lineHeight: 19 }}>
-                  One screen for missed follow-ups, paid-but-active treatments, waived OP fees and patient detail edits.
+                <Text
+                  style={{
+                    color: colors.text,
+                    fontWeight: "900",
+                    fontSize: 16,
+                  }}
+                >
+                  Owner Review Board
+                </Text>
+                <Text
+                  style={{ color: colors.muted, marginTop: 2, lineHeight: 19 }}
+                >
+                  One screen for missed follow-ups, paid-but-active treatments,
+                  waived OP fees and patient detail edits.
                 </Text>
               </View>
             </View>
@@ -166,7 +316,9 @@ export default function ClinicReportScreen() {
               title="Staff Work"
               icon="people-circle-outline"
               variant="secondary"
-              onPress={() => router.push("/reports/staff-performance" as never)}
+              onPress={() =>
+                router.push("/reports/staff-performance" as never)
+              }
               style={{ flex: 1 }}
             />
             <AppButton
@@ -197,7 +349,10 @@ export default function ClinicReportScreen() {
         </View>
       </SectionCard>
 
-      <SectionCard title="Closing Checklist" subtitle="Use this every evening before leaving the clinic.">
+      <SectionCard
+        title="Closing Checklist"
+        subtitle="Use this every evening before leaving the clinic."
+      >
         <View style={{ gap: 10 }}>
           {[
             "Reception OP fees checked",
@@ -208,9 +363,18 @@ export default function ClinicReportScreen() {
             "Treatment review checked",
             "Staff performance reviewed",
           ].map((item) => (
-            <View key={item} style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
-              <Ionicons name="checkmark-circle-outline" size={21} color={colors.success} />
-              <Text style={{ flex: 1, color: colors.text, fontWeight: "800" }}>{item}</Text>
+            <View
+              key={item}
+              style={{ flexDirection: "row", alignItems: "center", gap: 10 }}
+            >
+              <Ionicons
+                name="checkmark-circle-outline"
+                size={21}
+                color={colors.success}
+              />
+              <Text style={{ flex: 1, color: colors.text, fontWeight: "800" }}>
+                {item}
+              </Text>
             </View>
           ))}
         </View>
@@ -228,8 +392,21 @@ export default function ClinicReportScreen() {
       </SectionCard>
 
       <View style={{ flexDirection: "row", gap: 10 }}>
-        <AppButton title="Refresh" icon="refresh-outline" variant="secondary" onPress={load} loading={loading} style={{ flex: 1 }} />
-        <AppButton title="Dashboard" icon="home-outline" variant="ghost" onPress={() => router.replace("/(head)/dashboard" as never)} style={{ flex: 1 }} />
+        <AppButton
+          title="Refresh"
+          icon="refresh-outline"
+          variant="secondary"
+          onPress={load}
+          loading={loading}
+          style={{ flex: 1 }}
+        />
+        <AppButton
+          title="Dashboard"
+          icon="home-outline"
+          variant="ghost"
+          onPress={() => router.replace("/(head)/dashboard" as never)}
+          style={{ flex: 1 }}
+        />
       </View>
     </Screen>
   );
