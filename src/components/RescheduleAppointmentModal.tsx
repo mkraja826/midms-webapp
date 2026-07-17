@@ -9,6 +9,12 @@ import {
   View,
 } from "react-native";
 import { colors } from "@/constants/colors";
+import {
+  formatClinicTime,
+  getDefaultClinicPreferences,
+  normalizeClinicTime,
+} from "@/lib/clinicLocale";
+import { getClinicPreferences } from "@/lib/clinicPreferences";
 
 type DateOption = {
   key: string;
@@ -22,6 +28,7 @@ type TimeSlot = {
   label: string;
   hour: number;
   minute: number;
+  dayOffset: number;
 };
 
 type Props = {
@@ -33,21 +40,7 @@ type Props = {
   onConfirm: (nextTime: Date) => void;
 };
 
-const TIME_SLOTS: TimeSlot[] = [
-  { label: "09:30 AM", hour: 9, minute: 30 },
-  { label: "10:00 AM", hour: 10, minute: 0 },
-  { label: "10:30 AM", hour: 10, minute: 30 },
-  { label: "11:00 AM", hour: 11, minute: 0 },
-  { label: "11:30 AM", hour: 11, minute: 30 },
-  { label: "12:00 PM", hour: 12, minute: 0 },
-  { label: "04:30 PM", hour: 16, minute: 30 },
-  { label: "05:00 PM", hour: 17, minute: 0 },
-  { label: "05:30 PM", hour: 17, minute: 30 },
-  { label: "06:00 PM", hour: 18, minute: 0 },
-  { label: "06:30 PM", hour: 18, minute: 30 },
-  { label: "07:00 PM", hour: 19, minute: 0 },
-  { label: "07:30 PM", hour: 19, minute: 30 },
-];
+const SLOT_INTERVAL_MINUTES = 30;
 
 function pad(value: number) {
   return String(value).padStart(2, "0");
@@ -83,8 +76,68 @@ function createDateOptions(days = 90): DateOption[] {
   return options;
 }
 
+function timeToMinutes(value: string, fallback: string) {
+  const normalized = normalizeClinicTime(value, fallback);
+  const [hourText, minuteText] = normalized.split(":");
+  return Number(hourText) * 60 + Number(minuteText);
+}
+
+function formatSlotLabel(totalMinutes: number) {
+  const minutesInDay = ((totalMinutes % 1440) + 1440) % 1440;
+  const hour = Math.floor(minutesInDay / 60);
+  const minute = minutesInDay % 60;
+  const date = new Date(2000, 0, 1, hour, minute);
+
+  return date.toLocaleTimeString([], {
+    hour: "numeric",
+    minute: "2-digit",
+  });
+}
+
+function buildUsualTimeSlots(openingTime: string, closingTime: string): TimeSlot[] {
+  const start = timeToMinutes(openingTime, "09:00");
+  let end = timeToMinutes(closingTime, "21:00");
+
+  if (end <= start) end += 1440;
+
+  const slots: TimeSlot[] = [];
+  for (
+    let totalMinutes = start;
+    totalMinutes < end && slots.length < 48;
+    totalMinutes += SLOT_INTERVAL_MINUTES
+  ) {
+    const minutesInDay = totalMinutes % 1440;
+    const dayOffset = Math.floor(totalMinutes / 1440);
+
+    slots.push({
+      label: `${formatSlotLabel(totalMinutes)}${dayOffset ? " · next day" : ""}`,
+      hour: Math.floor(minutesInDay / 60),
+      minute: minutesInDay % 60,
+      dayOffset,
+    });
+  }
+
+  return slots;
+}
+
+function buildEmergencyTimeSlots(): TimeSlot[] {
+  const slots: TimeSlot[] = [];
+
+  for (let totalMinutes = 0; totalMinutes < 1440; totalMinutes += SLOT_INTERVAL_MINUTES) {
+    slots.push({
+      label: formatSlotLabel(totalMinutes),
+      hour: Math.floor(totalMinutes / 60),
+      minute: totalMinutes % 60,
+      dayOffset: 0,
+    });
+  }
+
+  return slots;
+}
+
 function makeDateTime(date: Date, slot: TimeSlot) {
   const value = new Date(date);
+  value.setDate(value.getDate() + slot.dayOffset);
   value.setHours(slot.hour, slot.minute, 0, 0);
   return value;
 }
@@ -108,19 +161,58 @@ export function RescheduleAppointmentModal({
   onClose,
   onConfirm,
 }: Props) {
+  const defaults = useMemo(() => getDefaultClinicPreferences(), []);
   const dateOptions = useMemo(() => createDateOptions(90), [visible]);
+  const emergencyTimeSlots = useMemo(() => buildEmergencyTimeSlots(), []);
+  const [openingTime, setOpeningTime] = useState(defaults.openingTime);
+  const [closingTime, setClosingTime] = useState(defaults.closingTime);
+  const [loadingHours, setLoadingHours] = useState(false);
+  const [emergencyMode, setEmergencyMode] = useState(false);
   const [selectedDateKey, setSelectedDateKey] = useState("");
   const [selectedTimeIndex, setSelectedTimeIndex] = useState(0);
 
+  const usualTimeSlots = useMemo(
+    () => buildUsualTimeSlots(openingTime, closingTime),
+    [openingTime, closingTime]
+  );
+  const timeSlots = emergencyMode ? emergencyTimeSlots : usualTimeSlots;
+
   useEffect(() => {
-    if (!visible || !dateOptions.length) return;
+    if (!visible) return;
+
+    let active = true;
+    setEmergencyMode(false);
+    setLoadingHours(true);
+
+    getClinicPreferences({ force: true })
+      .then((preferences) => {
+        if (!active) return;
+        setOpeningTime(preferences.openingTime);
+        setClosingTime(preferences.closingTime);
+      })
+      .catch(() => {
+        if (!active) return;
+        setOpeningTime(defaults.openingTime);
+        setClosingTime(defaults.closingTime);
+      })
+      .finally(() => {
+        if (active) setLoadingHours(false);
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [visible, defaults.closingTime, defaults.openingTime]);
+
+  useEffect(() => {
+    if (!visible || loadingHours || !dateOptions.length || !timeSlots.length) return;
 
     const currentTime = currentAppointmentTime
       ? new Date(currentAppointmentTime).getTime()
       : Number.NaN;
 
     for (const option of dateOptions) {
-      const firstValidSlotIndex = TIME_SLOTS.findIndex((slot) => {
+      const firstValidSlotIndex = timeSlots.findIndex((slot) => {
         const candidate = makeDateTime(option.date, slot).getTime();
         return candidate > Date.now() && candidate !== currentTime;
       });
@@ -134,7 +226,13 @@ export function RescheduleAppointmentModal({
 
     setSelectedDateKey(dateOptions[0].key);
     setSelectedTimeIndex(0);
-  }, [visible, currentAppointmentTime, dateOptions]);
+  }, [
+    visible,
+    loadingHours,
+    currentAppointmentTime,
+    dateOptions,
+    timeSlots,
+  ]);
 
   const selectedDate =
     dateOptions.find((option) => option.key === selectedDateKey) || dateOptions[0];
@@ -142,12 +240,12 @@ export function RescheduleAppointmentModal({
   const availableTimeSlots = useMemo(() => {
     if (!selectedDate) return [];
 
-    return TIME_SLOTS.map((slot, index) => ({
+    return timeSlots.map((slot, index) => ({
       ...slot,
       index,
       disabled: makeDateTime(selectedDate.date, slot).getTime() <= Date.now(),
     }));
-  }, [selectedDate]);
+  }, [selectedDate, timeSlots]);
 
   useEffect(() => {
     const selectedSlot = availableTimeSlots[selectedTimeIndex];
@@ -157,8 +255,8 @@ export function RescheduleAppointmentModal({
     if (firstAvailable) setSelectedTimeIndex(firstAvailable.index);
   }, [availableTimeSlots, selectedTimeIndex]);
 
-  const selectedTime = TIME_SLOTS[selectedTimeIndex] || TIME_SLOTS[0];
-  const selectedDateTime = selectedDate
+  const selectedTime = timeSlots[selectedTimeIndex] || timeSlots[0];
+  const selectedDateTime = selectedDate && selectedTime
     ? makeDateTime(selectedDate.date, selectedTime)
     : null;
   const currentTime = currentAppointmentTime
@@ -166,7 +264,11 @@ export function RescheduleAppointmentModal({
     : Number.NaN;
   const unchanged = selectedDateTime?.getTime() === currentTime;
   const canConfirm = Boolean(
-    selectedDateTime && selectedDateTime.getTime() > Date.now() && !unchanged && !saving
+    selectedDateTime &&
+      selectedDateTime.getTime() > Date.now() &&
+      !unchanged &&
+      !saving &&
+      !loadingHours
   );
 
   return (
@@ -278,6 +380,74 @@ export function RescheduleAppointmentModal({
               </View>
             ) : null}
 
+            <View
+              style={{
+                padding: 13,
+                borderRadius: 18,
+                backgroundColor: colors.primarySoft,
+                borderWidth: 1,
+                borderColor: colors.border,
+                gap: 5,
+              }}
+            >
+              <Text style={{ color: colors.primary, fontSize: 12, fontWeight: "900" }}>
+                USUAL CLINIC HOURS
+              </Text>
+              <Text style={{ color: colors.text, fontWeight: "900" }}>
+                {loadingHours
+                  ? "Loading clinic hours..."
+                  : `${formatClinicTime(openingTime)} to ${formatClinicTime(closingTime)}`}
+              </Text>
+              <Text style={{ color: colors.muted, fontSize: 12, lineHeight: 17 }}>
+                Appointment slots automatically follow this clinic's saved hours.
+              </Text>
+            </View>
+
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel={
+                emergencyMode
+                  ? "Return to usual clinic hours"
+                  : "Show emergency times outside usual clinic hours"
+              }
+              disabled={saving || loadingHours}
+              onPress={() => setEmergencyMode((current) => !current)}
+              style={({ pressed }) => ({
+                minHeight: 58,
+                borderRadius: 18,
+                paddingHorizontal: 14,
+                paddingVertical: 10,
+                flexDirection: "row",
+                alignItems: "center",
+                gap: 12,
+                borderWidth: 1,
+                borderColor: emergencyMode ? colors.warning : colors.border,
+                backgroundColor: emergencyMode
+                  ? colors.warningSoft
+                  : pressed
+                    ? colors.surfaceSoft
+                    : colors.background,
+                opacity: loadingHours ? 0.55 : 1,
+              })}
+            >
+              <Ionicons
+                name={emergencyMode ? "time" : "alert-circle-outline"}
+                size={22}
+                color={emergencyMode ? colors.warning : colors.primary}
+              />
+              <View style={{ flex: 1 }}>
+                <Text style={{ color: colors.text, fontWeight: "900" }}>
+                  {emergencyMode ? "Showing all-day emergency times" : "Emergency / outside usual hours"}
+                </Text>
+                <Text style={{ color: colors.muted, marginTop: 2, fontSize: 12 }}>
+                  {emergencyMode
+                    ? "Tap again to return to the clinic's usual hours."
+                    : "Use only when the doctor accepts an appointment outside normal hours."}
+                </Text>
+              </View>
+              <Ionicons name="swap-horizontal-outline" size={20} color={colors.muted} />
+            </Pressable>
+
             <View style={{ gap: 10 }}>
               <Text style={{ color: colors.text, fontWeight: "900" }}>Date</Text>
               <ScrollView
@@ -287,14 +457,14 @@ export function RescheduleAppointmentModal({
               >
                 {dateOptions.map((option) => {
                   const selected = option.key === selectedDateKey;
-                  const hasFutureSlot = TIME_SLOTS.some(
+                  const hasFutureSlot = timeSlots.some(
                     (slot) => makeDateTime(option.date, slot).getTime() > Date.now()
                   );
 
                   return (
                     <Pressable
                       key={option.key}
-                      disabled={!hasFutureSlot || saving}
+                      disabled={!hasFutureSlot || saving || loadingHours}
                       onPress={() => setSelectedDateKey(option.key)}
                       style={{
                         width: 86,
@@ -306,7 +476,7 @@ export function RescheduleAppointmentModal({
                         alignItems: "center",
                         justifyContent: "center",
                         gap: 4,
-                        opacity: hasFutureSlot ? 1 : 0.32,
+                        opacity: hasFutureSlot && !loadingHours ? 1 : 0.32,
                       }}
                     >
                       <Text
@@ -342,41 +512,49 @@ export function RescheduleAppointmentModal({
             </View>
 
             <View style={{ gap: 10 }}>
-              <Text style={{ color: colors.text, fontWeight: "900" }}>Time</Text>
-              <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 9 }}>
-                {availableTimeSlots.map((slot) => {
-                  const selected = slot.index === selectedTimeIndex;
+              <Text style={{ color: colors.text, fontWeight: "900" }}>
+                {emergencyMode ? "Emergency time" : "Time"}
+              </Text>
+              {loadingHours ? (
+                <View style={{ minHeight: 80, alignItems: "center", justifyContent: "center" }}>
+                  <ActivityIndicator color={colors.primary} />
+                </View>
+              ) : (
+                <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 9 }}>
+                  {availableTimeSlots.map((slot) => {
+                    const selected = slot.index === selectedTimeIndex;
 
-                  return (
-                    <Pressable
-                      key={slot.label}
-                      disabled={slot.disabled || saving}
-                      onPress={() => setSelectedTimeIndex(slot.index)}
-                      style={{
-                        minWidth: 94,
-                        minHeight: 46,
-                        paddingHorizontal: 12,
-                        borderRadius: 999,
-                        alignItems: "center",
-                        justifyContent: "center",
-                        borderWidth: 1,
-                        borderColor: selected ? colors.primary : colors.border,
-                        backgroundColor: selected ? colors.primary : colors.background,
-                        opacity: slot.disabled ? 0.3 : 1,
-                      }}
-                    >
-                      <Text
+                    return (
+                      <Pressable
+                        key={`${slot.label}-${slot.index}`}
+                        disabled={slot.disabled || saving}
+                        onPress={() => setSelectedTimeIndex(slot.index)}
                         style={{
-                          color: selected ? colors.white : colors.text,
-                          fontWeight: "900",
+                          minWidth: 94,
+                          minHeight: 46,
+                          paddingHorizontal: 12,
+                          borderRadius: 999,
+                          alignItems: "center",
+                          justifyContent: "center",
+                          borderWidth: 1,
+                          borderColor: selected ? colors.primary : colors.border,
+                          backgroundColor: selected ? colors.primary : colors.background,
+                          opacity: slot.disabled ? 0.3 : 1,
                         }}
                       >
-                        {slot.label}
-                      </Text>
-                    </Pressable>
-                  );
-                })}
-              </View>
+                        <Text
+                          style={{
+                            color: selected ? colors.white : colors.text,
+                            fontWeight: "900",
+                          }}
+                        >
+                          {slot.label}
+                        </Text>
+                      </Pressable>
+                    );
+                  })}
+                </View>
+              )}
             </View>
 
             {selectedDateTime ? (
@@ -397,7 +575,11 @@ export function RescheduleAppointmentModal({
                     fontWeight: "900",
                   }}
                 >
-                  {unchanged ? "CHOOSE A DIFFERENT TIME" : "NEW APPOINTMENT"}
+                  {unchanged
+                    ? "CHOOSE A DIFFERENT TIME"
+                    : emergencyMode
+                      ? "NEW EMERGENCY APPOINTMENT"
+                      : "NEW APPOINTMENT"}
                 </Text>
                 <Text style={{ color: colors.text, fontWeight: "900" }}>
                   {formatDateTime(selectedDateTime)}
