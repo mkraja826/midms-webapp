@@ -14,20 +14,16 @@ on:
       - ".github/workflows/performance-foundation-check.yml"
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
-  patch-and-typecheck:
-    if: github.event.pull_request.head.ref == 'perf-realtime-safe-2026-07-17' && github.actor != 'github-actions[bot]'
+  typecheck:
     runs-on: ubuntu-latest
     steps:
-      - name: Check out test branch
+      - name: Check out repository
         uses: actions/checkout@v4
-        with:
-          ref: ${{ github.event.pull_request.head.ref }}
-          fetch-depth: 0
 
-      - name: Wire safe dashboard v2 and Realtime
+      - name: Apply dashboard test wiring in CI workspace
         shell: python
         run: |
           from pathlib import Path
@@ -40,14 +36,12 @@ jobs:
 
           owner_path = Path("src/app/(head)/dashboard.tsx")
           owner = owner_path.read_text(encoding="utf-8")
-
           owner = replace_once(
               owner,
               'import { getClinicPreferences } from "@/lib/clinicPreferences";\nimport {\n  DashboardStats,\n  WorkflowDashboardSummary,\n  getDashboardStats,\n  getRoleLabel,\n  getWorkflowDashboardSummary,\n  rescheduleAppointment,\n  updateAppointmentStatus,\n} from "@/lib/supabase";',
               'import { getClinicPreferences } from "@/lib/clinicPreferences";\nimport { getClinicDashboardSafe } from "@/lib/dashboardV2";\nimport {\n  isClinicRealtimeEnabled,\n  subscribeClinicDashboardRealtime,\n} from "@/lib/realtime";\nimport {\n  DashboardStats,\n  WorkflowDashboardSummary,\n  getRoleLabel,\n  rescheduleAppointment,\n  updateAppointmentStatus,\n} from "@/lib/supabase";',
               "owner imports",
           )
-
           owner = replace_once(
               owner,
               '''  async function load(force = false) {
@@ -113,19 +107,16 @@ jobs:
   }, [profile?.clinic_id]);''',
               "owner loader",
           )
-
           owner_path.write_text(owner, encoding="utf-8")
 
           reception_path = Path("src/app/(reception)/dashboard.tsx")
           reception = reception_path.read_text(encoding="utf-8")
-
           reception = replace_once(
               reception,
               'import {\n  ClinicFeatureSettings,\n  DEFAULT_CLINIC_FEATURE_SETTINGS,\n  getClinicFeatureSettings,\n} from "@/lib/clinicOptions";\nimport {\n  DashboardStats,\n  getDashboardStats,\n  getRoleLabel,\n  getWorkflowDashboardSummary,\n  rescheduleAppointment,\n  supabase,\n  updateAppointmentStatus,\n} from "@/lib/supabase";',
               'import {\n  ClinicFeatureSettings,\n  DEFAULT_CLINIC_FEATURE_SETTINGS,\n  getClinicFeatureSettings,\n} from "@/lib/clinicOptions";\nimport { getClinicDashboardSafe } from "@/lib/dashboardV2";\nimport {\n  isClinicRealtimeEnabled,\n  subscribeClinicDashboardRealtime,\n} from "@/lib/realtime";\nimport {\n  DashboardStats,\n  getRoleLabel,\n  rescheduleAppointment,\n  supabase,\n  updateAppointmentStatus,\n} from "@/lib/supabase";',
               "reception imports",
           )
-
           reception = replace_once(
               reception,
               '''  async function load(force = false) {
@@ -231,7 +222,6 @@ jobs:
   }, [profile?.clinic_id]);''',
               "reception loader",
           )
-
           reception_path.write_text(reception, encoding="utf-8")
 
       - name: Use Node.js
@@ -246,49 +236,12 @@ jobs:
       - name: Typecheck
         run: npm run typecheck
 
-      - name: Restore validation workflow and commit
-        run: |
-          rm -f .github/workflows/patch-dashboard-realtime-test.yml
-          cat > .github/workflows/performance-foundation-check.yml <<'YAML'
-          name: Performance foundation check
-
-          on:
-            pull_request:
-              paths:
-                - "src/lib/dashboardV2.ts"
-                - "src/lib/realtime.ts"
-                - "src/app/(head)/dashboard.tsx"
-                - "src/app/(reception)/dashboard.tsx"
-                - "supabase/migrations/**"
-                - "package.json"
-                - "package-lock.json"
-                - "tsconfig.json"
-                - ".github/workflows/performance-foundation-check.yml"
-
-          permissions:
-            contents: read
-
-          jobs:
-            typecheck:
-              runs-on: ubuntu-latest
-              steps:
-                - name: Check out repository
-                  uses: actions/checkout@v4
-
-                - name: Use Node.js
-                  uses: actions/setup-node@v4
-                  with:
-                    node-version: 22.13.1
-                    cache: npm
-
-                - name: Install dependencies
-                  run: npm ci
-
-                - name: Typecheck
-                  run: npm run typecheck
-          YAML
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add "src/app/(head)/dashboard.tsx" "src/app/(reception)/dashboard.tsx" .github/workflows/performance-foundation-check.yml .github/workflows/patch-dashboard-realtime-test.yml
-          git commit -m "Wire dashboard v2 and Realtime with legacy fallback"
-          git push origin HEAD:perf-realtime-safe-2026-07-17
+      - name: Upload verified dashboards
+        uses: actions/upload-artifact@v4
+        with:
+          name: verified-dashboard-realtime-wiring
+          path: |
+            src/app/(head)/dashboard.tsx
+            src/app/(reception)/dashboard.tsx
+          if-no-files-found: error
+          retention-days: 1
