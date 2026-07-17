@@ -1,3 +1,4 @@
+# Triggered after workflow registration
 name: One-time dashboard Realtime test wiring
 
 on:
