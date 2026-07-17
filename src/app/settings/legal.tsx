@@ -11,7 +11,8 @@ export default function LegalAccountScreen() {
   const { profile, signOut } = useAuth();
   const [loggingOut, setLoggingOut] = useState(false);
   const homePath = getDashboardPath(profile?.role ?? "receptionist");
-  const canManageSubscription = profile?.role === "head_doctor" || profile?.role === "owner";
+  const canManageSubscription =
+    profile?.role === "head_doctor" || profile?.role === "owner";
 
   async function logout() {
     if (loggingOut) return;
@@ -20,20 +21,30 @@ export default function LegalAccountScreen() {
       setLoggingOut(true);
       await signOut();
     } catch (error) {
-      Alert.alert("Logout failed", error instanceof Error ? error.message : "Please try again.");
+      Alert.alert(
+        "Logout failed",
+        error instanceof Error ? error.message : "Please try again."
+      );
       setLoggingOut(false);
     }
   }
 
   return (
-    <ScrollView contentInsetAdjustmentBehavior="automatic" contentContainerStyle={{ padding: 16, gap: 16 }}>
-      <SectionCard title="Legal & Account" subtitle="Privacy, terms, support, optional features, and account deletion.">
+    <ScrollView
+      contentInsetAdjustmentBehavior="automatic"
+      contentContainerStyle={{ padding: 16, gap: 16 }}
+    >
+      <SectionCard
+        title="Legal & Account"
+        subtitle="Privacy, terms, support, clinic settings, and account deletion."
+      >
         <View style={{ gap: 12 }}>
           <Text style={{ color: colors.text, fontWeight: "900", fontSize: 16 }}>
             CapDent Play Store compliance
           </Text>
           <Text style={{ color: colors.muted, lineHeight: 21 }}>
-            Access privacy information, terms, account/data deletion, support, and clinic optional feature settings.
+            Access clinic settings, privacy information, terms, account/data
+            deletion, and support.
           </Text>
         </View>
       </SectionCard>
@@ -49,7 +60,7 @@ export default function LegalAccountScreen() {
 
       {canManageSubscription ? (
         <AppButton
-          title="Clinic Optional Features"
+          title="Clinic Settings"
           variant="secondary"
           icon="options-outline"
           onPress={() => router.push("/settings/account" as never)}
