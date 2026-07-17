@@ -265,7 +265,7 @@ export default function ClinicalUploadScreen() {
     }
 
     const result = await ImagePicker.launchCameraAsync({
-      quality: 0.78,
+      quality: type === "xray" || type === "report" ? 0.76 : 0.64,
       allowsEditing: false,
       mediaTypes: ImagePicker.MediaTypeOptions.Images,
     });

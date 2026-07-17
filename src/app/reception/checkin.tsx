@@ -64,6 +64,7 @@ export default function ReceptionCheckinScreen() {
   const [saving, setSaving] = useState(false);
   const patientRequestRef = useRef(0);
   const patientSearchMountedRef = useRef(false);
+  const checkInLockRef = useRef(false);
 
   async function loadPatients(searchText = patientSearch, refreshSettings = false) {
     const requestId = patientRequestRef.current + 1;
@@ -144,6 +145,8 @@ export default function ReceptionCheckinScreen() {
   }
 
   async function checkIn(skipLimitWarning = false) {
+    if (saving || checkInLockRef.current) return;
+
     const fee = toNumber(opAmount);
 
     if (opStatus !== "waived" && fee <= 0) {
@@ -165,6 +168,9 @@ export default function ReceptionCheckinScreen() {
       Alert.alert("Name required", "Enter patient name.");
       return;
     }
+
+    checkInLockRef.current = true;
+    setSaving(true);
 
     try {
       if (mode === "new" && !skipLimitWarning) {
@@ -238,6 +244,7 @@ export default function ReceptionCheckinScreen() {
     } catch (error) {
       Alert.alert("Check-in failed", getErrorMessage(error));
     } finally {
+      checkInLockRef.current = false;
       setSaving(false);
     }
   }

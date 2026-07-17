@@ -34,6 +34,7 @@ import {
 import type { ClinicPlanName, ClinicSubscription } from "@/lib/subscription";
 
 const RUPEE = "\u20B9";
+const PAID_PLANS_ENABLED = process.env.EXPO_PUBLIC_ENABLE_PAID_PLANS === "true";
 const PAID_PLAN_ORDER: GooglePlayPlanKey[] = ["professional", "clinic_intelligence"];
 
 function money(value: number) {
@@ -206,16 +207,19 @@ export default function SubscriptionScreen() {
   const { profile } = useAuth();
   const [subscription, setSubscription] = useState<ClinicSubscription | null>(null);
   const [billingPlans, setBillingPlans] = useState<GooglePlayBillingPlan[]>([]);
-  const [billingError, setBillingError] = useState<string | null>(googlePlayBillingUnavailableReason());
+  const [billingError, setBillingError] = useState<string | null>(
+    PAID_PLANS_ENABLED ? googlePlayBillingUnavailableReason() : null
+  );
   const [loading, setLoading] = useState(true);
   const [loadingBilling, setLoadingBilling] = useState(false);
   const [startingPlan, setStartingPlan] = useState<GooglePlayPlanKey | null>(null);
 
   const locked = params.locked === "1";
-  const subscriptionInfo = getSubscriptionDisplay(subscription);
-  const access = getSubscriptionAccess(subscription);
-  const currentPlan = getClinicPlanName(subscription);
-  const googlePlayLinked = hasGooglePlayAutopay(subscription);
+  const effectiveSubscription = PAID_PLANS_ENABLED ? subscription : null;
+  const subscriptionInfo = getSubscriptionDisplay(effectiveSubscription);
+  const access = getSubscriptionAccess(effectiveSubscription);
+  const currentPlan = getClinicPlanName(effectiveSubscription);
+  const googlePlayLinked = hasGooglePlayAutopay(effectiveSubscription);
   const currentProductId = googlePlayLinked ? subscription?.google_play_product_id || null : null;
   const paidPlanActive =
     currentPlan !== "free" &&
@@ -227,6 +231,10 @@ export default function SubscriptionScreen() {
   async function load() {
     try {
       setLoading(true);
+      if (!PAID_PLANS_ENABLED) {
+        setSubscription(null);
+        return;
+      }
       const subscriptionData = await getClinicSubscription();
       setSubscription(subscriptionData);
     } catch (error) {
@@ -237,6 +245,12 @@ export default function SubscriptionScreen() {
   }
 
   async function loadBillingPlans() {
+    if (!PAID_PLANS_ENABLED) {
+      setBillingPlans([]);
+      setBillingError(null);
+      return [] as GooglePlayBillingPlan[];
+    }
+
     if (Platform.OS !== "android") {
       setBillingError("Google Play Billing works only inside the Android app installed from Play testing/production.");
       return [] as GooglePlayBillingPlan[];
@@ -276,6 +290,12 @@ export default function SubscriptionScreen() {
   }, [profile?.clinic_id]);
 
   useEffect(() => {
+    if (!PAID_PLANS_ENABLED) {
+      setBillingPlans([]);
+      setBillingError(null);
+      return;
+    }
+
     loadBillingPlans();
 
     const cleanup = addGooglePlayPurchaseListeners({
@@ -357,15 +377,23 @@ export default function SubscriptionScreen() {
   }
 
   return (
-    <Screen refreshing={loading || loadingBilling} onRefresh={() => { load(); loadBillingPlans(); }}>
+    <Screen
+      refreshing={loading || (PAID_PLANS_ENABLED && loadingBilling)}
+      onRefresh={() => {
+        load();
+        if (PAID_PLANS_ENABLED) loadBillingPlans();
+      }}
+    >
       <View style={{ gap: 8 }}>
         <Text style={{ color: colors.text, fontSize: 30, fontWeight: "900" }}>
-          {paidPlanActive ? "Subscription" : "Plans"}
+          {PAID_PLANS_ENABLED && paidPlanActive ? "Subscription" : "Free Access"}
         </Text>
         <Text style={{ color: colors.muted, fontSize: 15, lineHeight: 21 }}>
-          {paidPlanActive
-            ? "Your paid plan is active. Manage cancellation through Google Play only."
-            : "Start professionally on Free. Grow without limits on Professional. Understand the clinic deeply with Intelligence."}
+          {!PAID_PLANS_ENABLED
+            ? "CapDent is currently free for all clinics. Paid plans will appear only after official store subscriptions are enabled."
+            : paidPlanActive
+              ? "Your paid plan is active. Manage cancellation through Google Play only."
+              : "Start professionally on Free. Grow without limits on Professional. Understand the clinic deeply with Intelligence."}
         </Text>
       </View>
 
@@ -432,7 +460,19 @@ export default function SubscriptionScreen() {
         </View>
       </SectionCard>
 
-      {paidPlanActive ? (
+      {!PAID_PLANS_ENABLED ? (
+        <SectionCard title="Free Access" subtitle="No subscription is required for this release.">
+          <FreePlanCard currentPlan="free" />
+          <FeatureRow
+            icon="shield-checkmark-outline"
+            label="CapDent is currently free for all clinics, with core patient, visit, payment, appointment, report, and staff workflows available."
+          />
+          <FeatureRow
+            icon="cloud-outline"
+            label="Billing code and subscription records are preserved for a later store-enabled release, but they do not block clinic work now."
+          />
+        </SectionCard>
+      ) : paidPlanActive ? (
         <SectionCard title="Manage Plan" subtitle="Paid access is active. Plan choices stay hidden until this plan is cancelled.">
           <FeatureRow
             icon="checkmark-circle-outline"
@@ -517,7 +557,7 @@ export default function SubscriptionScreen() {
           loading={loading}
           style={{ flex: 1 }}
         />
-        {!paidPlanActive ? (
+        {PAID_PLANS_ENABLED && !paidPlanActive ? (
           <AppButton
             title="Reload Billing"
             icon="refresh-circle-outline"

@@ -57,9 +57,10 @@ const STAFF_CACHE_TTL_MS = 60_000;
 export const FREE_PATIENT_LIMIT = 100;
 export const FREE_PATIENT_NOTICE_REMAINING = 50;
 export const FREE_PATIENT_WARNING_REMAINING = 10;
+export const CAPDENT_CURRENTLY_FREE_MESSAGE = "CapDent is currently free for all clinics.";
 
 type CacheOptions = { force?: boolean };
-type AppDataCacheScope = "dashboard" | "patients" | "appointments" | "payments" | "staff";
+type AppDataCacheScope = "dashboard" | "patients" | "appointments" | "payments" | "treatments" | "staff";
 type QueryCacheEntry<T> = {
   data: T;
   expiresAt: number;
@@ -1196,79 +1197,23 @@ export async function searchPatientsAdvanced(input: {
   return data as Patient[];
 }
 
-function paidSubscriptionAllowsUnlimitedPatients(subscription: any) {
-  if (!subscription) return false;
+async function getClinicPatientLimitStatusForClinic(
+  clinicId: string
+): Promise<ClinicPatientLimitStatus> {
+  const { count, error } = await supabase
+    .from("patients")
+    .select("id", { count: "exact", head: true })
+    .eq("clinic_id", clinicId);
 
-  const planName = String(subscription.plan_name || "").toLowerCase();
-  const status = String(subscription.status || "").toLowerCase();
-  const googleStatus = String(subscription.google_play_status || "").toLowerCase();
-
-  if (status !== "active" && status !== "grace_period") return false;
-  if (googleStatus === "cancelled" || googleStatus === "expired" || googleStatus === "account_hold") return false;
-
-  return planName !== "free";
-}
-
-function patientLimitMessage(remaining: number) {
-  if (remaining <= 0) {
-    return "Free patient limit reached. Start the Professional 3-month free trial to continue adding new patients.";
-  }
-
-  if (remaining <= FREE_PATIENT_WARNING_REMAINING) {
-    return `Only ${remaining} patient slot${remaining === 1 ? "" : "s"} remaining on Free. Start the Professional 3-month free trial to continue without limits.`;
-  }
-
-  if (remaining <= FREE_PATIENT_NOTICE_REMAINING) {
-    return `${remaining} patient slots remaining on Free. Professional gives unlimited patient records after the 3-month free trial.`;
-  }
-
-  return `${remaining} patient slots remaining on Free.`;
-}
-
-async function getClinicPatientLimitStatusForClinic(clinicId: string): Promise<ClinicPatientLimitStatus> {
-  const [{ count, error: countError }, { data: subscription, error: subscriptionError }] = await Promise.all([
-    supabase.from("patients").select("id", { count: "exact", head: true }).eq("clinic_id", clinicId),
-    supabase
-      .from("clinic_subscriptions")
-      .select("plan_name,status,google_play_status")
-      .eq("clinic_id", clinicId)
-      .maybeSingle(),
-  ]);
-
-  if (countError) throw countError;
-  if (subscriptionError) throw subscriptionError;
-
-  const patientCount = count ?? 0;
-  const unlimited = paidSubscriptionAllowsUnlimitedPatients(subscription);
-
-  if (unlimited) {
-    return {
-      count: patientCount,
-      limit: FREE_PATIENT_LIMIT,
-      remaining: null,
-      unlimited: true,
-      level: "none",
-      message: "Paid plan active. Patient records are unlimited.",
-    };
-  }
-
-  const remaining = Math.max(FREE_PATIENT_LIMIT - patientCount, 0);
-  const level =
-    remaining <= 0
-      ? "blocked"
-      : remaining <= FREE_PATIENT_WARNING_REMAINING
-      ? "warning"
-      : remaining <= FREE_PATIENT_NOTICE_REMAINING
-      ? "notice"
-      : "none";
+  if (error) throw error;
 
   return {
-    count: patientCount,
+    count: count ?? 0,
     limit: FREE_PATIENT_LIMIT,
-    remaining,
-    unlimited: false,
-    level,
-    message: patientLimitMessage(remaining),
+    remaining: null,
+    unlimited: true,
+    level: "none",
+    message: CAPDENT_CURRENTLY_FREE_MESSAGE,
   };
 }
 
