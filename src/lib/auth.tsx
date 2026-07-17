@@ -1,4 +1,5 @@
 import { Session } from "@supabase/supabase-js";
+import * as WebBrowser from "expo-web-browser";
 import { router, useSegments } from "expo-router";
 import {
   createContext,
@@ -23,6 +24,8 @@ import {
   supabase,
 } from "@/lib/supabase";
 
+WebBrowser.maybeCompleteAuthSession();
+
 type AuthContextValue = {
   session: Session | null;
   profile: Profile | null;
@@ -30,6 +33,7 @@ type AuthContextValue = {
   loadingMessage: string;
   refreshProfile: () => Promise<Profile | null>;
   signIn: (email: string, password: string) => Promise<void>;
+  signInWithGoogle: () => Promise<boolean>;
   signUpOwner: (email: string, password: string) => Promise<void>;
   signUpStaff: (email: string, password: string) => Promise<void>;
   resetPassword: (email: string) => Promise<void>;
@@ -40,6 +44,8 @@ type AuthContextValue = {
 const AuthContext = createContext<AuthContextValue | null>(null);
 const PASSWORD_RESET_REDIRECT_URL =
   process.env.EXPO_PUBLIC_PASSWORD_RESET_REDIRECT_URL ?? "dms://auth/reset-password";
+const GOOGLE_AUTH_REDIRECT_URL =
+  process.env.EXPO_PUBLIC_GOOGLE_AUTH_REDIRECT_URL ?? "dms://auth/callback";
 
 function isRoleGroup(segment?: string) {
   return segment === "(head)" || segment === "(doctor)" || segment === "(reception)";
@@ -50,6 +56,50 @@ async function withTimeout<T>(promise: Promise<T>, ms = 12000): Promise<T> {
     promise,
     new Promise<T>((_, reject) => setTimeout(() => reject(new Error("Request timed out")), ms)),
   ]);
+}
+
+function paramsFromUrl(url: string) {
+  const queryIndex = url.indexOf("?");
+  const hashIndex = url.indexOf("#");
+  const query = queryIndex >= 0 ? url.slice(queryIndex + 1, hashIndex >= 0 ? hashIndex : undefined) : "";
+  const hash = hashIndex >= 0 ? url.slice(hashIndex + 1) : "";
+  const params = new URLSearchParams(query);
+
+  new URLSearchParams(hash).forEach((value, key) => {
+    if (!params.has(key)) params.set(key, value);
+  });
+
+  return params;
+}
+
+async function completeOAuthSession(url: string) {
+  const params = paramsFromUrl(url);
+  const errorDescription = params.get("error_description") || params.get("error");
+
+  if (errorDescription) {
+    throw new Error(decodeURIComponent(errorDescription.replace(/\+/g, " ")));
+  }
+
+  const code = params.get("code");
+  if (code) {
+    const { error } = await supabase.auth.exchangeCodeForSession(code);
+    if (error) throw error;
+    return;
+  }
+
+  const accessToken = params.get("access_token");
+  const refreshToken = params.get("refresh_token");
+
+  if (accessToken && refreshToken) {
+    const { error } = await supabase.auth.setSession({
+      access_token: accessToken,
+      refresh_token: refreshToken,
+    });
+    if (error) throw error;
+    return;
+  }
+
+  throw new Error("Google did not return a valid CapDent session.");
 }
 
 export function AuthProvider({ children }: { children: ReactNode }) {
@@ -198,6 +248,37 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           setProfile(null);
           throw new Error("Please verify your email before logging in.");
         }
+      },
+      async signInWithGoogle() {
+        await clearForceSignedOut();
+
+        const { data, error } = await withTimeout(
+          supabase.auth.signInWithOAuth({
+            provider: "google",
+            options: {
+              redirectTo: GOOGLE_AUTH_REDIRECT_URL,
+              skipBrowserRedirect: true,
+              queryParams: {
+                prompt: "select_account",
+              },
+            },
+          }),
+          10000
+        );
+
+        if (error) throw error;
+        if (!data.url) throw new Error("Google login could not be started.");
+
+        const result = await WebBrowser.openAuthSessionAsync(
+          data.url,
+          GOOGLE_AUTH_REDIRECT_URL
+        );
+
+        if (result.type !== "success" || !result.url) return false;
+
+        await completeOAuthSession(result.url);
+        invalidateSupabaseCache();
+        return true;
       },
       async signUpOwner(email, password) {
         const { error } = await withTimeout(
