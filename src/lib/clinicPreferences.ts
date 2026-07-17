@@ -21,6 +21,18 @@ export function invalidateClinicPreferencesCache() {
   cachedClinicPreferences = null;
 }
 
+function cleanStoredClinicTime(value: string | null | undefined, fallback: string) {
+  const raw = (value || "").trim();
+  const databaseTime = raw.match(
+    /^(\d{1,2}):(\d{2})(?::\d{2}(?:\.\d+)?)?$/
+  );
+
+  return normalizeClinicTime(
+    databaseTime ? `${databaseTime[1]}:${databaseTime[2]}` : raw,
+    fallback
+  );
+}
+
 function cleanPreferences(input?: Partial<ClinicPreferences> | null): ClinicPreferences {
   const defaults = getDefaultClinicPreferences();
   const countryCode = cleanCountryCode(input?.countryCode || defaults.countryCode);
@@ -28,8 +40,8 @@ function cleanPreferences(input?: Partial<ClinicPreferences> | null): ClinicPref
   return {
     countryCode,
     currencyCode: cleanCurrencyCode(input?.currencyCode, countryCode),
-    openingTime: normalizeClinicTime(input?.openingTime, defaults.openingTime),
-    closingTime: normalizeClinicTime(input?.closingTime, defaults.closingTime),
+    openingTime: cleanStoredClinicTime(input?.openingTime, defaults.openingTime),
+    closingTime: cleanStoredClinicTime(input?.closingTime, defaults.closingTime),
   };
 }
 
