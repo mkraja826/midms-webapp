@@ -4,10 +4,17 @@ import { useState } from "react";
 import { Alert, Pressable, ScrollView, Text, View } from "react-native";
 import { AppButton } from "@/components/AppButton";
 import { AppInput } from "@/components/AppInput";
+import { ClinicPreferencesFields } from "@/components/ClinicPreferencesFields";
 import { SectionCard } from "@/components/SectionCard";
 import { colors } from "@/constants/colors";
 import { useAuth } from "@/lib/auth";
-import { acceptStaffInviteByCode, createOwnerClinic } from "@/lib/supabase";
+import {
+  cleanCurrencyCode,
+  getDefaultClinicPreferences,
+  normalizeClinicTime,
+} from "@/lib/clinicLocale";
+import { createOwnerClinicWithPreferences } from "@/lib/clinicSetup";
+import { acceptStaffInviteByCode } from "@/lib/supabase";
 
 type AccountType = "clinic" | "employee" | null;
 
@@ -56,6 +63,9 @@ export default function OnboardingScreen() {
   );
   const [phone, setPhone] = useState("");
   const [address, setAddress] = useState("");
+  const [preferences, setPreferences] = useState(() =>
+    getDefaultClinicPreferences()
+  );
 
   const [loading, setLoading] = useState(false);
 
@@ -65,22 +75,38 @@ export default function OnboardingScreen() {
       return;
     }
 
+    const currencyCode = cleanCurrencyCode(
+      preferences.currencyCode,
+      preferences.countryCode
+    );
+
+    if (!/^[A-Z]{3}$/.test(currencyCode)) {
+      Alert.alert("Invalid currency", "Choose a valid three-letter clinic currency.");
+      return;
+    }
+
     setLoading(true);
 
     try {
-      await createOwnerClinic({
+      await createOwnerClinicWithPreferences({
         clinicName: clinicName.trim(),
         ownerName: ownerName.trim(),
         phone: phone.trim() || undefined,
         email: email || undefined,
         address: address.trim() || undefined,
+        preferences: {
+          ...preferences,
+          currencyCode,
+          openingTime: normalizeClinicTime(preferences.openingTime, "09:00"),
+          closingTime: normalizeClinicTime(preferences.closingTime, "21:00"),
+        },
       });
 
       await refreshProfile();
 
       Alert.alert(
         "Clinic created",
-        "Your clinic workspace is ready. The Free plan helps you start clean without costly software.",
+        "Your clinic workspace is ready with its country, currency, and usual clinic hours.",
         [
           {
             text: "Open Dashboard",
@@ -182,6 +208,7 @@ export default function OnboardingScreen() {
     <ScrollView
       contentInsetAdjustmentBehavior="automatic"
       contentContainerStyle={{ padding: 16, gap: 16 }}
+      keyboardShouldPersistTaps="handled"
     >
       <SectionCard title="Choose account type" subtitle="Select the correct path for this email account.">
         <Text selectable style={{ color: colors.muted, lineHeight: 21 }}>
@@ -237,6 +264,20 @@ export default function OnboardingScreen() {
             onChangeText={setAddress}
             multiline
             placeholder="Optional"
+          />
+
+          <View style={{ gap: 6, paddingTop: 4 }}>
+            <Text style={{ color: colors.text, fontSize: 18, fontWeight: "900" }}>
+              Clinic Preferences
+            </Text>
+            <Text style={{ color: colors.muted, lineHeight: 20 }}>
+              Country and currency are suggested from this phone. Confirm the clinic's usual opening and closing time.
+            </Text>
+          </View>
+
+          <ClinicPreferencesFields
+            value={preferences}
+            onChange={setPreferences}
           />
 
           <AppButton
