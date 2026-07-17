@@ -10,6 +10,11 @@ import { SectionCard } from "@/components/SectionCard";
 import { StatusBadge } from "@/components/StatusBadge";
 import { colors } from "@/constants/colors";
 import { useAuth } from "@/lib/auth";
+import {
+  formatClinicMoney,
+  getDefaultClinicPreferences,
+} from "@/lib/clinicLocale";
+import { getClinicPreferences } from "@/lib/clinicPreferences";
 import { searchPatientsPage } from "@/lib/patientDirectory";
 import { createAppointment, createInvoice, createVisit, getCurrentProfile, supabase } from "@/lib/supabase";
 import type { Patient, Profile } from "@/lib/supabase";
@@ -72,10 +77,6 @@ function toNumber(value: string | number | null | undefined) {
   const cleaned = String(value ?? "").replace(/[^0-9.]/g, "");
   const number = Number(cleaned);
   return Number.isFinite(number) ? number : 0;
-}
-
-function formatMoney(value: string | number | null | undefined) {
-  return `₹${Math.max(0, Math.round(Number(value || 0))).toLocaleString("en-IN")}`;
 }
 
 function pad(value: number) {
@@ -177,8 +178,13 @@ export default function AddVisitScreen() {
   const [loadingPatients, setLoadingPatients] = useState(true);
   const [loadingDoctors, setLoadingDoctors] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [currencyCode, setCurrencyCode] = useState(
+    getDefaultClinicPreferences().currencyCode
+  );
   const patientRequestRef = useRef(0);
   const patientSearchMountedRef = useRef(false);
+  const formatMoney = (value: string | number | null | undefined) =>
+    formatClinicMoney(value, currencyCode);
 
   async function loadPatients(searchText = patientSearch) {
     const requestId = patientRequestRef.current + 1;
@@ -257,7 +263,11 @@ export default function AddVisitScreen() {
   }
 
   async function loadScreenData() {
+    const preferencesPromise = getClinicPreferences().catch(() =>
+      getDefaultClinicPreferences()
+    );
     await Promise.all([loadPatients(patientSearch), loadDoctors()]);
+    setCurrencyCode((await preferencesPromise).currencyCode);
   }
 
   useEffect(() => {
