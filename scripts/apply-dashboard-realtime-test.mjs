@@ -25,7 +25,9 @@ function replaceSafely(text, oldValue, newValue, label) {
 }
 
 function patchFile(path, replacements) {
-  let text = readFileSync(path, "utf8");
+  const originalText = readFileSync(path, "utf8");
+  const lineEnding = originalText.includes("\r\n") ? "\r\n" : "\n";
+  let text = originalText.replace(/\r\n/g, "\n");
 
   for (const replacement of replacements) {
     text = replaceSafely(
@@ -36,7 +38,7 @@ function patchFile(path, replacements) {
     );
   }
 
-  writeFileSync(path, text, "utf8");
+  writeFileSync(path, text.replace(/\n/g, lineEnding), "utf8");
 }
 
 const ownerImportsOld = `import { getClinicPreferences } from "@/lib/clinicPreferences";
