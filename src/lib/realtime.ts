@@ -1,10 +1,13 @@
 import { invalidateAppDataCache, supabase } from "@/lib/supabase";
 
-const REALTIME_ENABLED =
-  process.env.EXPO_PUBLIC_ENABLE_REALTIME === "true";
+function readRealtimeEnabled() {
+  return String(process.env.EXPO_PUBLIC_ENABLE_REALTIME ?? "")
+    .trim()
+    .toLowerCase() === "true";
+}
 
 export function isClinicRealtimeEnabled() {
-  return REALTIME_ENABLED;
+  return readRealtimeEnabled();
 }
 
 type DashboardRealtimeOptions = {
@@ -15,24 +18,32 @@ type DashboardRealtimeOptions = {
 
 /**
  * Creates one clinic-filtered channel for dashboard-changing records.
- *
- * This helper is intentionally disabled unless
- * EXPO_PUBLIC_ENABLE_REALTIME=true. Existing clinic screens do not import it
- * yet, so adding this file cannot change the current clinic workflow.
  */
 export function subscribeClinicDashboardRealtime({
   clinicId,
   onChange,
   debounceMs = 450,
 }: DashboardRealtimeOptions) {
-  if (!REALTIME_ENABLED || !clinicId) {
+  const realtimeEnabled = readRealtimeEnabled();
+
+  if (!realtimeEnabled) {
+    console.info(
+      "Clinic Realtime disabled. Set EXPO_PUBLIC_ENABLE_REALTIME=true and restart Expo."
+    );
+    return () => undefined;
+  }
+
+  if (!clinicId) {
+    console.warn("Clinic Realtime not started: clinic_id is missing from the profile.");
     return () => undefined;
   }
 
   let refreshTimer: ReturnType<typeof setTimeout> | null = null;
   let disposed = false;
 
-  const scheduleRefresh = (scopes: Array<"dashboard" | "appointments" | "payments">) => {
+  const scheduleRefresh = (
+    scopes: Array<"dashboard" | "appointments" | "payments">
+  ) => {
     scopes.forEach((scope) => invalidateAppDataCache(scope));
 
     if (refreshTimer) clearTimeout(refreshTimer);
@@ -78,9 +89,14 @@ export function subscribeClinicDashboardRealtime({
       },
       () => scheduleRefresh(["dashboard", "payments"])
     )
-    .subscribe((status) => {
+    .subscribe((status, error) => {
+      if (status === "SUBSCRIBED") {
+        console.info(`Clinic Realtime subscribed for ${clinicId}`);
+        return;
+      }
+
       if (status === "CHANNEL_ERROR" || status === "TIMED_OUT") {
-        console.warn(`Clinic Realtime channel status: ${status}`);
+        console.warn(`Clinic Realtime channel status: ${status}`, error);
       }
     });
 
