@@ -3,6 +3,7 @@ import { useEffect, useState } from "react";
 import { Alert, Switch, Text, View } from "react-native";
 import { AppButton } from "@/components/AppButton";
 import { AppInput } from "@/components/AppInput";
+import { ClinicPreferencesFields } from "@/components/ClinicPreferencesFields";
 import { EmptyState } from "@/components/EmptyState";
 import { Screen } from "@/components/Screen";
 import { SectionCard } from "@/components/SectionCard";
@@ -16,11 +17,17 @@ import {
   getClinicFeatureSettings,
   updateClinicFeatureSettings,
 } from "@/lib/clinicOptions";
+import {
+  formatClinicMoney,
+  formatClinicTime,
+  getCountryCurrencyOption,
+  getDefaultClinicPreferences,
+} from "@/lib/clinicLocale";
+import {
+  getClinicPreferences,
+  updateClinicPreferences,
+} from "@/lib/clinicPreferences";
 import { getDashboardPath } from "@/lib/supabase";
-
-function money(value: string | number) {
-  return `₹${Math.round(Number(value || 0)).toLocaleString("en-IN")}`;
-}
 
 function toNumber(value: string) {
   const cleaned = value.replace(/[^0-9.]/g, "");
@@ -30,25 +37,39 @@ function toNumber(value: string) {
 
 export default function AccountSettingsScreen() {
   const { profile, signOut } = useAuth();
-  const [settings, setSettings] = useState<ClinicFeatureSettings>(DEFAULT_CLINIC_FEATURE_SETTINGS);
-  const [opFeeAmount, setOpFeeAmount] = useState(String(DEFAULT_CLINIC_FEATURE_SETTINGS.op_fee_amount));
+  const [settings, setSettings] = useState<ClinicFeatureSettings>(
+    DEFAULT_CLINIC_FEATURE_SETTINGS
+  );
+  const [preferences, setPreferences] = useState(() =>
+    getDefaultClinicPreferences()
+  );
+  const [opFeeAmount, setOpFeeAmount] = useState(
+    String(DEFAULT_CLINIC_FEATURE_SETTINGS.op_fee_amount)
+  );
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [loggingOut, setLoggingOut] = useState(false);
 
   const canManage = canManageClinicFeatureSettings(profile);
   const homePath = getDashboardPath(profile?.role ?? "receptionist");
+  const selectedCountry = getCountryCurrencyOption(preferences.countryCode);
 
   async function load() {
     try {
       setLoading(true);
-      const data = await getClinicFeatureSettings({ force: true });
-      setSettings(data);
-      setOpFeeAmount(String(data.op_fee_amount));
+      const [featureData, preferenceData] = await Promise.all([
+        getClinicFeatureSettings({ force: true }),
+        getClinicPreferences({ force: true }),
+      ]);
+      setSettings(featureData);
+      setPreferences(preferenceData);
+      setOpFeeAmount(String(featureData.op_fee_amount));
     } catch (error) {
       Alert.alert(
         "Settings load failed",
-        error instanceof Error ? error.message : "Please run the clinic settings SQL migration and try again."
+        error instanceof Error
+          ? error.message
+          : "Please run the clinic preferences SQL migration and try again."
       );
     } finally {
       setLoading(false);
@@ -71,19 +92,33 @@ export default function AccountSettingsScreen() {
       return;
     }
 
+    if (!/^[A-Z]{3}$/.test(preferences.currencyCode.trim().toUpperCase())) {
+      Alert.alert("Invalid currency", "Enter a valid three-letter currency code.");
+      return;
+    }
+
     try {
       setSaving(true);
-      const updated = await updateClinicFeatureSettings({
-        ...settings,
-        op_fee_amount: cleanedOpFee,
-      });
-      setSettings(updated);
-      setOpFeeAmount(String(updated.op_fee_amount));
-      Alert.alert("Settings saved", "Clinic OP fee and optional features were updated for staff dashboards.");
+      const [updatedSettings, updatedPreferences] = await Promise.all([
+        updateClinicFeatureSettings({
+          ...settings,
+          op_fee_amount: cleanedOpFee,
+        }),
+        updateClinicPreferences(preferences),
+      ]);
+      setSettings(updatedSettings);
+      setPreferences(updatedPreferences);
+      setOpFeeAmount(String(updatedSettings.op_fee_amount));
+      Alert.alert(
+        "Settings saved",
+        "Clinic currency, usual hours, OP fee, and optional features were updated."
+      );
     } catch (error) {
       Alert.alert(
         "Save failed",
-        error instanceof Error ? error.message : "Only clinic owner can update these options."
+        error instanceof Error
+          ? error.message
+          : "Only the clinic owner can update these options."
       );
     } finally {
       setSaving(false);
@@ -120,7 +155,7 @@ export default function AccountSettingsScreen() {
         <SectionCard>
           <EmptyState
             title="Owner access only"
-            message="Ask the clinic owner or head doctor to change OP fee, patient photos, or prescribed tablets settings."
+            message="Ask the clinic owner or head doctor to change clinic currency, usual hours, OP fee, patient photos, or prescribed tablets settings."
             icon="lock-closed-outline"
           />
         </SectionCard>
@@ -153,15 +188,45 @@ export default function AccountSettingsScreen() {
           Account Settings
         </Text>
         <Text style={{ color: colors.muted, fontSize: 15, lineHeight: 21 }}>
-          Clinic owner can set the clinic OP fee and turn optional modules on or off.
+          Clinic owner can manage the clinic's country, currency, usual hours,
+          OP fee, and optional modules.
         </Text>
       </View>
 
-      <SectionCard title="Clinic OP Fee" subtitle="This becomes the default amount for quick check-in and OP fee collection.">
-        <View style={{ padding: 16, borderRadius: 24, backgroundColor: colors.successSoft, borderWidth: 1, borderColor: colors.border, alignItems: "center", gap: 6 }}>
-          <Text style={{ color: colors.muted, fontWeight: "800" }}>Current OP Fee</Text>
-          <Text style={{ color: colors.text, fontSize: 42, fontWeight: "900" }}>{money(opFeeAmount)}</Text>
-          <Text style={{ color: colors.success, fontWeight: "900" }}>Used by reception desk</Text>
+      <SectionCard
+        title="Clinic Country, Currency & Hours"
+        subtitle="Currency is used for clinic amounts. Hours are guidance only and never block emergency work."
+      >
+        <ClinicPreferencesFields
+          value={preferences}
+          onChange={setPreferences}
+        />
+      </SectionCard>
+
+      <SectionCard
+        title="Clinic OP Fee"
+        subtitle="This becomes the default amount for quick check-in and OP fee collection."
+      >
+        <View
+          style={{
+            padding: 16,
+            borderRadius: 24,
+            backgroundColor: colors.successSoft,
+            borderWidth: 1,
+            borderColor: colors.border,
+            alignItems: "center",
+            gap: 6,
+          }}
+        >
+          <Text style={{ color: colors.muted, fontWeight: "800" }}>
+            Current OP Fee
+          </Text>
+          <Text style={{ color: colors.text, fontSize: 42, fontWeight: "900" }}>
+            {formatClinicMoney(opFeeAmount, preferences.currencyCode)}
+          </Text>
+          <Text style={{ color: colors.success, fontWeight: "900" }}>
+            Used by reception desk
+          </Text>
         </View>
 
         <AppInput
@@ -170,11 +235,14 @@ export default function AccountSettingsScreen() {
           onChangeText={setOpFeeAmount}
           keyboardType="numeric"
           placeholder="300"
-          helper="Example: 300, 500, 700. Reception can still edit per patient if needed."
+          helper="Reception can still edit this amount for an individual patient when needed."
         />
       </SectionCard>
 
-      <SectionCard title="Optional Clinic Features" subtitle="Keep these off unless the clinic really wants to use them.">
+      <SectionCard
+        title="Optional Clinic Features"
+        subtitle="Keep these off unless the clinic really wants to use them."
+      >
         <FeatureSwitch
           title="Patient profile photos"
           subtitle="When on, receptionist can upload a patient photo and reception dashboard will show it."
@@ -186,7 +254,9 @@ export default function AccountSettingsScreen() {
           title="Prescribed tablets section"
           subtitle="When on, receptionist can enter tablets prescribed to a patient and reuse repeated medicine names. Medication fee collection is not changed."
           value={settings.enable_prescription_medications}
-          onValueChange={(value) => setFeature("enable_prescription_medications", value)}
+          onValueChange={(value) =>
+            setFeature("enable_prescription_medications", value)
+          }
         />
 
         <AppButton
@@ -199,13 +269,22 @@ export default function AccountSettingsScreen() {
 
       <SectionCard title="Current Behavior">
         <Text style={{ color: colors.muted, lineHeight: 21 }}>
-          OP fee default: {money(settings.op_fee_amount)}
+          Country: {selectedCountry.countryName}
+          {"\n"}
+          Currency: {preferences.currencyCode}
+          {"\n"}
+          Usual hours: {formatClinicTime(preferences.openingTime)} to{" "}
+          {formatClinicTime(preferences.closingTime)}
+          {"\n"}
+          OP fee default:{" "}
+          {formatClinicMoney(settings.op_fee_amount, preferences.currencyCode)}
           {"\n"}
           Patient photos: {settings.enable_patient_photos ? "ON" : "OFF"}
           {"\n"}
-          Prescribed tablets section: {settings.enable_prescription_medications ? "ON" : "OFF"}
+          Prescribed tablets section:{" "}
+          {settings.enable_prescription_medications ? "ON" : "OFF"}
           {"\n"}
-          Medication fee module: unchanged
+          Emergency and outside-hours work: always allowed
         </Text>
       </SectionCard>
 
@@ -258,9 +337,7 @@ function FeatureSwitch({
         <Text style={{ color: colors.text, fontSize: 16, fontWeight: "900" }}>
           {title}
         </Text>
-        <Text style={{ color: colors.muted, lineHeight: 19 }}>
-          {subtitle}
-        </Text>
+        <Text style={{ color: colors.muted, lineHeight: 19 }}>{subtitle}</Text>
       </View>
 
       <Switch
