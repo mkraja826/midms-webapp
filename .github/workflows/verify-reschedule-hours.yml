@@ -1,0 +1,32 @@
+name: Verify reschedule clinic hours
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - .github/workflows/verify-reschedule-hours.yml
+
+permissions:
+  contents: write
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci
+      - run: npm run typecheck
+      - name: Remove one-time workflow
+        if: always()
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git rm .github/workflows/verify-reschedule-hours.yml
+          git commit -m "Remove one-time reschedule verification workflow"
+          git push
