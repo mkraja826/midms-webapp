@@ -11,7 +11,9 @@ export type ClinicDashboardV2 = {
   summary: WorkflowDashboardSummary;
 };
 
-export type ClinicDashboardResult = ClinicDashboardV2 & {
+export type ClinicDashboardResult = {
+  stats: DashboardStats;
+  summary: WorkflowDashboardSummary | null;
   source: "v2" | "legacy";
 };
 
