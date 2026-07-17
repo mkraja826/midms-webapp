@@ -2,6 +2,7 @@ import { useState } from "react";
 import { Ionicons } from "@expo/vector-icons";
 import { router } from "expo-router";
 import {
+  ActivityIndicator,
   Alert,
   KeyboardAvoidingView,
   Platform,
@@ -18,7 +19,7 @@ import { useAuth } from "@/lib/auth";
 type SignupType = "clinic" | "employee";
 
 export default function LoginScreen() {
-  const { signIn, signUpOwner, signUpStaff } = useAuth();
+  const { signIn, signInWithGoogle, signUpOwner, signUpStaff } = useAuth();
 
   const [mode, setMode] = useState<"login" | "signup">("login");
   const [signupType, setSignupType] = useState<SignupType>("clinic");
@@ -26,6 +27,7 @@ export default function LoginScreen() {
   const [password, setPassword] = useState("");
 
   const [loading, setLoading] = useState(false);
+  const [googleLoading, setGoogleLoading] = useState(false);
 
   async function submit() {
     if (!email.trim() || !password.trim()) {
@@ -66,6 +68,22 @@ export default function LoginScreen() {
       );
     } finally {
       setLoading(false);
+    }
+  }
+
+  async function submitGoogle() {
+    if (googleLoading || loading) return;
+
+    try {
+      setGoogleLoading(true);
+      await signInWithGoogle();
+    } catch (error) {
+      Alert.alert(
+        "Google login failed",
+        error instanceof Error ? error.message : "Please try again."
+      );
+    } finally {
+      setGoogleLoading(false);
     }
   }
 
@@ -124,6 +142,7 @@ export default function LoginScreen() {
     >
       <ScrollView
         showsVerticalScrollIndicator={false}
+        keyboardShouldPersistTaps="handled"
         contentContainerStyle={{
           flexGrow: 1,
           justifyContent: "center",
@@ -189,6 +208,46 @@ export default function LoginScreen() {
             borderColor: colors.border,
           }}
         >
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="Continue with Google"
+            disabled={googleLoading || loading}
+            onPress={submitGoogle}
+            style={({ pressed }) => ({
+              minHeight: 56,
+              borderRadius: 18,
+              borderWidth: 1,
+              borderColor: colors.border,
+              backgroundColor: pressed ? colors.surfaceSoft : colors.background,
+              flexDirection: "row",
+              alignItems: "center",
+              justifyContent: "center",
+              gap: 11,
+              opacity: googleLoading || loading ? 0.65 : 1,
+            })}
+          >
+            {googleLoading ? (
+              <ActivityIndicator color={colors.primary} />
+            ) : (
+              <Ionicons name="logo-google" size={22} color="#4285F4" />
+            )}
+            <Text style={{ color: colors.text, fontSize: 16, fontWeight: "900" }}>
+              {googleLoading ? "Opening Google..." : "Continue with Google"}
+            </Text>
+          </Pressable>
+
+          <Text style={{ color: colors.muted, fontSize: 12, textAlign: "center", lineHeight: 17 }}>
+            New Google users choose Clinic or Employee after signing in. Existing users return to their dashboard.
+          </Text>
+
+          <View style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
+            <View style={{ height: 1, backgroundColor: colors.border, flex: 1 }} />
+            <Text style={{ color: colors.muted, fontSize: 11, fontWeight: "900" }}>
+              OR USE EMAIL
+            </Text>
+            <View style={{ height: 1, backgroundColor: colors.border, flex: 1 }} />
+          </View>
+
           {mode === "signup" ? (
             <View style={{ gap: 10 }}>
               <Text style={{ color: colors.text, fontWeight: "900" }}>
