@@ -1,6 +1,6 @@
 {
   "$schema": "node_modules/wrangler/config-schema.json",
-  "name": "capdent-app-worker",
+  "name": "midms-webapp",
   "main": "./worker.js",
   "compatibility_date": "2026-07-18",
   "compatibility_flags": ["nodejs_compat"],
