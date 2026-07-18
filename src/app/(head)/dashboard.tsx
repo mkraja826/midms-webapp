@@ -1,26 +1,41 @@
-﻿import { Ionicons } from "@expo/vector-icons";
+import { Ionicons } from "@expo/vector-icons";
 import { router } from "expo-router";
 import { useEffect, useMemo, useState, type ComponentProps } from "react";
-import { Alert, Pressable, Text, View } from "react-native";
-import { AppButton } from "@/components/AppButton";
+import { Alert, Pressable, Text, useWindowDimensions, View } from "react-native";
 import { ClinicBrandHeader } from "@/components/ClinicBrandHeader";
 import { EmptyState } from "@/components/EmptyState";
 import { Screen } from "@/components/Screen";
-import { SectionCard } from "@/components/SectionCard";
-import { StatusBadge } from "@/components/StatusBadge";
 import { colors } from "@/constants/colors";
 import { useAuth } from "@/lib/auth";
-import { DashboardStats, getDashboardStats, getRoleLabel, getWorkflowDashboardSummary } from "@/lib/supabase";
+import {
+  DashboardStats,
+  getDashboardStats,
+  getRoleLabel,
+  getWorkflowDashboardSummary,
+} from "@/lib/supabase";
 
-type AppointmentRow = any;
+type AppointmentRow = {
+  id: string;
+  patient_id: string;
+  appointment_time: string;
+  status?: string | null;
+  patients?: {
+    name?: string | null;
+    phone?: string | null;
+  } | null;
+};
+
 type IconName = ComponentProps<typeof Ionicons>["name"];
 
-function money(value?: number) {
+function money(value?: number | null) {
   return `₹${Math.round(Number(value || 0)).toLocaleString("en-IN")}`;
 }
 
 function appointmentTime(value: string) {
-  return new Date(value).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+  return new Date(value).toLocaleTimeString([], {
+    hour: "2-digit",
+    minute: "2-digit",
+  });
 }
 
 function isWaitingStatus(status?: string | null) {
@@ -28,7 +43,284 @@ function isWaitingStatus(status?: string | null) {
   return ["scheduled", "waiting", "checked_in", "booked"].includes(value);
 }
 
-function MoneyCard({
+export default function HeadDashboard() {
+  const { profile } = useAuth();
+  const { width } = useWindowDimensions();
+  const [stats, setStats] = useState<DashboardStats | null>(null);
+  const [summary, setSummary] = useState<any>(null);
+  const [loading, setLoading] = useState(true);
+  const compactBasis = width < 380 ? "100%" : "47%";
+
+  async function load() {
+    try {
+      setLoading(true);
+      const [data, row] = await Promise.all([
+        getDashboardStats(),
+        getWorkflowDashboardSummary(),
+      ]);
+      setStats(data);
+      setSummary(row);
+    } catch (error) {
+      Alert.alert(
+        "Dashboard load failed",
+        error instanceof Error ? error.message : "Please try again."
+      );
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  useEffect(() => {
+    void load();
+  }, []);
+
+  const appointments = useMemo<AppointmentRow[]>(
+    () => (stats?.todayAppointmentList ?? []) as AppointmentRow[],
+    [stats?.todayAppointmentList]
+  );
+  const waiting = appointments.filter((item) => isWaitingStatus(item.status));
+  const todayRevenue = summary?.today_revenue ?? stats?.todayRevenue ?? 0;
+  const pendingPayments = summary?.pending_payments ?? stats?.pendingPayments ?? 0;
+  const waitingCount = summary?.waiting_count ?? waiting.length;
+  const completedCount = summary?.completed_count ?? 0;
+  const patientCount = summary?.today_patient_count ?? waitingCount + completedCount;
+
+  return (
+    <Screen refreshing={loading} onRefresh={load}>
+      <ClinicBrandHeader
+        showManage
+        subtitle={`${getRoleLabel(profile?.role ?? "head_doctor")} - Owner Dashboard`}
+      />
+
+      <OwnerSummary
+        loading={loading}
+        revenue={todayRevenue}
+        pending={pendingPayments}
+        waiting={waitingCount}
+        completed={completedCount}
+      />
+
+      <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 10 }}>
+        <CompactMetric
+          basis={compactBasis}
+          label="Patients Today"
+          value={loading ? "..." : patientCount}
+          icon="people-outline"
+        />
+        <CompactMetric
+          basis={compactBasis}
+          label="Waiting"
+          value={loading ? "..." : waitingCount}
+          icon="hourglass-outline"
+          tone="warning"
+        />
+        <CompactMetric
+          basis={compactBasis}
+          label="Completed"
+          value={loading ? "..." : completedCount}
+          icon="checkmark-done-outline"
+          tone="success"
+        />
+        <CompactMetric
+          basis={compactBasis}
+          label="Total Patients"
+          value={loading ? "..." : stats?.totalPatients ?? 0}
+          icon="person-outline"
+        />
+      </View>
+
+      <DashboardSection
+        title="Owner Priorities"
+        subtitle="The actions that matter most during a working day."
+      >
+        <FlatListPanel>
+          <DashboardRow
+            title="Payment Review"
+            subtitle="Collections, dues, and pending follow-up"
+            icon="wallet-outline"
+            tone="warning"
+            onPress={() => router.push("/billing" as never)}
+          />
+          <DashboardRow
+            title="Clinic Report"
+            subtitle="Daily activity and closing summary"
+            icon="analytics-outline"
+            tone="success"
+            onPress={() => router.push("/reports/clinic" as never)}
+          />
+          <DashboardRow
+            title="Patient Search"
+            subtitle="Profile, history, visits, files, and payments"
+            icon="search-outline"
+            onPress={() => router.push("/patient" as never)}
+          />
+          <DashboardRow
+            title="Staff"
+            subtitle="Invite staff and manage clinic access"
+            icon="people-circle-outline"
+            onPress={() => router.push("/staff" as never)}
+            isLast
+          />
+        </FlatListPanel>
+      </DashboardSection>
+
+      <DashboardSection
+        title="Waiting Room"
+        subtitle={`${waiting.length} active waiting patient${waiting.length === 1 ? "" : "s"} today.`}
+      >
+        {waiting.length ? (
+          <FlatListPanel>
+            {waiting.map((item, index) => (
+              <WaitingRow
+                key={item.id}
+                item={item}
+                isLast={index === waiting.length - 1}
+              />
+            ))}
+          </FlatListPanel>
+        ) : (
+          <EmptyState
+            title="No waiting patients"
+            message="Reception check-ins will appear here."
+            icon="checkmark-done-outline"
+          />
+        )}
+      </DashboardSection>
+
+      <DashboardSection title="Quick Actions" subtitle="Common owner controls.">
+        <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 10 }}>
+          <QuickAction
+            title="Check-in"
+            icon="send-outline"
+            onPress={() => router.push("/reception/checkin" as never)}
+          />
+          <QuickAction
+            title="Book Appointment"
+            icon="calendar-number-outline"
+            onPress={() => router.push("/appointment/book" as never)}
+          />
+          <QuickAction
+            title="Reminders"
+            icon="notifications-outline"
+            onPress={() => router.push("/reminders" as never)}
+          />
+          <QuickAction
+            title="More Tools"
+            icon="grid-outline"
+            onPress={() => router.push("/(head)/more" as never)}
+          />
+        </View>
+      </DashboardSection>
+    </Screen>
+  );
+}
+
+function OwnerSummary({
+  loading,
+  revenue,
+  pending,
+  waiting,
+  completed,
+}: {
+  loading: boolean;
+  revenue: number;
+  pending: number;
+  waiting: number;
+  completed: number;
+}) {
+  const { width } = useWindowDimensions();
+  const stack = width < 360;
+
+  return (
+    <View
+      style={{
+        borderRadius: 28,
+        padding: 18,
+        backgroundColor: colors.primary,
+        gap: 16,
+      }}
+    >
+      <View
+        style={{
+          flexDirection: "row",
+          alignItems: "flex-start",
+          justifyContent: "space-between",
+          gap: 14,
+        }}
+      >
+        <View style={{ flex: 1 }}>
+          <Text
+            style={{
+              color: "rgba(255,255,255,0.76)",
+              fontSize: 12,
+              fontWeight: "900",
+              textTransform: "uppercase",
+            }}
+          >
+            Today at the clinic
+          </Text>
+          <Text
+            numberOfLines={1}
+            adjustsFontSizeToFit
+            minimumFontScale={0.74}
+            style={{
+              color: colors.white,
+              fontSize: 32,
+              fontWeight: "900",
+              marginTop: 8,
+            }}
+          >
+            {loading ? "Loading..." : money(revenue)}
+          </Text>
+          <Text
+            style={{
+              color: "rgba(255,255,255,0.76)",
+              lineHeight: 20,
+              marginTop: 4,
+              fontWeight: "700",
+            }}
+          >
+            {waiting ? `${waiting} waiting now` : "Queue clear"} - {completed} completed today
+          </Text>
+        </View>
+
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel="Open clinic report"
+          onPress={() => router.push("/reports/clinic" as never)}
+          style={({ pressed }) => ({
+            width: 48,
+            height: 48,
+            borderRadius: 18,
+            backgroundColor: pressed
+              ? "rgba(255,255,255,0.24)"
+              : "rgba(255,255,255,0.16)",
+            alignItems: "center",
+            justifyContent: "center",
+          })}
+        >
+          <Ionicons name="analytics-outline" size={24} color={colors.white} />
+        </Pressable>
+      </View>
+
+      <View style={{ flexDirection: stack ? "column" : "row", gap: 10 }}>
+        <SummaryPill
+          label="Collected"
+          value={loading ? "..." : money(revenue)}
+          icon="cash-outline"
+        />
+        <SummaryPill
+          label="Pending"
+          value={loading ? "..." : money(pending)}
+          icon="wallet-outline"
+          warning
+        />
+      </View>
+    </View>
+  );
+}
+
+function SummaryPill({
   label,
   value,
   icon,
@@ -43,56 +335,262 @@ function MoneyCard({
     <View
       style={{
         flex: 1,
-        borderRadius: 24,
-        padding: 16,
-        backgroundColor: colors.background,
-        borderWidth: 1,
-        borderColor: colors.border,
+        minHeight: 76,
+        borderRadius: 20,
+        padding: 12,
+        backgroundColor: "rgba(255,255,255,0.13)",
+        justifyContent: "space-between",
       }}
     >
-      <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
-        <Text style={{ color: colors.muted, fontWeight: "900", fontSize: 12, textTransform: "uppercase" }}>
+      <View
+        style={{
+          flexDirection: "row",
+          alignItems: "center",
+          justifyContent: "space-between",
+          gap: 6,
+        }}
+      >
+        <Text
+          style={{
+            color: "rgba(255,255,255,0.74)",
+            fontSize: 11,
+            fontWeight: "900",
+            textTransform: "uppercase",
+          }}
+        >
           {label}
         </Text>
-        <Ionicons name={icon} size={22} color={warning ? colors.warning : colors.success} />
+        <Ionicons
+          name={icon}
+          size={17}
+          color={warning ? colors.warningSoft : "rgba(255,255,255,0.82)"}
+        />
       </View>
-
-      <Text style={{ color: colors.text, fontSize: 27, fontWeight: "900", marginTop: 12 }} numberOfLines={1}>
+      <Text
+        numberOfLines={1}
+        adjustsFontSizeToFit
+        minimumFontScale={0.72}
+        style={{
+          color: colors.white,
+          fontSize: 18,
+          fontWeight: "900",
+          fontVariant: ["tabular-nums"],
+        }}
+      >
         {value}
       </Text>
     </View>
   );
 }
 
-function MiniStat({
+function CompactMetric({
+  basis,
   label,
   value,
   icon,
+  tone = "primary",
 }: {
+  basis: "47%" | "100%";
   label: string;
   value: string | number;
   icon: IconName;
+  tone?: "primary" | "success" | "warning";
 }) {
+  const bg =
+    tone === "success"
+      ? colors.successSoft
+      : tone === "warning"
+        ? colors.warningSoft
+        : colors.surface;
+  const fg =
+    tone === "success"
+      ? colors.success
+      : tone === "warning"
+        ? colors.warning
+        : colors.primary;
+
   return (
     <View
       style={{
-        flex: 1,
-        minWidth: "46%",
-        borderRadius: 18,
+        flexGrow: 1,
+        flexShrink: 0,
+        flexBasis: basis,
+        minHeight: 82,
+        borderRadius: 20,
         padding: 12,
-        backgroundColor: colors.surfaceSoft,
+        backgroundColor: bg,
         borderWidth: 1,
         borderColor: colors.border,
+        justifyContent: "space-between",
       }}
     >
-      <Ionicons name={icon} size={19} color={colors.primary} />
-      <Text style={{ color: colors.text, fontSize: 20, fontWeight: "900", marginTop: 8 }} numberOfLines={1}>
-        {value}
-      </Text>
-      <Text style={{ color: colors.muted, fontSize: 11, fontWeight: "800", marginTop: 2 }} numberOfLines={1}>
-        {label}
-      </Text>
+      <Ionicons name={icon} size={20} color={fg} />
+      <View>
+        <Text
+          numberOfLines={1}
+          style={{
+            color: colors.text,
+            fontSize: 20,
+            fontWeight: "900",
+            fontVariant: ["tabular-nums"],
+          }}
+        >
+          {value}
+        </Text>
+        <Text
+          numberOfLines={1}
+          style={{ color: colors.muted, fontSize: 11, fontWeight: "900", marginTop: 2 }}
+        >
+          {label}
+        </Text>
+      </View>
     </View>
+  );
+}
+
+function DashboardSection({
+  title,
+  subtitle,
+  children,
+}: {
+  title: string;
+  subtitle?: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <View style={{ gap: 10 }}>
+      <View style={{ gap: 3 }}>
+        <Text style={{ color: colors.text, fontSize: 18, fontWeight: "900" }}>{title}</Text>
+        {subtitle ? <Text style={{ color: colors.muted, lineHeight: 19 }}>{subtitle}</Text> : null}
+      </View>
+      {children}
+    </View>
+  );
+}
+
+function FlatListPanel({ children }: { children: React.ReactNode }) {
+  return (
+    <View
+      style={{
+        backgroundColor: colors.surface,
+        borderWidth: 1,
+        borderRadius: 20,
+        borderColor: colors.border,
+        overflow: "hidden",
+      }}
+    >
+      {children}
+    </View>
+  );
+}
+
+function DashboardRow({
+  title,
+  subtitle,
+  icon,
+  onPress,
+  tone = "primary",
+  isLast = false,
+}: {
+  title: string;
+  subtitle: string;
+  icon: IconName;
+  onPress: () => void;
+  tone?: "primary" | "success" | "warning";
+  isLast?: boolean;
+}) {
+  const iconColor =
+    tone === "success" ? colors.success : tone === "warning" ? colors.warning : colors.primary;
+  const iconBg =
+    tone === "success"
+      ? colors.successSoft
+      : tone === "warning"
+        ? colors.warningSoft
+        : colors.primarySoft;
+
+  return (
+    <Pressable
+      accessibilityRole="button"
+      accessibilityLabel={`${title}. ${subtitle}`}
+      onPress={onPress}
+      style={({ pressed }) => ({
+        minHeight: 70,
+        paddingHorizontal: 14,
+        paddingVertical: 12,
+        flexDirection: "row",
+        alignItems: "center",
+        gap: 12,
+        borderBottomWidth: isLast ? 0 : 1,
+        borderBottomColor: colors.border,
+        backgroundColor: pressed ? colors.surfaceSoft : colors.surface,
+      })}
+    >
+      <View
+        style={{
+          width: 42,
+          height: 42,
+          borderRadius: 15,
+          backgroundColor: iconBg,
+          alignItems: "center",
+          justifyContent: "center",
+        }}
+      >
+        <Ionicons name={icon} size={21} color={iconColor} />
+      </View>
+      <View style={{ flex: 1, minWidth: 0 }}>
+        <Text numberOfLines={1} style={{ color: colors.text, fontSize: 15, fontWeight: "900" }}>
+          {title}
+        </Text>
+        <Text numberOfLines={1} style={{ color: colors.muted, marginTop: 2, fontSize: 12 }}>
+          {subtitle}
+        </Text>
+      </View>
+      <Ionicons name="chevron-forward" size={18} color={colors.muted} />
+    </Pressable>
+  );
+}
+
+function WaitingRow({ item, isLast }: { item: AppointmentRow; isLast: boolean }) {
+  return (
+    <Pressable
+      accessibilityRole="button"
+      accessibilityLabel={`Open ${item.patients?.name || "patient"}`}
+      onPress={() => router.push(`/patient/${item.patient_id}` as never)}
+      style={({ pressed }) => ({
+        minHeight: 74,
+        paddingHorizontal: 14,
+        paddingVertical: 11,
+        flexDirection: "row",
+        alignItems: "center",
+        gap: 12,
+        borderBottomWidth: isLast ? 0 : 1,
+        borderBottomColor: colors.border,
+        backgroundColor: pressed ? colors.surfaceSoft : colors.surface,
+      })}
+    >
+      <View
+        style={{
+          width: 42,
+          height: 42,
+          borderRadius: 15,
+          backgroundColor: colors.warningSoft,
+          alignItems: "center",
+          justifyContent: "center",
+        }}
+      >
+        <Ionicons name="time-outline" size={21} color={colors.warning} />
+      </View>
+      <View style={{ flex: 1, minWidth: 0 }}>
+        <Text numberOfLines={1} style={{ color: colors.text, fontWeight: "900", fontSize: 15 }}>
+          {item.patients?.name || "Patient"}
+        </Text>
+        <Text numberOfLines={1} style={{ color: colors.muted, marginTop: 3 }}>
+          {appointmentTime(item.appointment_time)}
+          {item.patients?.phone ? ` - ${item.patients.phone}` : ""}
+        </Text>
+      </View>
+      <Ionicons name="chevron-forward" size={18} color={colors.muted} />
+    </Pressable>
   );
 }
 
@@ -100,191 +598,30 @@ function QuickAction({
   title,
   icon,
   onPress,
-  primary,
 }: {
   title: string;
   icon: IconName;
   onPress: () => void;
-  primary?: boolean;
 }) {
   return (
     <Pressable
       onPress={onPress}
       style={({ pressed }) => ({
-        width: "48%",
+        flexGrow: 1,
+        flexBasis: "47%",
+        minHeight: 96,
         borderRadius: 20,
         padding: 14,
-        minHeight: 96,
-        backgroundColor: primary ? colors.primary : pressed ? colors.surfaceSoft : colors.background,
+        backgroundColor: pressed ? colors.surfaceSoft : colors.surface,
         borderWidth: 1,
-        borderColor: primary ? colors.primary : colors.border,
+        borderColor: colors.border,
         justifyContent: "space-between",
-        opacity: pressed ? 0.86 : 1,
       })}
     >
-      <Ionicons name={icon} size={24} color={primary ? "#fff" : colors.primary} />
-      <Text style={{ color: primary ? "#fff" : colors.text, fontWeight: "900", fontSize: 14 }} numberOfLines={2}>
+      <Ionicons name={icon} size={24} color={colors.primary} />
+      <Text style={{ color: colors.text, fontWeight: "900", fontSize: 14 }} numberOfLines={2}>
         {title}
       </Text>
     </Pressable>
   );
 }
-
-export default function HeadDashboard() {
-  const { profile, signOut } = useAuth();
-  const [stats, setStats] = useState<DashboardStats | null>(null);
-  const [summary, setSummary] = useState<any>(null);
-  const [loading, setLoading] = useState(true);
-
-  async function load() {
-    try {
-      setLoading(true);
-      const data = await getDashboardStats();
-      setStats(data);
-
-      const row = await getWorkflowDashboardSummary();
-      if (row) setSummary(row);
-    } catch (error) {
-      Alert.alert("Dashboard load failed", error instanceof Error ? error.message : "Please try again.");
-    } finally {
-      setLoading(false);
-    }
-  }
-
-  useEffect(() => {
-    load();
-  }, []);
-
-  async function logout() {
-    try {
-      await signOut();
-    } catch (error) {
-      Alert.alert("Logout failed", error instanceof Error ? error.message : "Please try again.");
-    }
-  }
-
-  const appointments = useMemo(() => stats?.todayAppointmentList ?? [], [stats?.todayAppointmentList]);
-  const waiting = appointments.filter((item: AppointmentRow) => isWaitingStatus(item.status));
-
-  const todayRevenue = summary?.today_revenue ?? stats?.todayRevenue;
-  const pendingPayments = summary?.pending_payments ?? stats?.pendingPayments;
-  const waitingCount = summary?.waiting_count ?? waiting.length;
-  const completedCount = summary?.completed_count ?? 0;
-
-  return (
-    <Screen refreshing={loading} onRefresh={load}>
-      <ClinicBrandHeader
-        showManage
-        subtitle={`${getRoleLabel(profile?.role ?? "head_doctor")} • Owner Dashboard`}
-      />
-
-      <View
-        style={{
-          borderRadius: 28,
-          padding: 18,
-          backgroundColor: colors.primary,
-          gap: 8,
-        }}
-      >
-        <Text style={{ color: "rgba(255,255,255,0.75)", fontWeight: "900", fontSize: 12, textTransform: "uppercase" }}>
-          Today Clinic Pulse
-        </Text>
-        <Text style={{ color: "#fff", fontSize: 25, fontWeight: "900" }}>
-          {loading ? "Loading..." : `${waitingCount} waiting • ${completedCount} completed`}
-        </Text>
-        <Text style={{ color: "rgba(255,255,255,0.76)", fontWeight: "700" }}>
-          Quick owner view. Detailed breakdown is inside Clinic Report.
-        </Text>
-      </View>
-
-      <View style={{ flexDirection: "row", gap: 10 }}>
-        <MoneyCard label="Revenue" value={loading ? "..." : money(todayRevenue)} icon="cash-outline" />
-        <MoneyCard label="Pending" value={loading ? "..." : money(pendingPayments)} icon="wallet-outline" warning />
-      </View>
-
-      <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 10 }}>
-        <MiniStat label="Waiting" value={loading ? "..." : waitingCount} icon="hourglass-outline" />
-        <MiniStat label="Completed" value={loading ? "..." : completedCount} icon="checkmark-done-outline" />
-        <MiniStat label="Patients Today" value={loading ? "..." : summary?.today_patient_count ?? 0} icon="people-outline" />
-        <MiniStat label="Total Patients" value={loading ? "..." : stats?.totalPatients ?? 0} icon="person-outline" />
-      </View>
-
-      <SectionCard title="Quick Actions" subtitle="Most-used owner controls.">
-        <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 10, justifyContent: "space-between" }}>
-          <QuickAction primary title="Clinic Report" icon="analytics-outline" onPress={() => router.push("/reports/clinic" as never)} />
-          <QuickAction title="Check-in" icon="send-outline" onPress={() => router.push("/reception/checkin" as never)} />
-          <QuickAction title="Patient Search" icon="search-outline" onPress={() => router.push("/patient" as never)} />
-          <QuickAction title="Book Appointment" icon="calendar-number-outline" onPress={() => router.push("/appointment/book" as never)} />
-          <QuickAction title="Reminders" icon="notifications-outline" onPress={() => router.push("/reminders" as never)} />
-          <QuickAction title="Staff" icon="people-circle-outline" onPress={() => router.push("/staff" as never)} />
-          <QuickAction title="Legal & Account" icon="shield-checkmark-outline" onPress={() => router.push("/settings/legal" as never)} />
-        </View>
-      </SectionCard>
-
-      <SectionCard title="Waiting Queue" subtitle="Only latest 3 patients shown here.">
-        {waiting.length ? (
-          <View style={{ gap: 10 }}>
-            {waiting.slice(0, 3).map((item: AppointmentRow) => (
-              <Pressable
-                key={item.id}
-                onPress={() => router.push(`/patient/${item.patient_id}` as never)}
-                style={({ pressed }) => ({
-                  flexDirection: "row",
-                  alignItems: "center",
-                  gap: 12,
-                  padding: 12,
-                  borderRadius: 18,
-                  backgroundColor: pressed ? colors.surfaceSoft : colors.background,
-                  borderWidth: 1,
-                  borderColor: colors.border,
-                })}
-              >
-                <View
-                  style={{
-                    width: 42,
-                    height: 42,
-                    borderRadius: 16,
-                    backgroundColor: colors.warningSoft,
-                    alignItems: "center",
-                    justifyContent: "center",
-                  }}
-                >
-                  <Ionicons name="time-outline" size={21} color={colors.warning} />
-                </View>
-
-                <View style={{ flex: 1 }}>
-                  <Text numberOfLines={1} style={{ color: colors.text, fontWeight: "900", fontSize: 15 }}>
-                    {item.patients?.name || "Patient"}
-                  </Text>
-                  <Text numberOfLines={1} style={{ color: colors.muted, marginTop: 3 }}>
-                    {appointmentTime(item.appointment_time)}
-                    {item.patients?.phone ? ` • ${item.patients.phone}` : ""}
-                  </Text>
-                </View>
-
-                <StatusBadge label={item.status || "Waiting"} tone="warning" />
-              </Pressable>
-            ))}
-
-            {waiting.length > 3 ? (
-              <AppButton
-                title={`View all ${waiting.length}`}
-                icon="list-outline"
-                variant="secondary"
-                onPress={() => router.push("/patient" as never)}
-              />
-            ) : null}
-          </View>
-        ) : (
-          <EmptyState title="No waiting patients" message="Reception check-ins will appear here." icon="checkmark-done-outline" />
-        )}
-      </SectionCard>
-
-      <View style={{ flexDirection: "row", gap: 10 }}>
-        <AppButton title="Refresh" icon="refresh-outline" variant="secondary" onPress={load} loading={loading} style={{ flex: 1 }} />
-        <AppButton title="Logout" icon="log-out-outline" variant="ghost" onPress={logout} style={{ flex: 1 }} />
-      </View>
-    </Screen>
-  );
-}
-
