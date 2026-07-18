@@ -44,12 +44,12 @@ function browserUrl(path: string) {
 const AUTH_CALLBACK_REDIRECT_URL =
   process.env.EXPO_PUBLIC_AUTH_CALLBACK_URL ??
   browserUrl("/auth/callback") ??
-  "dms://auth/callback";
+  "capdent://auth/callback";
 
 const PASSWORD_RESET_REDIRECT_URL =
   process.env.EXPO_PUBLIC_PASSWORD_RESET_REDIRECT_URL ??
   browserUrl("/auth/reset-password") ??
-  "dms://auth/reset-password";
+  "capdent://auth/reset-password";
 
 function isRoleGroup(segment?: string) {
   return segment === "(head)" || segment === "(doctor)" || segment === "(reception)";
