@@ -1,27 +1,43 @@
 import { Ionicons } from "@expo/vector-icons";
 import { router } from "expo-router";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, type ComponentProps } from "react";
 import { Alert, Pressable, Text, View } from "react-native";
-import { ActionCard } from "@/components/ActionCard";
 import { AppButton } from "@/components/AppButton";
 import { ClinicBrandHeader } from "@/components/ClinicBrandHeader";
 import { EmptyState } from "@/components/EmptyState";
 import { Screen } from "@/components/Screen";
-import { SectionCard } from "@/components/SectionCard";
-import { StatCard } from "@/components/StatCard";
 import { StatusBadge } from "@/components/StatusBadge";
 import { colors } from "@/constants/colors";
 import { useAuth } from "@/lib/auth";
-import { DashboardStats, getDashboardStats, getRoleLabel, getWorkflowDashboardSummary } from "@/lib/supabase";
+import {
+  DashboardStats,
+  getDashboardStats,
+  getRoleLabel,
+  getWorkflowDashboardSummary,
+} from "@/lib/supabase";
 
-type AppointmentRow = any;
+type AppointmentRow = {
+  id: string;
+  patient_id: string;
+  appointment_time: string;
+  status?: string | null;
+  patients?: {
+    name?: string | null;
+    phone?: string | null;
+  } | null;
+};
 
-function money(value?: number) {
+type IconName = ComponentProps<typeof Ionicons>["name"];
+
+function money(value?: number | null) {
   return `₹${Math.round(Number(value || 0)).toLocaleString("en-IN")}`;
 }
 
 function appointmentTime(value: string) {
-  return new Date(value).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+  return new Date(value).toLocaleTimeString([], {
+    hour: "2-digit",
+    minute: "2-digit",
+  });
 }
 
 function isWaitingStatus(status?: string | null) {
@@ -29,16 +45,8 @@ function isWaitingStatus(status?: string | null) {
   return ["scheduled", "waiting", "checked_in", "booked"].includes(value);
 }
 
-function tone(status?: string | null) {
-  const value = String(status || "").toLowerCase();
-  if (["completed", "done"].includes(value)) return "success";
-  if (["cancelled", "canceled"].includes(value)) return "danger";
-  if (isWaitingStatus(value)) return "warning";
-  return undefined;
-}
-
 export default function ReceptionDashboard() {
-  const { profile, signOut } = useAuth();
+  const { profile } = useAuth();
   const [stats, setStats] = useState<DashboardStats | null>(null);
   const [summary, setSummary] = useState<any>(null);
   const [loading, setLoading] = useState(true);
@@ -46,235 +54,471 @@ export default function ReceptionDashboard() {
   async function load() {
     try {
       setLoading(true);
-
-      const data = await getDashboardStats();
+      const [data, row] = await Promise.all([
+        getDashboardStats(),
+        getWorkflowDashboardSummary(),
+      ]);
       setStats(data);
-
-      const row = await getWorkflowDashboardSummary();
-      if (row) setSummary(row);
+      setSummary(row);
     } catch (error) {
-      Alert.alert("Dashboard load failed", error instanceof Error ? error.message : "Please try again.");
+      Alert.alert(
+        "Dashboard load failed",
+        error instanceof Error ? error.message : "Please try again."
+      );
     } finally {
       setLoading(false);
     }
   }
 
   useEffect(() => {
-    load();
+    void load();
   }, []);
 
-  async function logout() {
-    try {
-      await signOut();
-    } catch (error) {
-      Alert.alert("Logout failed", error instanceof Error ? error.message : "Please try again.");
-    }
-  }
-
-  const appointments = useMemo(() => stats?.todayAppointmentList ?? [], [stats?.todayAppointmentList]);
-  const waiting = appointments.filter((item: AppointmentRow) => isWaitingStatus(item.status));
+  const appointments = useMemo<AppointmentRow[]>(
+    () => (stats?.todayAppointmentList ?? []) as AppointmentRow[],
+    [stats?.todayAppointmentList]
+  );
+  const waiting = appointments.filter((item) => isWaitingStatus(item.status));
   const next = waiting[0];
+  const waitingCount = summary?.waiting_count ?? waiting.length;
+  const completedCount = summary?.completed_count ?? 0;
+  const checkInCount = summary?.today_patient_count ?? waitingCount + completedCount;
 
   return (
     <Screen refreshing={loading} onRefresh={load}>
-      <ClinicBrandHeader subtitle={`${getRoleLabel(profile?.role ?? "receptionist")} • Reception Desk`} />
+      <ClinicBrandHeader
+        subtitle={`${getRoleLabel(profile?.role ?? "receptionist")} - Reception Desk`}
+      />
 
-      <SectionCard>
-        <View style={{ gap: 12 }}>
-          <Text style={{ color: colors.text, fontSize: 19, fontWeight: "900" }}>
-            Quick Actions
-          </Text>
-
-          <ActionCard
-            title="Quick Check-in + OP Fee"
-            subtitle="Register/select patient, collect ₹300, send to doctor queue"
-            icon="send-outline"
+      <View style={{ gap: 10 }}>
+        <SectionTitle title="Start Here" subtitle="The most common reception actions." />
+        <View
+          style={{
+            backgroundColor: colors.surface,
+            borderWidth: 1,
+            borderColor: colors.border,
+            borderRadius: 24,
+            padding: 14,
+            gap: 12,
+          }}
+        >
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="Check-in patient"
             onPress={() => router.push("/reception/checkin" as never)}
-          />
+            style={({ pressed }) => ({
+              minHeight: 112,
+              borderRadius: 24,
+              padding: 16,
+              backgroundColor: pressed ? colors.primaryDark : colors.primary,
+              flexDirection: "row",
+              alignItems: "center",
+              gap: 14,
+            })}
+          >
+            <View
+              style={{
+                width: 52,
+                height: 52,
+                borderRadius: 19,
+                backgroundColor: "rgba(255,255,255,0.16)",
+                alignItems: "center",
+                justifyContent: "center",
+              }}
+            >
+              <Ionicons name="send-outline" size={27} color={colors.white} />
+            </View>
+            <View style={{ flex: 1 }}>
+              <Text style={{ color: colors.white, fontSize: 19, fontWeight: "900" }}>
+                Check-in Patient
+              </Text>
+              <Text style={{ color: "rgba(255,255,255,0.76)", marginTop: 4, lineHeight: 19 }}>
+                Register or select patient, handle OP fee, and send to doctor queue.
+              </Text>
+            </View>
+            <Ionicons name="chevron-forward" size={20} color={colors.white} />
+          </Pressable>
 
           <View style={{ flexDirection: "row", gap: 10 }}>
-            <Pressable
-              onPress={() => router.push({ pathname: "/payment/fee", params: { fee_type: "op_fee" } } as never)}
-              style={{
-                flex: 1,
-                minHeight: 102,
-                borderRadius: 22,
-                padding: 13,
-                backgroundColor: colors.successSoft,
-                borderWidth: 1,
-                borderColor: colors.border,
-                justifyContent: "space-between",
-              }}
-            >
-              <Ionicons name="receipt-outline" size={26} color={colors.success} />
-              <View>
-                <Text style={{ color: colors.text, fontWeight: "900", fontSize: 16 }}>OP Fee</Text>
-                <Text style={{ color: colors.muted, marginTop: 2 }}>₹300 default</Text>
-              </View>
-            </Pressable>
-
-            <Pressable
-              onPress={() => router.push({ pathname: "/payment/fee", params: { fee_type: "xray_fee" } } as never)}
-              style={{
-                flex: 1,
-                minHeight: 102,
-                borderRadius: 22,
-                padding: 13,
-                backgroundColor: colors.primarySoft,
-                borderWidth: 1,
-                borderColor: colors.border,
-                justifyContent: "space-between",
-              }}
-            >
-              <Ionicons name="scan-outline" size={26} color={colors.primary} />
-              <View>
-                <Text style={{ color: colors.text, fontWeight: "900", fontSize: 16 }}>X-ray Fee</Text>
-                <Text style={{ color: colors.muted, marginTop: 2 }}>Separate X-ray amount</Text>
-              </View>
-            </Pressable>
+            <DeskAction
+              title="Book"
+              subtitle="Appointment"
+              icon="calendar-number-outline"
+              onPress={() => router.push("/appointment/book" as never)}
+            />
+            <DeskAction
+              title="Payment"
+              subtitle="Fees & dues"
+              icon="cash-outline"
+              onPress={() => router.push("/payment/fee" as never)}
+            />
           </View>
+
+          <AppButton
+            title="Find Patient"
+            icon="search-outline"
+            variant="secondary"
+            onPress={() => router.push("/patient" as never)}
+          />
         </View>
-      </SectionCard>
+      </View>
 
       {next ? (
-        <SectionCard>
-          <View
-            style={{
-              borderRadius: 24,
-              backgroundColor: colors.warningSoft,
-              borderWidth: 1,
-              borderColor: colors.border,
-              padding: 14,
-              gap: 10,
-            }}
-          >
-            <View style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
-              <View
-                style={{
-                  width: 48,
-                  height: 48,
-                  borderRadius: 18,
-                  backgroundColor: colors.warning,
-                  alignItems: "center",
-                  justifyContent: "center",
-                }}
-              >
-                <Ionicons name="time-outline" size={24} color={colors.white} />
-              </View>
-
-              <View style={{ flex: 1 }}>
-                <Text style={{ color: colors.text, fontSize: 14, fontWeight: "900" }}>
-                  Next Waiting Patient
-                </Text>
-                <Text numberOfLines={1} style={{ color: colors.text, fontSize: 20, fontWeight: "900", marginTop: 2 }}>
-                  {next.patients?.name || "Patient"}
-                </Text>
-                <Text style={{ color: colors.muted, marginTop: 2 }}>
-                  {appointmentTime(next.appointment_time)}
-                  {next.patients?.phone ? ` • ${next.patients.phone}` : ""}
-                </Text>
-              </View>
-
-              <StatusBadge label={next.status || "Waiting"} tone="warning" />
+        <View
+          style={{
+            borderRadius: 26,
+            backgroundColor: colors.warningSoft,
+            borderWidth: 1,
+            borderColor: colors.border,
+            padding: 16,
+            gap: 12,
+          }}
+        >
+          <View style={{ flexDirection: "row", alignItems: "center", gap: 12 }}>
+            <View
+              style={{
+                width: 48,
+                height: 48,
+                borderRadius: 18,
+                backgroundColor: colors.warning,
+                alignItems: "center",
+                justifyContent: "center",
+              }}
+            >
+              <Ionicons name="time-outline" size={24} color={colors.white} />
             </View>
+            <View style={{ flex: 1, minWidth: 0 }}>
+              <Text
+                style={{ color: colors.text, fontSize: 12, fontWeight: "900", textTransform: "uppercase" }}
+              >
+                Next Waiting Patient
+              </Text>
+              <Text
+                numberOfLines={1}
+                style={{ color: colors.text, fontSize: 20, fontWeight: "900", marginTop: 2 }}
+              >
+                {next.patients?.name || "Patient"}
+              </Text>
+              <Text numberOfLines={1} style={{ color: colors.muted, marginTop: 2 }}>
+                {appointmentTime(next.appointment_time)}
+                {next.patients?.phone ? ` - ${next.patients.phone}` : ""}
+              </Text>
+            </View>
+            <StatusBadge label="Waiting" tone="warning" />
+          </View>
 
+          <View style={{ flexDirection: "row", gap: 10 }}>
             <AppButton
               title="Open Patient"
               icon="person-circle-outline"
               onPress={() => router.push(`/patient/${next.patient_id}` as never)}
+              style={{ flex: 1 }}
+            />
+            <AppButton
+              title="Collect Fee"
+              icon="cash-outline"
+              variant="secondary"
+              onPress={() => router.push("/payment/fee" as never)}
+              style={{ flex: 1 }}
             />
           </View>
-        </SectionCard>
+        </View>
       ) : null}
 
       <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 10 }}>
-        <StatCard label="Waiting" value={loading ? "..." : summary?.waiting_count ?? waiting.length} icon="hourglass-outline" tone="warning" />
-        <StatCard label="Completed" value={loading ? "..." : summary?.completed_count ?? 0} icon="checkmark-done-outline" tone="success" />
-        <StatCard label="Revenue" value={loading ? "..." : money(summary?.today_revenue ?? stats?.todayRevenue)} icon="cash-outline" tone="success" />
-        <StatCard label="Pending" value={loading ? "..." : money(summary?.pending_payments ?? stats?.pendingPayments)} icon="wallet-outline" tone="warning" />
+        <MetricCard label="OP Check-ins" value={loading ? "..." : checkInCount} icon="send-outline" />
+        <MetricCard
+          label="Waiting"
+          value={loading ? "..." : waitingCount}
+          icon="hourglass-outline"
+          tone="warning"
+        />
+        <MetricCard
+          label="Completed"
+          value={loading ? "..." : completedCount}
+          icon="checkmark-done-outline"
+          tone="success"
+        />
+        <MetricCard
+          label="Revenue"
+          value={loading ? "..." : money(summary?.today_revenue ?? stats?.todayRevenue)}
+          icon="cash-outline"
+          tone="success"
+        />
+        <MetricCard
+          label="Pending"
+          value={loading ? "..." : money(summary?.pending_payments ?? stats?.pendingPayments)}
+          icon="wallet-outline"
+          tone="warning"
+        />
+        <MetricCard
+          label="Appointments"
+          value={loading ? "..." : stats?.todayAppointments ?? appointments.length}
+          icon="calendar-number-outline"
+        />
       </View>
 
-      <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 10 }}>
-        <StatCard label="OP Fees" value={loading ? "..." : money(summary?.op_fee_revenue_today)} icon="receipt-outline" tone="success" />
-        <StatCard label="X-ray" value={loading ? "..." : money(summary?.xray_revenue_today)} icon="scan-outline" />
-        <StatCard label="Medication" value={loading ? "..." : money(summary?.medication_revenue_today)} icon="medical-outline" />
-        <StatCard label="Treatment" value={loading ? "..." : money(summary?.treatment_revenue_today)} icon="hammer-outline" tone="success" />
-        <StatCard label="Pending Paid" value={loading ? "..." : money(summary?.pending_collected_today)} icon="checkmark-circle-outline" tone="success" />
-        <StatCard label="Other" value={loading ? "..." : money(summary?.other_revenue_today)} icon="wallet-outline" />
-      </View>
-
-      <SectionCard title="Quick Desk" subtitle="Daily reception actions for check-in, fees, appointments, and reminders.">
-        <ActionCard title="Book Appointment" subtitle="For WhatsApp/call/online enquiries" icon="calendar-number-outline" onPress={() => router.push("/appointment/book" as never)} />
-        <ActionCard title="Add Old Patient" subtitle="Enter previous clinic records and old pending balance" icon="archive-outline" onPress={() => router.push("/patient/add-old" as never)} />
-        <ActionCard title="Search Patient" subtitle="Open patient history or collect fee" icon="search-outline" onPress={() => router.push("/patient" as never)} />
-        <ActionCard title="Medication / Treatment Fee" subtitle="Collect medicine, treatment, or other fee" icon="cash-outline" onPress={() => router.push({ pathname: "/payment/fee", params: { fee_type: "medication_fee" } } as never)} />
-        <ActionCard title="Gallery" subtitle="View X-rays, prescriptions, reports and photos" icon="images-outline" onPress={() => router.push("/gallery" as never)} />
-        <ActionCard title="Collect Pending Payment" subtitle="Old due or treatment balance" icon="wallet-outline" onPress={() => router.push("/patient/payment" as never)} />
-        <ActionCard title="Reminders" subtitle="Follow-ups due and pending payments" icon="notifications-outline" onPress={() => router.push("/reminders" as never)} />
-        <ActionCard title="Change Password" subtitle="Update your login password" icon="key-outline" onPress={() => router.push("/settings/change-password" as never)} />
-      </SectionCard>
-
-      <SectionCard title="Waiting Room" subtitle="Patients waiting for doctor visit will appear here.">
+      <View style={{ gap: 10 }}>
+        <SectionTitle
+          title="Waiting Room"
+          subtitle={`${waiting.length} active waiting patient${waiting.length === 1 ? "" : "s"} today.`}
+        />
         {waiting.length ? (
-          <View style={{ gap: 10 }}>
-            {waiting.slice(0, 8).map((item: AppointmentRow) => (
-              <AppointmentItem key={item.id} item={item} onPress={() => router.push(`/patient/${item.patient_id}` as never)} />
+          <View
+            style={{
+              backgroundColor: colors.surface,
+              borderWidth: 1,
+              borderColor: colors.border,
+              borderRadius: 20,
+              overflow: "hidden",
+            }}
+          >
+            {waiting.map((item, index) => (
+              <WaitingRow
+                key={item.id}
+                item={item}
+                isLast={index === waiting.length - 1}
+              />
             ))}
           </View>
         ) : (
-          <EmptyState title="No waiting patients" message="Use Quick Check-in to send patient to doctor queue." icon="people-outline" />
+          <EmptyState
+            title="No waiting patients"
+            message="Use Check-in Patient to send someone to the doctor queue."
+            icon="people-outline"
+          />
         )}
-      </SectionCard>
+      </View>
 
-      <View style={{ flexDirection: "row", gap: 10 }}>
-        <AppButton title="Refresh" icon="refresh-outline" variant="secondary" onPress={load} loading={loading} style={{ flex: 1 }} />
-        <AppButton title="Logout" icon="log-out-outline" variant="ghost" onPress={logout} style={{ flex: 1 }} />
+      <View style={{ gap: 10 }}>
+        <SectionTitle title="More Reception Work" subtitle="Secondary tools and account actions." />
+        <View
+          style={{
+            backgroundColor: colors.surface,
+            borderWidth: 1,
+            borderColor: colors.border,
+            borderRadius: 20,
+            overflow: "hidden",
+          }}
+        >
+          <ToolRow
+            title="Pending Payments"
+            subtitle="Collect old dues and treatment balances"
+            icon="wallet-outline"
+            onPress={() => router.push("/patient/payment" as never)}
+          />
+          <ToolRow
+            title="Reminders"
+            subtitle="Follow-ups due and pending payments"
+            icon="notifications-outline"
+            onPress={() => router.push("/reminders" as never)}
+          />
+          <ToolRow
+            title="More Tools"
+            subtitle="Old patient, gallery, account, and other fees"
+            icon="grid-outline"
+            onPress={() => router.push("/(reception)/more" as never)}
+            isLast
+          />
+        </View>
       </View>
     </Screen>
   );
 }
 
-function AppointmentItem({ item, onPress }: { item: AppointmentRow; onPress: () => void }) {
+function DeskAction({
+  title,
+  subtitle,
+  icon,
+  onPress,
+}: {
+  title: string;
+  subtitle: string;
+  icon: IconName;
+  onPress: () => void;
+}) {
   return (
     <Pressable
+      accessibilityRole="button"
       onPress={onPress}
       style={({ pressed }) => ({
+        flex: 1,
+        minHeight: 102,
+        borderRadius: 22,
+        padding: 13,
+        backgroundColor: pressed ? colors.surfaceSoft : colors.primarySoft,
+        borderWidth: 1,
+        borderColor: colors.border,
+        justifyContent: "space-between",
+      })}
+    >
+      <Ionicons name={icon} size={26} color={colors.primary} />
+      <View>
+        <Text style={{ color: colors.text, fontWeight: "900", fontSize: 16 }}>{title}</Text>
+        <Text style={{ color: colors.muted, marginTop: 2 }}>{subtitle}</Text>
+      </View>
+    </Pressable>
+  );
+}
+
+function MetricCard({
+  label,
+  value,
+  icon,
+  tone = "primary",
+}: {
+  label: string;
+  value: string | number;
+  icon: IconName;
+  tone?: "primary" | "success" | "warning";
+}) {
+  const backgroundColor =
+    tone === "success"
+      ? colors.successSoft
+      : tone === "warning"
+        ? colors.warningSoft
+        : colors.surface;
+  const foregroundColor =
+    tone === "success"
+      ? colors.success
+      : tone === "warning"
+        ? colors.warning
+        : colors.primary;
+
+  return (
+    <View
+      style={{
+        flexGrow: 1,
+        flexBasis: "47%",
+        minHeight: 88,
+        borderRadius: 20,
+        padding: 13,
+        backgroundColor,
+        borderWidth: 1,
+        borderColor: colors.border,
+        justifyContent: "space-between",
+      }}
+    >
+      <Ionicons name={icon} size={21} color={foregroundColor} />
+      <View>
+        <Text
+          numberOfLines={1}
+          adjustsFontSizeToFit
+          minimumFontScale={0.72}
+          style={{ color: colors.text, fontSize: 20, fontWeight: "900" }}
+        >
+          {value}
+        </Text>
+        <Text style={{ color: colors.muted, fontSize: 11, fontWeight: "900", marginTop: 2 }}>
+          {label}
+        </Text>
+      </View>
+    </View>
+  );
+}
+
+function WaitingRow({ item, isLast }: { item: AppointmentRow; isLast: boolean }) {
+  return (
+    <Pressable
+      accessibilityRole="button"
+      onPress={() => router.push(`/patient/${item.patient_id}` as never)}
+      style={({ pressed }) => ({
+        minHeight: 72,
+        paddingVertical: 11,
+        paddingHorizontal: 14,
         flexDirection: "row",
         alignItems: "center",
         gap: 12,
-        padding: 12,
-        borderRadius: 18,
-        backgroundColor: pressed ? colors.surfaceSoft : colors.background,
-        borderWidth: 1,
-        borderColor: colors.border,
+        borderBottomWidth: isLast ? 0 : 1,
+        borderBottomColor: colors.border,
+        backgroundColor: pressed ? colors.surfaceSoft : colors.surface,
       })}
     >
       <View
         style={{
-          width: 46,
-          height: 46,
-          borderRadius: 17,
+          width: 42,
+          height: 42,
+          borderRadius: 16,
           backgroundColor: colors.warningSoft,
           alignItems: "center",
           justifyContent: "center",
         }}
       >
-        <Ionicons name="time-outline" size={22} color={colors.warning} />
+        <Ionicons name="time-outline" size={21} color={colors.warning} />
       </View>
-
-      <View style={{ flex: 1 }}>
-        <Text numberOfLines={1} style={{ color: colors.text, fontWeight: "900", fontSize: 16 }}>
+      <View style={{ flex: 1, minWidth: 0 }}>
+        <Text numberOfLines={1} style={{ color: colors.text, fontSize: 16, fontWeight: "900" }}>
           {item.patients?.name || "Patient"}
         </Text>
         <Text numberOfLines={1} style={{ color: colors.muted, marginTop: 3 }}>
           {appointmentTime(item.appointment_time)}
-          {item.patients?.phone ? ` • ${item.patients.phone}` : ""}
+          {item.patients?.phone ? ` - ${item.patients.phone}` : ""}
         </Text>
       </View>
-
-      <StatusBadge label={item.status || "Waiting"} tone={tone(item.status) as any} />
+      <StatusBadge label={item.status || "Waiting"} tone="warning" />
       <Ionicons name="chevron-forward" size={18} color={colors.muted} />
     </Pressable>
   );
 }
 
+function SectionTitle({ title, subtitle }: { title: string; subtitle?: string }) {
+  return (
+    <View style={{ gap: 3 }}>
+      <Text style={{ color: colors.text, fontSize: 18, fontWeight: "900" }}>{title}</Text>
+      {subtitle ? <Text style={{ color: colors.muted, lineHeight: 19 }}>{subtitle}</Text> : null}
+    </View>
+  );
+}
+
+function ToolRow({
+  title,
+  subtitle,
+  icon,
+  onPress,
+  isLast = false,
+}: {
+  title: string;
+  subtitle: string;
+  icon: IconName;
+  onPress: () => void;
+  isLast?: boolean;
+}) {
+  return (
+    <Pressable
+      onPress={onPress}
+      style={({ pressed }) => ({
+        minHeight: 68,
+        paddingVertical: 11,
+        paddingHorizontal: 14,
+        flexDirection: "row",
+        alignItems: "center",
+        gap: 12,
+        borderBottomWidth: isLast ? 0 : 1,
+        borderBottomColor: colors.border,
+        backgroundColor: pressed ? colors.surfaceSoft : colors.surface,
+      })}
+    >
+      <View
+        style={{
+          width: 42,
+          height: 42,
+          borderRadius: 15,
+          backgroundColor: colors.primarySoft,
+          alignItems: "center",
+          justifyContent: "center",
+        }}
+      >
+        <Ionicons name={icon} size={21} color={colors.primary} />
+      </View>
+      <View style={{ flex: 1, minWidth: 0 }}>
+        <Text numberOfLines={1} style={{ color: colors.text, fontSize: 15, fontWeight: "900" }}>
+          {title}
+        </Text>
+        <Text numberOfLines={1} style={{ color: colors.muted, marginTop: 2, fontSize: 12 }}>
+          {subtitle}
+        </Text>
+      </View>
+      <Ionicons name="chevron-forward" size={18} color={colors.muted} />
+    </Pressable>
+  );
+}
