@@ -8,7 +8,7 @@ import {
   useMemo,
   useState,
 } from "react";
-import { Alert } from "react-native";
+import { Alert, Platform } from "react-native";
 import {
   getCurrentProfile,
   getDashboardPath,
@@ -33,8 +33,23 @@ type AuthContextValue = {
 };
 
 const AuthContext = createContext<AuthContextValue | null>(null);
+
+function browserUrl(path: string) {
+  if (Platform.OS === "web" && typeof window !== "undefined") {
+    return `${window.location.origin}${path}`;
+  }
+  return null;
+}
+
+const AUTH_CALLBACK_REDIRECT_URL =
+  process.env.EXPO_PUBLIC_AUTH_CALLBACK_URL ??
+  browserUrl("/auth/callback") ??
+  "dms://auth/callback";
+
 const PASSWORD_RESET_REDIRECT_URL =
-  process.env.EXPO_PUBLIC_PASSWORD_RESET_REDIRECT_URL ?? "dms://auth/reset-password";
+  process.env.EXPO_PUBLIC_PASSWORD_RESET_REDIRECT_URL ??
+  browserUrl("/auth/reset-password") ??
+  "dms://auth/reset-password";
 
 function isRoleGroup(segment?: string) {
   return segment === "(head)" || segment === "(doctor)" || segment === "(reception)";
@@ -52,7 +67,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [session, setSession] = useState<Session | null>(null);
   const [profile, setProfile] = useState<Profile | null>(null);
   const [loading, setLoading] = useState(true);
-  const [loadingMessage, setLoadingMessage] = useState("Opening DMS...");
+  const [loadingMessage, setLoadingMessage] = useState("Opening CapDent...");
 
   async function refreshProfile() {
     try {
@@ -79,9 +94,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     let mounted = true;
+
     async function initAuth() {
       try {
-        setLoadingMessage("Opening DMS...");
+        setLoadingMessage("Opening CapDent...");
         const { data } = await supabase.auth.getSession();
         if (!mounted) return;
         await loadSession(data.session);
@@ -94,7 +110,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         if (mounted) setLoading(false);
       }
     }
-    initAuth();
+
+    void initAuth();
+
     const { data: listener } = supabase.auth.onAuthStateChange(async (event, nextSession) => {
       if (!mounted) return;
       if (event === "TOKEN_REFRESHED") {
@@ -113,6 +131,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         if (mounted) setLoading(false);
       }
     });
+
     return () => {
       mounted = false;
       listener.subscription.unsubscribe();
@@ -130,11 +149,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       if (firstSegment !== "login" && !isAuthScreen) router.replace("/login");
       return;
     }
+
     if (isAuthScreen || isSettingsPasswordScreen) return;
+
     if (session && !profile) {
       if (firstSegment !== "onboarding") router.replace("/onboarding");
       return;
     }
+
     if (session && profile) {
       const normalizedRole = normalizeRole(profile.role);
       if (!profile.clinic_id) {
@@ -142,16 +164,21 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           if (firstSegment !== "onboarding") router.replace("/onboarding");
           return;
         }
-        if (firstSegment !== "clinic" || secondSegment !== "contact-admin") router.replace("/clinic/contact-admin" as never);
+        if (firstSegment !== "clinic" || secondSegment !== "contact-admin") {
+          router.replace("/clinic/contact-admin" as never);
+        }
         return;
       }
+
       const correctPath = getDashboardPath(profile.role);
       const correctSegment = getRoleSegment(profile.role);
       if (firstSegment === "login" || firstSegment === "onboarding" || firstSegment === undefined) {
         router.replace(correctPath as never);
         return;
       }
-      if (isRoleGroup(firstSegment) && firstSegment !== correctSegment) router.replace(correctPath as never);
+      if (isRoleGroup(firstSegment) && firstSegment !== correctSegment) {
+        router.replace(correctPath as never);
+      }
     }
   }, [loading, session, profile, segments]);
 
@@ -180,7 +207,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           supabase.auth.signUp({
             email: email.trim().toLowerCase(),
             password,
-            options: { emailRedirectTo: "dms://auth/callback" },
+            options: { emailRedirectTo: AUTH_CALLBACK_REDIRECT_URL },
           }),
           10000
         );
@@ -191,7 +218,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           supabase.auth.signUp({
             email: email.trim().toLowerCase(),
             password,
-            options: { emailRedirectTo: "dms://auth/callback" },
+            options: { emailRedirectTo: AUTH_CALLBACK_REDIRECT_URL },
           }),
           10000
         );
@@ -199,11 +226,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       },
       async resetPassword(email) {
         const { error } = await withTimeout(
-          supabase.auth.resetPasswordForEmail(email.trim().toLowerCase(), { redirectTo: PASSWORD_RESET_REDIRECT_URL }),
+          supabase.auth.resetPasswordForEmail(email.trim().toLowerCase(), {
+            redirectTo: PASSWORD_RESET_REDIRECT_URL,
+          }),
           10000
         );
         if (error) throw error;
-        Alert.alert("Check your email", "Open the reset link from the same phone to set a new password.");
+        Alert.alert(
+          "Check your email",
+          Platform.OS === "web"
+            ? "Open the reset link in this browser to set a new password."
+            : "Open the reset link from the same phone to set a new password."
+        );
       },
       async updatePassword(password) {
         const { error } = await withTimeout(supabase.auth.updateUser({ password }), 10000);
