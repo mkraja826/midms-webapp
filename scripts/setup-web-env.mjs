@@ -7,7 +7,7 @@ const template = path.join(root, ".env.example");
 const explicitSource = process.env.CAPDENT_ENV_SOURCE
   ? path.resolve(process.env.CAPDENT_ENV_SOURCE)
   : null;
-const siblingMobileEnv = path.resolve(root, "..", "dms", ".env");
+const siblingCapDentEnv = path.resolve(root, "..", "capdent-mobile", ".env");
 
 function readEnv(filePath) {
   return fs.existsSync(filePath) ? fs.readFileSync(filePath, "utf8") : "";
@@ -32,7 +32,7 @@ if (hasRealConfig(runtimeConfig)) {
 }
 
 if (!fs.existsSync(target)) {
-  const source = [explicitSource, siblingMobileEnv].find(
+  const source = [explicitSource, siblingCapDentEnv].find(
     (candidate) => candidate && fs.existsSync(candidate)
   );
 
@@ -54,7 +54,7 @@ const content = readEnv(target);
 if (!hasRealConfig(content)) {
   console.error("\nCapDent web is not configured yet.");
   console.error("Set EXPO_PUBLIC_SUPABASE_URL and either the publishable or anon key in .env.");
-  console.error("You can also set CAPDENT_ENV_SOURCE to the working mobile .env file.\n");
+  console.error("You can also set CAPDENT_ENV_SOURCE to the working CapDent environment file.\n");
   process.exit(1);
 }
 
