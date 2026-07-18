@@ -1,11 +1,12 @@
 {
   "name": "capdent-webapp",
-  "version": "1.1.1",
+  "version": "1.2.0",
   "private": true,
   "main": "expo-router/entry",
   "scripts": {
     "prepare:web": "node scripts/prepare-web-source.mjs && node scripts/setup-web-env.mjs",
     "setup:web": "npm run prepare:web",
+    "normalize:lock": "node scripts/normalize-package-lock.mjs",
     "prestart": "npm run prepare:web",
     "start": "expo start --web",
     "preweb": "npm run prepare:web",
@@ -29,7 +30,6 @@
     "expo-image-picker": "~57.0.2",
     "expo-linking": "~57.0.2",
     "expo-router": "~57.0.4",
-    "expo-splash-screen": "~57.0.2",
     "expo-status-bar": "^57.0.0",
     "react": "19.2.3",
     "react-dom": "19.2.3",
