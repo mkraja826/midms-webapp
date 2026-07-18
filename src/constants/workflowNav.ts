@@ -4,15 +4,15 @@ export const doctorWorkflowNavItems: WorkflowBottomNavItem[] = [
   { key: "home", label: "Home", icon: "home-outline", href: "/(doctor)/dashboard", replace: true },
   { key: "visit", label: "Visit", icon: "create-outline", href: "/patient/visit" },
   { key: "patients", label: "Patients", icon: "search-outline", href: "/patient" },
-  { key: "treatments", label: "Treatments", icon: "git-branch-outline", href: "/treatments/ongoing" },
+  { key: "treatments", label: "Treatments", icon: "git-branch-outline", href: "/patient/visit" },
   { key: "more", label: "More", icon: "grid-outline", href: "/(doctor)/more" },
 ];
 
 export const headWorkflowNavItems: WorkflowBottomNavItem[] = [
   { key: "home", label: "Home", icon: "home-outline", href: "/(head)/dashboard", replace: true },
   { key: "patients", label: "Patients", icon: "search-outline", href: "/patient" },
-  { key: "money", label: "Money", icon: "wallet-outline", href: "/reports/payments" },
-  { key: "treatments", label: "Treatments", icon: "git-branch-outline", href: "/treatments/ongoing" },
+  { key: "money", label: "Money", icon: "wallet-outline", href: "/billing" },
+  { key: "treatments", label: "Treatments", icon: "git-branch-outline", href: "/reports/clinic" },
   { key: "more", label: "More", icon: "grid-outline", href: "/(head)/more" },
 ];
 
