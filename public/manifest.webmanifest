@@ -1,0 +1,18 @@
+{
+  "name": "CapDent Dental Clinic Management",
+  "short_name": "CapDent",
+  "description": "CapDent dental clinic management for owners, doctors, and reception teams.",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#F6FAFB",
+  "theme_color": "#0F766E",
+  "icons": [
+    {
+      "src": "/capdent-icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}
