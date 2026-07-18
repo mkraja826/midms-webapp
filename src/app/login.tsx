@@ -2,6 +2,7 @@ import { Ionicons } from "@expo/vector-icons";
 import { router } from "expo-router";
 import { useState } from "react";
 import {
+  ActivityIndicator,
   Alert,
   KeyboardAvoidingView,
   Platform,
@@ -14,13 +15,18 @@ import { AppButton } from "@/components/AppButton";
 import { AppInput } from "@/components/AppInput";
 import { colors } from "@/constants/colors";
 import { useAuth } from "@/lib/auth";
+import { supabase } from "@/lib/supabase";
+
+type SignupType = "clinic" | "employee";
 
 export default function LoginScreen() {
-  const { signIn, signUpOwner } = useAuth();
+  const { signIn, signUpOwner, signUpStaff } = useAuth();
   const [mode, setMode] = useState<"login" | "signup">("login");
+  const [signupType, setSignupType] = useState<SignupType>("clinic");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
+  const [googleLoading, setGoogleLoading] = useState(false);
 
   async function submit() {
     if (!email.trim() || !password.trim()) {
@@ -38,10 +44,17 @@ export default function LoginScreen() {
       if (mode === "login") {
         await signIn(email, password);
       } else {
-        await signUpOwner(email, password);
+        if (signupType === "clinic") {
+          await signUpOwner(email, password);
+        } else {
+          await signUpStaff(email, password);
+        }
+
         Alert.alert(
           "Verify your email",
-          "We sent a verification link. Verify your email, then return to CapDent and sign in."
+          signupType === "clinic"
+            ? "We sent a verification link. Verify your email, then login and create the clinic workspace."
+            : "We sent a verification link. Verify your email, then login and join your clinic using the invite code."
         );
         setMode("login");
         setPassword("");
@@ -55,6 +68,89 @@ export default function LoginScreen() {
       setLoading(false);
     }
   }
+
+  async function submitGoogle() {
+    if (googleLoading || loading) return;
+
+    try {
+      setGoogleLoading(true);
+      const redirectTo =
+        Platform.OS === "web" && typeof window !== "undefined"
+          ? `${window.location.origin}/auth/callback`
+          : undefined;
+      const { data, error } = await supabase.auth.signInWithOAuth({
+        provider: "google",
+        options: {
+          redirectTo,
+          skipBrowserRedirect: true,
+        },
+      });
+
+      if (error) throw error;
+      if (!data.url) throw new Error("Google sign-in URL was not created.");
+
+      if (Platform.OS === "web" && typeof window !== "undefined") {
+        window.location.assign(data.url);
+        return;
+      }
+
+      throw new Error("Google sign-in is available in the browser version.");
+    } catch (error) {
+      Alert.alert(
+        "Google login failed",
+        error instanceof Error ? error.message : "Please try again."
+      );
+      setGoogleLoading(false);
+    }
+  }
+
+  function SignupChoice({
+    type,
+    title,
+    subtitle,
+    icon,
+  }: {
+    type: SignupType;
+    title: string;
+    subtitle: string;
+    icon: keyof typeof Ionicons.glyphMap;
+  }) {
+    const selected = signupType === type;
+
+    return (
+      <Pressable
+        onPress={() => setSignupType(type)}
+        style={({ pressed }) => ({
+          flex: 1,
+          borderRadius: 18,
+          padding: 12,
+          gap: 8,
+          borderWidth: 1,
+          borderColor: selected ? colors.primary : colors.border,
+          backgroundColor: selected ? colors.primarySoft : colors.background,
+          opacity: pressed ? 0.88 : 1,
+        })}
+      >
+        <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+          <Ionicons name={icon} size={20} color={colors.primary} />
+          <Text style={{ color: colors.text, fontWeight: "900", flex: 1 }}>{title}</Text>
+          <Ionicons
+            name={selected ? "checkmark-circle" : "ellipse-outline"}
+            size={19}
+            color={selected ? colors.primary : colors.muted}
+          />
+        </View>
+        <Text style={{ color: colors.muted, fontSize: 12, lineHeight: 17 }}>{subtitle}</Text>
+      </Pressable>
+    );
+  }
+
+  const signupTitle =
+    signupType === "clinic" ? "Create Clinic Account" : "Create Employee Account";
+  const signupSubtitle =
+    signupType === "clinic"
+      ? "Create the first owner account. After email verification, start a simple clinic workspace on the Free plan."
+      : "Create a staff account. After email verification, join your clinic using the invite code from the owner.";
 
   return (
     <KeyboardAvoidingView
@@ -91,7 +187,7 @@ export default function LoginScreen() {
             </View>
 
             <Text style={{ color: colors.primary, fontSize: 18, fontWeight: "900" }}>
-              CAPDENT
+              CapDent
             </Text>
 
             <Text
@@ -102,7 +198,7 @@ export default function LoginScreen() {
                 textAlign: "center",
               }}
             >
-              {mode === "login" ? "Clinic Login" : "Create Owner Account"}
+              {mode === "login" ? "Clinic Login" : signupTitle}
             </Text>
 
             <Text
@@ -112,11 +208,12 @@ export default function LoginScreen() {
                 textAlign: "center",
                 lineHeight: 22,
                 maxWidth: 390,
+                alignSelf: "center",
               }}
             >
               {mode === "login"
-                ? "Access your clinic workspace from any modern browser."
-                : "Create the first owner account and set up your clinic workspace."}
+                ? "Simple dental clinic management for single-owner clinics and growing teams."
+                : signupSubtitle}
             </Text>
           </View>
 
@@ -130,6 +227,66 @@ export default function LoginScreen() {
               borderColor: colors.border,
             }}
           >
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="Continue with Google"
+              disabled={googleLoading || loading}
+              onPress={submitGoogle}
+              style={({ pressed }) => ({
+                minHeight: 56,
+                borderRadius: 18,
+                borderWidth: 1,
+                borderColor: colors.border,
+                backgroundColor: pressed ? colors.surfaceSoft : colors.background,
+                flexDirection: "row",
+                alignItems: "center",
+                justifyContent: "center",
+                gap: 11,
+                opacity: googleLoading || loading ? 0.65 : 1,
+              })}
+            >
+              {googleLoading ? (
+                <ActivityIndicator color={colors.primary} />
+              ) : (
+                <Ionicons name="logo-google" size={22} color="#4285F4" />
+              )}
+              <Text style={{ color: colors.text, fontSize: 16, fontWeight: "900" }}>
+                {googleLoading ? "Opening Google..." : "Continue with Google"}
+              </Text>
+            </Pressable>
+
+            <Text style={{ color: colors.muted, fontSize: 12, textAlign: "center", lineHeight: 17 }}>
+              Existing Google users return to their dashboard. New users continue clinic setup after signing in.
+            </Text>
+
+            <View style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
+              <View style={{ height: 1, backgroundColor: colors.border, flex: 1 }} />
+              <Text style={{ color: colors.muted, fontSize: 11, fontWeight: "900" }}>
+                OR USE EMAIL
+              </Text>
+              <View style={{ height: 1, backgroundColor: colors.border, flex: 1 }} />
+            </View>
+
+            {mode === "signup" ? (
+              <View style={{ gap: 10 }}>
+                <Text style={{ color: colors.text, fontWeight: "900" }}>Account type</Text>
+                <View style={{ flexDirection: "row", gap: 10 }}>
+                  <SignupChoice
+                    type="clinic"
+                    title="Clinic"
+                    icon="business-outline"
+                    subtitle="Start owner workspace"
+                  />
+                  <SignupChoice
+                    type="employee"
+                    title="Employee"
+                    icon="people-outline"
+                    subtitle="Join using staff invite code"
+                  />
+                </View>
+              </View>
+            ) : null}
+
             <AppInput
               label="Email"
               value={email}
@@ -156,7 +313,7 @@ export default function LoginScreen() {
             />
 
             <AppButton
-              title={mode === "login" ? "Create owner account" : "Back to login"}
+              title={mode === "login" ? "Create new account" : "Back to login"}
               icon={mode === "login" ? "person-add-outline" : "arrow-back-outline"}
               variant="secondary"
               onPress={() => {
@@ -178,7 +335,7 @@ export default function LoginScreen() {
           </View>
 
           <Text style={{ color: colors.muted, fontSize: 12, textAlign: "center", lineHeight: 18 }}>
-            Owner · Doctor · Receptionist access
+            Clinic / Owner → Employee / Staff access with invite code
           </Text>
         </View>
       </ScrollView>
