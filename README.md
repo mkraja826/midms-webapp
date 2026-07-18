@@ -1,61 +1,111 @@
-# MiDMS Web App
+# CapDent Web App
 
-Private Expo Web / PWA version of MiDMS cloned from `mkraja826/dms_clinic`.
+Browser and PWA version of CapDent for clinic owners, doctors, and receptionists.
 
-## Scope
+The Android project remains in `mkraja826/dms_clinic`. This repository is reserved for browser-specific development and deployment.
 
-- Source branch: `pilot-safe-android-cleanup`
-- Target: Expo Web / PWA
-- Supabase configuration is unchanged
-- App auth callback/reset password flow is unchanged
-- Legal links point to:
-  - `https://dms.micirql.com/privacy`
-  - `https://dms.micirql.com/terms`
-  - `https://dms.micirql.com/delete-account`
+## Local setup
 
-## Local test
-
-```bash
+```powershell
+cd C:\capdent-web
 npm install
-npm run web
+npm run setup:web
+npm run web:clear
 ```
 
-## Production web build
+`npm run setup:web` behaves safely:
 
-```bash
-npm install
+- It preserves an existing `.env` file.
+- It automatically copies `C:\dms\.env` when the mobile project is beside this repository.
+- Otherwise it creates `.env` from `.env.example` and asks for the missing public Supabase values.
+
+Required variables:
+
+```text
+EXPO_PUBLIC_SUPABASE_URL
+EXPO_PUBLIC_SUPABASE_ANON_KEY
+```
+
+Optional variables:
+
+```text
+EXPO_PUBLIC_AUTH_CALLBACK_URL
+EXPO_PUBLIC_PASSWORD_RESET_REDIRECT_URL
+EXPO_PUBLIC_ENABLE_REALTIME
+EXPO_PUBLIC_UPLOAD_PROVIDER
+EXPO_PUBLIC_UPLOAD_STRICT_R2
+```
+
+For local development, authentication automatically uses the current browser origin, for example:
+
+```text
+http://localhost:8081/auth/callback
+http://localhost:8081/auth/reset-password
+```
+
+## Validate the web app
+
+```powershell
 npm run typecheck
 npm run build:web
 ```
 
-The static web output is generated in:
+Or run both:
+
+```powershell
+npm run check:web
+```
+
+The static output is generated in:
 
 ```text
 dist
 ```
 
-## Cloudflare Pages settings
+## Cloudflare Pages
+
+Use these settings:
 
 ```text
-Framework preset: None / Expo static export
+Framework preset: None
 Build command: npm run build:web
 Build output directory: dist
 Root directory: /
 Node version: 22
 ```
 
-## Original DMS workflows
+Add the required Supabase values under Cloudflare Pages → Settings → Environment variables. Expo public variables are embedded during the build, so redeploy after changing them.
 
-- Email/password login and forgot password.
-- Role-aware profile loading with clinic-scoped RLS.
-- Register patients and store medical history notes.
-- Search patients by name or phone.
-- View patient profile, visits, treatments, invoices, and files.
-- Upload prescription and X-ray files to Supabase Storage.
-- Create appointments and update appointment status.
-- Add invoices, record payments, and view pending dues.
-- Owner can view staff profile records.
+Add the production URLs to Supabase Authentication → URL Configuration:
 
-## Notes
+```text
+https://YOUR-WEB-DOMAIN/auth/callback
+https://YOUR-WEB-DOMAIN/auth/reset-password
+```
 
-Some native mobile features such as direct camera capture or native file handling may need browser-specific adjustments after the first web test.
+The repository includes `public/_redirects` so Expo Router routes continue working after browser refreshes.
+
+## Current web scope
+
+- Email and password authentication.
+- Browser-compatible verification and password-reset links.
+- Role-aware owner, doctor, and receptionist dashboards.
+- Patient registration, search, profile, visits, treatments, and files.
+- Appointments, waiting queue, invoices, payments, and pending dues.
+- Supabase Realtime updates where enabled.
+- Static Cloudflare Pages deployment.
+
+## Web-specific testing checklist
+
+Before deployment, test:
+
+1. Login and logout.
+2. New owner email verification.
+3. Forgot-password link in the browser.
+4. Owner, doctor, and receptionist routing.
+5. Patient image and document upload.
+6. Browser refresh on nested routes.
+7. Realtime waiting-room updates in two browser windows.
+8. Mobile-browser layout.
+
+Native-only functions should be adapted in this repository without changing the Android source.

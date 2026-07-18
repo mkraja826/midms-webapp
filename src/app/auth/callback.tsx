@@ -1,7 +1,7 @@
 import { router } from "expo-router";
 import * as Linking from "expo-linking";
 import { useEffect, useState } from "react";
-import { Alert, ActivityIndicator, Text, View } from "react-native";
+import { ActivityIndicator, Alert, Text, View } from "react-native";
 import { AppButton } from "@/components/AppButton";
 import { Screen } from "@/components/Screen";
 import { colors } from "@/constants/colors";
@@ -45,7 +45,6 @@ async function completeAuthCallback(url: string | null) {
       access_token: accessToken,
       refresh_token: refreshToken,
     });
-
     if (error) throw error;
   }
 }
@@ -59,15 +58,13 @@ export default function AuthCallbackScreen() {
     async function handleCallback(url: string | null) {
       try {
         await completeAuthCallback(url);
-
         if (!mounted) return;
 
-        Alert.alert("Email verified", "Your email is verified. Please login to continue.", [
+        Alert.alert("Email verified", "Your email is verified. Sign in to continue to CapDent.", [
           { text: "Login", onPress: () => router.replace("/login" as never) },
         ]);
       } catch (error) {
         if (!mounted) return;
-
         setFailed(true);
         Alert.alert(
           "Verification failed",
@@ -100,7 +97,7 @@ export default function AuthCallbackScreen() {
         <Text style={{ color: colors.muted, fontSize: 15, lineHeight: 22, textAlign: "center" }}>
           {failed
             ? "Please open the latest email verification link again."
-            : "Please wait while DMS confirms your account."}
+            : "Please wait while CapDent confirms your account."}
         </Text>
         {failed ? (
           <AppButton title="Back to Login" icon="arrow-back-outline" onPress={() => router.replace("/login" as never)} />
