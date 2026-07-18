@@ -1,10 +1,9 @@
 {
   "expo": {
-    "name": "MiDMS Web",
-    "slug": "midms-webapp",
-    "scheme": "dms",
-    "version": "1.1.0",
-    "orientation": "portrait",
+    "name": "CapDent Web",
+    "slug": "capdent-webapp",
+    "scheme": "capdent",
+    "version": "1.1.1",
     "userInterfaceStyle": "light",
     "icon": "./assets/icon.png",
     "assetBundlePatterns": [
@@ -24,18 +23,8 @@
       [
         "expo-image-picker",
         {
-          "cameraPermission": "MiDMS needs camera access to take patient photos, prescription photos, and X-ray images.",
-          "photosPermission": "MiDMS needs photo library access to upload patient photos, prescriptions, X-rays, and reports."
-        }
-      ],
-      [
-        "expo-build-properties",
-        {
-          "android": {
-            "compileSdkVersion": 36,
-            "targetSdkVersion": 35,
-            "buildToolsVersion": "35.0.0"
-          }
+          "cameraPermission": "CapDent uses the camera for patient photos, prescriptions, X-rays, and clinical images.",
+          "photosPermission": "CapDent uses selected images for patient photos, prescriptions, X-rays, and reports."
         }
       ],
       "expo-font"
@@ -44,38 +33,11 @@
       "bundler": "metro",
       "output": "static",
       "favicon": "./assets/icon.png",
-      "name": "MiDMS",
-      "shortName": "MiDMS",
+      "name": "CapDent",
+      "shortName": "CapDent",
+      "lang": "en",
       "themeColor": "#F6FAFB",
       "backgroundColor": "#F6FAFB"
-    },
-    "android": {
-      "package": "com.dms.clinic",
-      "versionCode": 2,
-      "allowBackup": false,
-      "adaptiveIcon": {
-        "foregroundImage": "./assets/adaptive-icon.png",
-        "backgroundColor": "#F6FAFB"
-      },
-      "permissions": [
-        "android.permission.CAMERA",
-        "android.permission.READ_MEDIA_IMAGES",
-        "android.permission.READ_EXTERNAL_STORAGE"
-      ],
-      "blockedPermissions": [
-        "android.permission.RECORD_AUDIO",
-        "android.permission.SYSTEM_ALERT_WINDOW",
-        "android.permission.WRITE_EXTERNAL_STORAGE"
-      ]
-    },
-    "ios": {
-      "bundleIdentifier": "com.dms.clinic",
-      "buildNumber": "2",
-      "infoPlist": {
-        "NSCameraUsageDescription": "MiDMS needs camera access to take patient photos, prescription photos, and X-ray images.",
-        "NSPhotoLibraryUsageDescription": "MiDMS needs photo library access to upload patient photos, prescriptions, X-rays, and reports.",
-        "ITSAppUsesNonExemptEncryption": false
-      }
     },
     "experiments": {
       "typedRoutes": true
@@ -83,9 +45,6 @@
     "extra": {
       "router": {
         "origin": false
-      },
-      "eas": {
-        "projectId": "666248db-ff00-4a45-bbbf-65455c109dad"
       }
     },
     "owner": "mk261098s-team"
