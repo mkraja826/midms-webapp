@@ -1,15 +1,16 @@
 {
+  "id": "/?capdent-brand=20260718-v4",
   "name": "CapDent Dental Clinic Management",
   "short_name": "CapDent",
   "description": "CapDent dental clinic management for owners, doctors, and reception teams.",
-  "start_url": "/",
+  "start_url": "/?capdent-brand=20260718-v4",
   "scope": "/",
   "display": "standalone",
   "background_color": "#F6FAFB",
   "theme_color": "#0F766E",
   "icons": [
     {
-      "src": "/capdent-icon.svg",
+      "src": "/capdent-icon.svg?v=20260718-4",
       "sizes": "any",
       "type": "image/svg+xml",
       "purpose": "any maskable"
