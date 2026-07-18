@@ -20,6 +20,17 @@ function hasRealConfig(content) {
   return hasUrl && key.length > 30 && !key.includes("your-");
 }
 
+const runtimeConfig = [
+  `EXPO_PUBLIC_SUPABASE_URL=${process.env.EXPO_PUBLIC_SUPABASE_URL ?? ""}`,
+  `EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY=${process.env.EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY ?? ""}`,
+  `EXPO_PUBLIC_SUPABASE_ANON_KEY=${process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY ?? ""}`,
+].join("\n");
+
+if (hasRealConfig(runtimeConfig)) {
+  console.log("CapDent web environment is configured through process variables.");
+  process.exit(0);
+}
+
 if (!fs.existsSync(target)) {
   const source = [explicitSource, siblingMobileEnv].find(
     (candidate) => candidate && fs.existsSync(candidate)
@@ -42,8 +53,8 @@ if (!fs.existsSync(target)) {
 const content = readEnv(target);
 if (!hasRealConfig(content)) {
   console.error("\nCapDent web is not configured yet.");
-  console.error("Set EXPO_PUBLIC_SUPABASE_URL and EXPO_PUBLIC_SUPABASE_ANON_KEY in .env.");
-  console.error("You can also run with CAPDENT_ENV_SOURCE pointing to the working mobile .env file.\n");
+  console.error("Set EXPO_PUBLIC_SUPABASE_URL and either the publishable or anon key in .env.");
+  console.error("You can also set CAPDENT_ENV_SOURCE to the working mobile .env file.\n");
   process.exit(1);
 }
 
