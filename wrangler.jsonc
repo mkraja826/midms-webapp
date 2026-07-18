@@ -1,9 +1,11 @@
 {
   "$schema": "node_modules/wrangler/config-schema.json",
-  "name": "midms-webapp",
+  "name": "capdent-app-worker",
   "main": "./worker.js",
   "compatibility_date": "2026-07-18",
   "compatibility_flags": ["nodejs_compat"],
+  "workers_dev": true,
+  "preview_urls": true,
   "assets": {
     "directory": "./dist",
     "binding": "ASSETS",
@@ -18,7 +20,7 @@
   ],
   "vars": {
     "CAPDENT_APP_NAME": "CapDent",
-    "CAPDENT_DEPLOYMENT": "worker-project"
+    "CAPDENT_DEPLOYMENT": "full-worker-project"
   },
   "observability": {
     "enabled": true
