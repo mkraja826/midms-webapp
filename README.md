@@ -1,8 +1,8 @@
 # CapDent Web App
 
-Browser and PWA version of CapDent for clinic owners, doctors, and receptionists.
+Browser and installable web-app version of CapDent for clinic owners, doctors, and reception teams.
 
-The Android project remains in `mkraja826/dms_clinic`. This repository is reserved for browser-specific development and deployment.
+This repository is dedicated to the CapDent browser application and Cloudflare deployment. The Android application is maintained separately.
 
 ## Local setup
 
@@ -16,15 +16,18 @@ npm run web:clear
 `npm run setup:web` behaves safely:
 
 - It preserves an existing `.env` file.
-- It automatically copies `C:\dms\.env` when the mobile project is beside this repository.
-- Otherwise it creates `.env` from `.env.example` and asks for the missing public Supabase values.
+- It uses `CAPDENT_ENV_SOURCE` when an explicit CapDent environment file is supplied.
+- It can read a sibling `capdent-mobile\.env` file.
+- Otherwise it creates `.env` from `.env.example`.
 
-Required variables:
+Required browser variables:
 
 ```text
 EXPO_PUBLIC_SUPABASE_URL
-EXPO_PUBLIC_SUPABASE_ANON_KEY
+EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY
 ```
+
+The legacy anon key is still accepted for compatibility, but the publishable key is preferred.
 
 Optional variables:
 
@@ -36,7 +39,7 @@ EXPO_PUBLIC_UPLOAD_PROVIDER
 EXPO_PUBLIC_UPLOAD_STRICT_R2
 ```
 
-For local development, authentication automatically uses the current browser origin, for example:
+For local development, authentication automatically uses the active browser origin:
 
 ```text
 http://localhost:8081/auth/callback
@@ -62,7 +65,7 @@ The static output is generated in:
 dist
 ```
 
-## Cloudflare Pages
+## Cloudflare deployment
 
 Use these settings:
 
@@ -74,38 +77,38 @@ Root directory: /
 Node version: 22
 ```
 
-Add the required Supabase values under Cloudflare Pages → Settings → Environment variables. Expo public variables are embedded during the build, so redeploy after changing them.
+The deployment currently uses Wrangler to publish the generated `dist` assets. Add public Expo variables in Cloudflare when overriding the safe defaults from `.env.example`.
 
 Add the production URLs to Supabase Authentication → URL Configuration:
 
 ```text
-https://YOUR-WEB-DOMAIN/auth/callback
-https://YOUR-WEB-DOMAIN/auth/reset-password
+https://app.capdent.micirql.com/auth/callback
+https://app.capdent.micirql.com/auth/reset-password
 ```
-
-The repository includes `public/_redirects` so Expo Router routes continue working after browser refreshes.
 
 ## Current web scope
 
-- Email and password authentication.
+- Email/password and Google authentication.
+- Clinic-owner and employee signup flows.
 - Browser-compatible verification and password-reset links.
 - Role-aware owner, doctor, and receptionist dashboards.
-- Patient registration, search, profile, visits, treatments, and files.
-- Appointments, waiting queue, invoices, payments, and pending dues.
+- Patient registration, search, profiles, visits, clinical files, appointments, and payments.
 - Supabase Realtime updates where enabled.
-- Static Cloudflare Pages deployment.
+- CapDent-only splash, favicon, manifest, and installed-app identity.
+- Static Cloudflare deployment.
 
-## Web-specific testing checklist
+## Testing checklist
 
-Before deployment, test:
+Before production use, test:
 
-1. Login and logout.
-2. New owner email verification.
-3. Forgot-password link in the browser.
+1. Login, Google login, and logout.
+2. New clinic-owner and employee email verification.
+3. Forgot-password and reset-password links.
 4. Owner, doctor, and receptionist routing.
-5. Patient image and document upload.
-6. Browser refresh on nested routes.
+5. Patient image and document uploads.
+6. Browser refresh on nested static routes.
 7. Realtime waiting-room updates in two browser windows.
-8. Mobile-browser layout.
+8. Mobile-browser and installed-web-app layouts.
+9. CapDent icon and splash after clearing an older installed shortcut.
 
-Native-only functions should be adapted in this repository without changing the Android source.
+Browser-specific changes belong in this repository and should not modify the Android project.
