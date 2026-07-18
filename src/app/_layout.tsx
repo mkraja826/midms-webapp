@@ -1,11 +1,10 @@
+import { Ionicons } from "@expo/vector-icons";
 import { Stack } from "expo-router";
 import { StatusBar } from "expo-status-bar";
-import { ActivityIndicator, Image, StyleSheet, Text, View } from "react-native";
+import { ActivityIndicator, StyleSheet, Text, View } from "react-native";
 import { AuthProvider, useAuth } from "@/lib/auth";
 import { colors } from "@/constants/colors";
 import { isSupabaseConfigured } from "@/lib/supabase";
-
-const appLogo = require("../../assets/icon.png");
 
 function ConfigurationErrorScreen() {
   return (
@@ -22,7 +21,7 @@ function ConfigurationErrorScreen() {
         Supabase is not configured
       </Text>
       <Text selectable style={{ color: colors.muted, fontSize: 16, lineHeight: 23 }}>
-        Add EXPO_PUBLIC_SUPABASE_URL and EXPO_PUBLIC_SUPABASE_ANON_KEY in your .env file.
+        Add EXPO_PUBLIC_SUPABASE_URL and EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY in your environment.
       </Text>
     </View>
   );
@@ -37,16 +36,18 @@ function RootStack() {
         <StatusBar style="dark" />
 
         <View style={styles.logoCard}>
-          <Image source={appLogo} style={styles.loadingLogo} resizeMode="contain" />
+          <View style={styles.logoMark}>
+            <Ionicons name="medical-outline" size={58} color={colors.white} />
+          </View>
         </View>
 
-        <Text style={styles.loadingTitle}>MiDMS</Text>
-        <Text style={styles.loadingSubtitle}>Dental Management System</Text>
+        <Text style={styles.loadingTitle}>CapDent</Text>
+        <Text style={styles.loadingSubtitle}>Dental Clinic Management</Text>
 
         <View style={styles.loadingStatus}>
           <ActivityIndicator color={colors.primary} />
           <Text style={styles.loadingMessage}>
-            {loadingMessage || "Preparing your dental workspace..."}
+            {loadingMessage || "Preparing your clinic workspace..."}
           </Text>
         </View>
       </View>
@@ -88,8 +89,6 @@ function RootStack() {
         <Stack.Screen name="(head)" />
         <Stack.Screen name="(doctor)" />
         <Stack.Screen name="(reception)" />
-
-        {/* Existing patient/staff routes can stay. These lines keep old screens reachable if present. */}
         <Stack.Screen name="patient/add" options={{ headerShown: true, title: "Add Patient" }} />
         <Stack.Screen name="patient/add-old" options={{ headerShown: true, title: "Add Old Patient" }} />
         <Stack.Screen name="patient/edit" options={{ headerShown: true, title: "Edit Patient" }} />
@@ -128,24 +127,27 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: 8 },
     elevation: 8,
   },
-  loadingLogo: {
-    width: 132,
-    height: 132,
-    borderRadius: 30,
+  logoMark: {
+    width: 128,
+    height: 128,
+    borderRadius: 34,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: colors.primary,
   },
   loadingTitle: {
     marginTop: 26,
-    color: colors.text,
+    color: colors.primary,
     fontSize: 34,
     fontWeight: "900",
-    letterSpacing: 0.8,
+    letterSpacing: 0.4,
   },
   loadingSubtitle: {
     marginTop: 8,
     color: colors.muted,
     fontSize: 14,
     fontWeight: "700",
-    letterSpacing: 0.4,
+    letterSpacing: 0.3,
   },
   loadingStatus: {
     marginTop: 34,
