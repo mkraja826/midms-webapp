@@ -1,5 +1,5 @@
 import { Text, TextInput, TextInputProps, View } from "react-native";
-import { colors } from "@/constants/colors";
+import { colors, radius } from "@/constants/colors";
 
 type Props = TextInputProps & {
   label: string;
@@ -9,7 +9,7 @@ type Props = TextInputProps & {
 export function AppInput({ label, helper, style, ...props }: Props) {
   return (
     <View style={{ gap: 8 }}>
-      <Text style={{ color: colors.text, fontSize: 14, fontWeight: "900" }}>
+      <Text style={{ color: colors.text, fontSize: 13, fontWeight: "800" }}>
         {label}
       </Text>
       <TextInput
@@ -18,7 +18,7 @@ export function AppInput({ label, helper, style, ...props }: Props) {
         style={[
           {
             minHeight: props.multiline ? 96 : 54,
-            borderRadius: 18,
+            borderRadius: radius.md,
             borderWidth: 1,
             borderColor: colors.border,
             backgroundColor: colors.background,
