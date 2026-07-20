@@ -1,6 +1,6 @@
 import { Ionicons } from "@expo/vector-icons";
 import { Text, View } from "react-native";
-import { colors } from "@/constants/colors";
+import { colors, radius } from "@/constants/colors";
 
 export function StatCard({
   label,
@@ -37,20 +37,21 @@ export function StatCard({
         flex: 1,
         minWidth: "47%",
         backgroundColor: colors.surface,
-        borderRadius: 24,
+        borderRadius: radius.lg,
         padding: 14,
         borderWidth: 1,
         borderColor: colors.border,
+        minHeight: 108,
         gap: 10,
         shadowColor: colors.shadow,
-        shadowOpacity: 0.045,
-        shadowRadius: 12,
-        shadowOffset: { width: 0, height: 7 },
+        shadowOpacity: 0.025,
+        shadowRadius: 8,
+        shadowOffset: { width: 0, height: 4 },
         elevation: 1,
       }}
     >
       <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
-        <Text numberOfLines={1} style={{ flex: 1, color: colors.muted, fontSize: 12, fontWeight: "800", textTransform: "uppercase", letterSpacing: 0.4 }}>
+        <Text numberOfLines={1} style={{ flex: 1, color: colors.muted, fontSize: 12, fontWeight: "800", textTransform: "uppercase" }}>
           {label}
         </Text>
         {icon ? (
@@ -68,7 +69,7 @@ export function StatCard({
           </View>
         ) : null}
       </View>
-      <Text numberOfLines={1} adjustsFontSizeToFit style={{ color: colors.text, fontSize: 24, fontWeight: "900", letterSpacing: -0.4 }}>
+      <Text numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.72} style={{ color: colors.text, fontSize: 23, fontWeight: "800", fontVariant: ["tabular-nums"] }}>
         {value}
       </Text>
     </View>
