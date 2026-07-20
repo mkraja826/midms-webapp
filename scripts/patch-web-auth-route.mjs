@@ -9,6 +9,8 @@ if (!fs.existsSync(filePath)) {
 }
 
 let source = fs.readFileSync(filePath, "utf8");
+let changed = false;
+
 const oldBlock = `    const firstSegment = segments[0];
     const secondSegment = segments[1];
     const isAuthScreen = firstSegment === "auth";
@@ -18,13 +20,32 @@ const newBlock = `    const firstSegment = segments[0];
     const isAuthScreen = firstSegment === "auth";
     const isSettingsPasswordScreen = segmentPath === "settings/change-password";`;
 
-if (source.includes(newBlock)) {
-  console.log("Browser auth route typing is already prepared.");
-} else if (source.includes(oldBlock)) {
+if (!source.includes(newBlock)) {
+  if (!source.includes(oldBlock)) {
+    console.error("Could not prepare browser auth route typing. The source file has changed.");
+    process.exit(1);
+  }
   source = source.replace(oldBlock, newBlock);
+  changed = true;
+}
+
+const oldContactAdminCheck =
+  '        if (firstSegment !== "clinic" || secondSegment !== "contact-admin") {';
+const newContactAdminCheck =
+  '        if (segmentPath !== "clinic/contact-admin") {';
+
+if (!source.includes(newContactAdminCheck)) {
+  if (!source.includes(oldContactAdminCheck)) {
+    console.error("Could not prepare contact-admin route typing. The source file has changed.");
+    process.exit(1);
+  }
+  source = source.replace(oldContactAdminCheck, newContactAdminCheck);
+  changed = true;
+}
+
+if (changed) {
   fs.writeFileSync(filePath, source, "utf8");
   console.log("Prepared browser auth route typing.");
 } else {
-  console.error("Could not prepare browser auth route typing. The source file has changed.");
-  process.exit(1);
+  console.log("Browser auth route typing is already prepared.");
 }
