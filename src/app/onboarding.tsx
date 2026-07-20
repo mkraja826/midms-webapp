@@ -1,18 +1,26 @@
+import { Ionicons } from "@expo/vector-icons";
 import { router } from "expo-router";
 import { useState } from "react";
-import { Alert, ScrollView, Text } from "react-native";
+import { Alert, Platform, Pressable, ScrollView, Text, View } from "react-native";
 import { AppButton } from "@/components/AppButton";
 import { AppInput } from "@/components/AppInput";
+import { ClinicPreferencesFields } from "@/components/ClinicPreferencesFields";
 import { SectionCard } from "@/components/SectionCard";
 import { colors } from "@/constants/colors";
 import { useAuth } from "@/lib/auth";
-import { acceptStaffInviteByCode, supabase } from "@/lib/supabase";
+import {
+  cleanCurrencyCode,
+  getDefaultClinicPreferences,
+  normalizeClinicTime,
+} from "@/lib/clinicLocale";
+import { createOwnerClinicWithPreferences } from "@/lib/clinicSetup";
+import { acceptStaffInviteByCode } from "@/lib/supabase";
+
+type AccountType = "clinic" | "employee" | null;
 
 function getErrorMessage(error: unknown) {
   if (!error) return "Unknown error";
-
   if (error instanceof Error) return error.message;
-
   if (typeof error === "string") return error;
 
   if (typeof error === "object") {
@@ -22,14 +30,12 @@ function getErrorMessage(error: unknown) {
       hint?: string;
       code?: string;
     };
-
     const parts = [
       err.message,
       err.details ? `Details: ${err.details}` : "",
       err.hint ? `Hint: ${err.hint}` : "",
       err.code ? `Code: ${err.code}` : "",
     ].filter(Boolean);
-
     if (parts.length) return parts.join("\n");
   }
 
@@ -44,15 +50,17 @@ export default function OnboardingScreen() {
   const { refreshProfile, session, signOut } = useAuth();
   const email = session?.user.email ?? "";
 
+  const [accountType, setAccountType] = useState<AccountType>(null);
   const [inviteCode, setInviteCode] = useState("");
-
   const [clinicName, setClinicName] = useState("");
   const [ownerName, setOwnerName] = useState(
     session?.user.user_metadata?.full_name ?? ""
   );
   const [phone, setPhone] = useState("");
   const [address, setAddress] = useState("");
-
+  const [preferences, setPreferences] = useState(() =>
+    getDefaultClinicPreferences()
+  );
   const [loading, setLoading] = useState(false);
 
   async function finishOwnerSetup() {
@@ -61,27 +69,43 @@ export default function OnboardingScreen() {
       return;
     }
 
-    setLoading(true);
+    const currencyCode = cleanCurrencyCode(
+      preferences.currencyCode,
+      preferences.countryCode
+    );
 
+    if (!/^[A-Z]{3}$/.test(currencyCode)) {
+      Alert.alert("Invalid currency", "Choose a valid three-letter clinic currency.");
+      return;
+    }
+
+    setLoading(true);
     try {
-      const { error } = await supabase.rpc("create_owner_clinic", {
-        clinic_name: clinicName.trim(),
-        owner_name: ownerName.trim(),
-        clinic_phone: phone.trim() || null,
-        clinic_email: email || null,
-        clinic_address: address.trim() || null,
+      await createOwnerClinicWithPreferences({
+        clinicName,
+        ownerName,
+        phone,
+        email,
+        address,
+        preferences: {
+          ...preferences,
+          currencyCode,
+          openingTime: normalizeClinicTime(preferences.openingTime, "09:00"),
+          closingTime: normalizeClinicTime(preferences.closingTime, "21:00"),
+        },
       });
 
-      if (error) throw error;
-
       await refreshProfile();
-
-      Alert.alert("Clinic created", "Owner setup completed successfully.", [
-        {
-          text: "Open Dashboard",
-          onPress: () => router.replace("/" as never),
-        },
-      ]);
+      Alert.alert(
+        "Clinic created",
+        "Your clinic workspace is ready with its country, currency, and usual clinic hours.",
+        [
+          {
+            text: "Open Dashboard",
+            onPress: () => router.replace("/" as never),
+          },
+        ]
+      );
     } catch (error) {
       Alert.alert("Clinic setup failed", getErrorMessage(error));
     } finally {
@@ -96,7 +120,6 @@ export default function OnboardingScreen() {
     }
 
     setLoading(true);
-
     try {
       await acceptStaffInviteByCode(inviteCode.trim());
       await refreshProfile();
@@ -117,79 +140,174 @@ export default function OnboardingScreen() {
     }
   }
 
+  function AccountChoice({
+    type,
+    title,
+    subtitle,
+    icon,
+  }: {
+    type: Exclude<AccountType, null>;
+    title: string;
+    subtitle: string;
+    icon: keyof typeof Ionicons.glyphMap;
+  }) {
+    const selected = accountType === type;
+
+    return (
+      <Pressable
+        onPress={() => setAccountType(type)}
+        style={({ pressed }) => ({
+          borderRadius: 22,
+          borderWidth: 1,
+          borderColor: selected ? colors.primary : colors.border,
+          backgroundColor: selected || pressed ? colors.primarySoft : colors.surface,
+          padding: 16,
+          flexDirection: "row",
+          alignItems: "center",
+          gap: 12,
+        })}
+      >
+        <View
+          style={{
+            width: 48,
+            height: 48,
+            borderRadius: 18,
+            backgroundColor: colors.primarySoft,
+            alignItems: "center",
+            justifyContent: "center",
+          }}
+        >
+          <Ionicons name={icon} size={24} color={colors.primary} />
+        </View>
+
+        <View style={{ flex: 1, gap: 4 }}>
+          <Text style={{ color: colors.text, fontSize: 17, fontWeight: "900" }}>
+            {title}
+          </Text>
+          <Text style={{ color: colors.muted, lineHeight: 20 }}>{subtitle}</Text>
+        </View>
+
+        <Ionicons
+          name={selected ? "checkmark-circle" : "ellipse-outline"}
+          size={24}
+          color={selected ? colors.primary : colors.muted}
+        />
+      </Pressable>
+    );
+  }
+
   return (
     <ScrollView
       contentInsetAdjustmentBehavior="automatic"
-      contentContainerStyle={{ padding: 16, gap: 16 }}
+      keyboardShouldPersistTaps="handled"
+      style={{ backgroundColor: colors.background }}
+      contentContainerStyle={{
+        padding: Platform.OS === "web" ? 24 : 16,
+        gap: 16,
+        width: "100%",
+        maxWidth: 760,
+        alignSelf: "center",
+      }}
     >
-      <SectionCard title="Create Owner Clinic" subtitle="Use this only for clinic owner or head doctor account.">
-        <Text style={{ color: colors.muted, lineHeight: 21 }}>
-          Create the clinic workspace first. Logo, phone, and branding can be updated later from Clinic Branding.
-        </Text>
-
+      <SectionCard title="Choose account type" subtitle="Select the correct path for this email account.">
         <Text selectable style={{ color: colors.muted, lineHeight: 21 }}>
           Signed in as {email || "this account"}
         </Text>
 
-        <AppInput
-          label="Clinic / Hospital Name"
-          value={clinicName}
-          onChangeText={setClinicName}
-          placeholder="Example: Raja Dental Care"
+        <AccountChoice
+          type="clinic"
+          title="Clinic / Owner"
+          icon="business-outline"
+          subtitle="Start a new clinic workspace with free core management."
         />
 
-        <AppInput
-          label="Head Doctor Name"
-          value={ownerName}
-          onChangeText={setOwnerName}
-          placeholder="Doctor name"
-        />
-
-        <AppInput
-          label="Clinic Phone"
-          value={phone}
-          onChangeText={setPhone}
-          keyboardType="phone-pad"
-          placeholder="Optional"
-        />
-
-        <AppInput
-          label="Clinic Address"
-          value={address}
-          onChangeText={setAddress}
-          multiline
-          placeholder="Optional"
-        />
-
-        <AppButton
-          title="Create Owner Clinic"
-          icon="medkit-outline"
-          onPress={finishOwnerSetup}
-          loading={loading}
+        <AccountChoice
+          type="employee"
+          title="Employee / Staff"
+          icon="people-outline"
+          subtitle="Join an existing clinic using the invite code shared by the owner."
         />
       </SectionCard>
 
-      <SectionCard title="Join Existing Clinic" subtitle="Use this only when owner/head doctor has shared a staff invite code.">
-        <Text style={{ color: colors.muted, lineHeight: 21 }}>
-          Working doctors and receptionists should join with a valid staff invite code from the clinic owner.
-        </Text>
+      {accountType === "clinic" ? (
+        <SectionCard title="Create Clinic Profile" subtitle="For the clinic owner or head doctor starting the workspace.">
+          <Text style={{ color: colors.muted, lineHeight: 21 }}>
+            Confirm the clinic details, country, currency, and usual working hours before creating the workspace.
+          </Text>
 
-        <AppInput
-          label="Invite Code"
-          value={inviteCode}
-          onChangeText={setInviteCode}
-          autoCapitalize="characters"
-          autoCorrect={false}
-          placeholder="DMS-ABC123"
-        />
+          <AppInput
+            label="Clinic / Hospital Name"
+            value={clinicName}
+            onChangeText={setClinicName}
+            placeholder="Example: Raja Dental Care"
+          />
 
-        <AppButton
-          title="Join With Staff Invite Code"
-          variant="secondary"
-          onPress={joinInvite}
-          loading={loading}
-        />
-      </SectionCard>
+          <AppInput
+            label="Owner / Head Doctor Name"
+            value={ownerName}
+            onChangeText={setOwnerName}
+            placeholder="Doctor name"
+          />
+
+          <AppInput
+            label="Clinic Phone"
+            value={phone}
+            onChangeText={setPhone}
+            keyboardType="phone-pad"
+            placeholder="Optional"
+          />
+
+          <AppInput
+            label="Clinic Address"
+            value={address}
+            onChangeText={setAddress}
+            multiline
+            placeholder="Optional"
+          />
+
+          <View style={{ gap: 6, paddingTop: 4 }}>
+            <Text style={{ color: colors.text, fontSize: 18, fontWeight: "900" }}>
+              Clinic Preferences
+            </Text>
+            <Text style={{ color: colors.muted, lineHeight: 20 }}>
+              Country and currency are suggested from this browser. Confirm the clinic's usual opening and closing time.
+            </Text>
+          </View>
+
+          <ClinicPreferencesFields value={preferences} onChange={setPreferences} />
+
+          <AppButton
+            title="Create Clinic Workspace"
+            icon="medkit-outline"
+            onPress={finishOwnerSetup}
+            loading={loading}
+          />
+        </SectionCard>
+      ) : null}
+
+      {accountType === "employee" ? (
+        <SectionCard title="Join Existing Clinic" subtitle="Employees cannot create a clinic. Use an invite code from the owner.">
+          <Text style={{ color: colors.muted, lineHeight: 21 }}>
+            Doctors, receptionists, and assistants should join the clinic workspace with a staff invite code.
+          </Text>
+
+          <AppInput
+            label="Invite Code"
+            value={inviteCode}
+            onChangeText={setInviteCode}
+            autoCapitalize="characters"
+            autoCorrect={false}
+            placeholder="Enter staff invite code"
+          />
+
+          <AppButton
+            title="Join With Staff Invite Code"
+            variant="secondary"
+            onPress={joinInvite}
+            loading={loading}
+          />
+        </SectionCard>
+      ) : null}
 
       <SectionCard title="Wrong account?" subtitle="Logout and sign in with the correct owner or staff email.">
         <AppButton
