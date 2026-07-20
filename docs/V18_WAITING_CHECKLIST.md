@@ -1,0 +1,5 @@
+- Reception waiting rows show reschedule and completed actions.
+- Owner waiting rows show the same actions.
+- Completing removes the patient from the active waiting list after refresh.
+- Rescheduling requires a future browser date/time.
+- `npm run check:web` passes before merge.
