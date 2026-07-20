@@ -4,7 +4,7 @@
   "private": true,
   "main": "expo-router/entry",
   "scripts": {
-    "prepare:web": "node scripts/prepare-web-source.mjs && node scripts/setup-web-env.mjs",
+    "prepare:web": "node scripts/prepare-web-source.mjs && node scripts/patch-v18-waiting.mjs && node scripts/setup-web-env.mjs",
     "setup:web": "npm run prepare:web",
     "normalize:lock": "node scripts/normalize-package-lock.mjs",
     "prestart": "npm run prepare:web",
@@ -16,6 +16,7 @@
     "prebuild:web": "npm run prepare:web",
     "build:web": "expo export --platform web",
     "preview:web": "npx serve dist",
+    "pretypecheck": "npm run prepare:web",
     "typecheck": "tsc --noEmit",
     "check:web": "npm run typecheck && npm run build:web"
   },
