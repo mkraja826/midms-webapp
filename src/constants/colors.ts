@@ -1,22 +1,22 @@
 export const colors = {
-  background: "#F6FAFB",
+  background: "#F7FAFC",
 
   // Main surfaces
   surface: "#FFFFFF",
-  surfaceSoft: "#EAF7F6",
+  surfaceSoft: "#EEF7F6",
 
   // Backward compatibility for old files
   card: "#FFFFFF",
-  soft: "#EAF7F6",
+  soft: "#EEF7F6",
 
   primary: "#0F766E",
   primaryDark: "#115E59",
-  primarySoft: "#CCFBF1",
+  primarySoft: "#DDF8F2",
   accent: "#14B8A6",
 
   text: "#102A43",
   muted: "#627D98",
-  border: "#D9E2EC",
+  border: "#D8E3EA",
 
   danger: "#DC2626",
   dangerSoft: "#FEE2E2",
@@ -35,14 +35,12 @@ export const colors = {
   // Extra compatibility
   black: "#000000",
   gray: "#627D98",
-  light: "#F6FAFB",
+  light: "#F7FAFC",
 };
-
-
 
 export const radius = {
   sm: 12,
-  md: 18,
-  lg: 24,
-  xl: 30,
+  md: 16,
+  lg: 22,
+  xl: 26,
 };
