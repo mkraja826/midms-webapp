@@ -7,6 +7,8 @@ const corsHeaders = {
   "Access-Control-Allow-Methods": "POST, OPTIONS",
 };
 
+type AnalyticsPeriod = "daily" | "tomorrow" | "weekly" | "monthly";
+
 function json(body: unknown, status = 200) {
   return new Response(JSON.stringify(body), {
     status,
@@ -32,6 +34,18 @@ function extractText(payload: any): string {
 function cleanQuestion(value: unknown) {
   const raw = typeof value === "string" ? value : "";
   return raw.replace(/[\u0000-\u001f\u007f]/g, " ").replace(/\s+/g, " ").trim().slice(0, 300);
+}
+
+function resolvePeriod(question: string, requested?: unknown): AnalyticsPeriod {
+  if (["daily", "tomorrow", "weekly", "monthly"].includes(String(requested || ""))) {
+    return requested as AnalyticsPeriod;
+  }
+
+  const value = question.toLowerCase();
+  if (/\btomorrow\b/.test(value)) return "tomorrow";
+  if (/\b(month|monthly|this month|last month)\b/.test(value)) return "monthly";
+  if (/\b(week|weekly|this week|last week)\b/.test(value)) return "weekly";
+  return "daily";
 }
 
 async function callGrok(input: {
@@ -70,14 +84,14 @@ Deno.serve(async (req: Request) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
   if (req.method !== "POST") return json({ error: "Method not allowed" }, 405);
 
-  let body: { action?: string; question?: string } = {};
+  let body: { action?: string; question?: string; period?: AnalyticsPeriod } = {};
   try {
     body = await req.json();
   } catch {
     return json({ error: "Invalid JSON body" }, 400);
   }
 
-  if (!body.action || !["ping", "today_summary"].includes(body.action)) {
+  if (!body.action || !["ping", "today_summary", "analytics"].includes(body.action)) {
     return json({ error: "Unsupported CapDent AI action." }, 400);
   }
 
@@ -127,16 +141,20 @@ Deno.serve(async (req: Request) => {
     return json({ error: "Authenticated CapDent session required." }, 401);
   }
 
-  const { data: summaryRows, error: summaryError } = await supabase.rpc("get_capdent_ai_today_summary");
-  if (summaryError) {
-    console.error("CapDent AI today summary RPC failed", summaryError);
-    return json({ error: "Unable to load today's clinic summary." }, 500);
+  const question = cleanQuestion(body.question) || "How is my clinic doing today?";
+  const period: AnalyticsPeriod = body.action === "today_summary" ? "daily" : resolvePeriod(question, body.period);
+
+  const rpcResult = period === "daily"
+    ? await supabase.rpc("get_capdent_ai_today_summary")
+    : await supabase.rpc("get_capdent_ai_period_analytics", { p_period: period });
+
+  if (rpcResult.error) {
+    console.error("CapDent AI analytics RPC failed", period, rpcResult.error);
+    return json({ error: "Unable to load the requested clinic analytics." }, 500);
   }
 
-  const summary = Array.isArray(summaryRows) ? summaryRows[0] : null;
-  if (!summary) return json({ error: "No active clinic summary is available for this account." }, 404);
-
-  const question = cleanQuestion(body.question) || "How is my clinic doing today?";
+  const summary = Array.isArray(rpcResult.data) ? rpcResult.data[0] : null;
+  if (!summary) return json({ error: "No active clinic analytics are available for this account." }, 404);
 
   try {
     const answer = await callGrok({
@@ -145,30 +163,32 @@ Deno.serve(async (req: Request) => {
       system: [
         "You are CapDent AI, a read-only dental clinic operations assistant.",
         "Use only the aggregate clinic metrics supplied by CapDent.",
-        "Never invent patient, financial, clinical, staff, appointment, or historical details.",
-        "If the user asks for information not present in the supplied metrics, say that capability is not available yet.",
+        "Never invent patient identities, financial details, diagnoses, treatment names, staff details, appointment details, or historical facts.",
+        "The context may contain a current period and its immediately previous comparable period. Compare them only when useful or requested.",
+        "If the requested information is not represented in the supplied aggregate metrics, say that capability is not available yet.",
         "If finance fields are null or can_view_finance is false, do not reveal, infer, estimate, or discuss clinic collections or dues.",
-        "Do not claim to have changed any record.",
-        "Do not diagnose or prescribe.",
+        "A field named outstanding_dues_now or outstanding_dues is the clinic's current lifetime outstanding balance, not a period-specific due amount.",
+        "Do not claim to have changed any record. Do not diagnose or prescribe.",
         "Keep answers concise, practical, and suitable for a clinic dashboard chat.",
       ].join(" "),
-      user: `Question: ${question}\n\nCapDent aggregate context:\n${JSON.stringify(summary)}`,
-      maxOutputTokens: 240,
+      user: `Question: ${question}\nAnalytics scope: ${period}\n\nCapDent aggregate context:\n${JSON.stringify(summary)}`,
+      maxOutputTokens: 280,
     });
 
     return json({
       connected: true,
       provider: "xai",
       model,
-      action: "today_summary",
+      action: "analytics",
+      period,
       question,
-      answer: answer || "Today's clinic summary is available.",
+      answer: answer || "The requested clinic analytics are available.",
       summary,
       privacy: "aggregate_only",
       read_only: true,
     });
   } catch (error) {
-    console.error("CapDent AI today summary generation failed", error);
-    return json({ error: "Grok could not generate the clinic summary." }, 502);
+    console.error("CapDent AI analytics generation failed", error);
+    return json({ error: "Grok could not generate the clinic analytics response." }, 502);
   }
 });
