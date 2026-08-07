@@ -8,6 +8,8 @@ export type CapDentAiPingResult = {
   code?: string;
 };
 
+export type CapDentAiAnalyticsPeriod = "daily" | "tomorrow" | "weekly" | "monthly";
+
 export type CapDentAiTodaySummary = {
   clinic_name: string;
   currency_code: string;
@@ -29,10 +31,24 @@ export type CapDentAiTodayResult = {
   connected: boolean;
   provider: "xai";
   model: string;
-  action: "today_summary";
+  action: "analytics" | "today_summary";
+  period?: CapDentAiAnalyticsPeriod;
   question: string;
   answer: string;
   summary: CapDentAiTodaySummary;
+  privacy: "aggregate_only";
+  read_only: true;
+};
+
+export type CapDentAiAnalyticsResult = {
+  connected: boolean;
+  provider: "xai";
+  model: string;
+  action: "analytics";
+  period: CapDentAiAnalyticsPeriod;
+  question: string;
+  answer: string;
+  summary: Record<string, string | number | boolean | null>;
   privacy: "aggregate_only";
   read_only: true;
 };
@@ -61,6 +77,11 @@ async function invokeCapDentAi<T>(body: Record<string, unknown>): Promise<T> {
 
 export async function testCapDentAiConnection(): Promise<CapDentAiPingResult> {
   return invokeCapDentAi<CapDentAiPingResult>({ action: "ping" });
+}
+
+export async function askCapDentAi(question: string): Promise<CapDentAiAnalyticsResult> {
+  const cleaned = question.trim().slice(0, 300) || "How is my clinic doing today?";
+  return invokeCapDentAi<CapDentAiAnalyticsResult>({ action: "analytics", question: cleaned });
 }
 
 export async function askCapDentAiToday(
