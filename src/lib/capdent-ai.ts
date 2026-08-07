@@ -12,6 +12,8 @@ export type CapDentAiTodaySummary = {
   clinic_name: string;
   currency_code: string;
   local_date: string;
+  user_role: string;
+  can_view_finance: boolean;
   patients_today: number;
   new_patients_today: number;
   appointments_today: number;
@@ -19,8 +21,8 @@ export type CapDentAiTodaySummary = {
   completed_count: number;
   visits_today: number;
   gallery_uploads_today: number;
-  net_collections_today: number | string;
-  outstanding_dues: number | string;
+  net_collections_today: number | string | null;
+  outstanding_dues: number | string | null;
 };
 
 export type CapDentAiTodayResult = {
@@ -28,6 +30,7 @@ export type CapDentAiTodayResult = {
   provider: "xai";
   model: string;
   action: "today_summary";
+  question: string;
   answer: string;
   summary: CapDentAiTodaySummary;
   privacy: "aggregate_only";
@@ -60,6 +63,13 @@ export async function testCapDentAiConnection(): Promise<CapDentAiPingResult> {
   return invokeCapDentAi<CapDentAiPingResult>({ action: "ping" });
 }
 
+export async function askCapDentAiToday(
+  question = "How is my clinic doing today?"
+): Promise<CapDentAiTodayResult> {
+  const cleaned = question.trim().slice(0, 300) || "How is my clinic doing today?";
+  return invokeCapDentAi<CapDentAiTodayResult>({ action: "today_summary", question: cleaned });
+}
+
 export async function getCapDentAiTodaySummary(): Promise<CapDentAiTodayResult> {
-  return invokeCapDentAi<CapDentAiTodayResult>({ action: "today_summary" });
+  return askCapDentAiToday();
 }
