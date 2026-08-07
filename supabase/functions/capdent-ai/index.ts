@@ -29,7 +29,18 @@ function extractText(payload: any): string {
   return "";
 }
 
-async function callGrok(input: { apiKey: string; model: string; system: string; user: string; maxOutputTokens: number }) {
+function cleanQuestion(value: unknown) {
+  const raw = typeof value === "string" ? value : "";
+  return raw.replace(/[\u0000-\u001f\u007f]/g, " ").replace(/\s+/g, " ").trim().slice(0, 300);
+}
+
+async function callGrok(input: {
+  apiKey: string;
+  model: string;
+  system: string;
+  user: string;
+  maxOutputTokens: number;
+}) {
   const response = await fetch("https://api.x.ai/v1/responses", {
     method: "POST",
     headers: {
@@ -59,7 +70,7 @@ Deno.serve(async (req: Request) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
   if (req.method !== "POST") return json({ error: "Method not allowed" }, 405);
 
-  let body: { action?: string } = {};
+  let body: { action?: string; question?: string } = {};
   try {
     body = await req.json();
   } catch {
@@ -72,7 +83,12 @@ Deno.serve(async (req: Request) => {
 
   const apiKey = Deno.env.get("XAI_API_KEY")?.trim();
   if (!apiKey) {
-    return json({ connected: false, provider: "xai", code: "XAI_API_KEY_MISSING", message: "CapDent AI is not configured." }, 503);
+    return json({
+      connected: false,
+      provider: "xai",
+      code: "XAI_API_KEY_MISSING",
+      message: "CapDent AI is not configured.",
+    }, 503);
   }
 
   const model = Deno.env.get("XAI_MODEL")?.trim() || "grok-4.20";
@@ -120,6 +136,8 @@ Deno.serve(async (req: Request) => {
   const summary = Array.isArray(summaryRows) ? summaryRows[0] : null;
   if (!summary) return json({ error: "No active clinic summary is available for this account." }, 404);
 
+  const question = cleanQuestion(body.question) || "How is my clinic doing today?";
+
   try {
     const answer = await callGrok({
       apiKey,
@@ -127,13 +145,15 @@ Deno.serve(async (req: Request) => {
       system: [
         "You are CapDent AI, a read-only dental clinic operations assistant.",
         "Use only the aggregate clinic metrics supplied by CapDent.",
-        "Never invent patient, financial, clinical, staff, or appointment details.",
+        "Never invent patient, financial, clinical, staff, appointment, or historical details.",
+        "If the user asks for information not present in the supplied metrics, say that capability is not available yet.",
+        "If finance fields are null or can_view_finance is false, do not reveal, infer, estimate, or discuss clinic collections or dues.",
         "Do not claim to have changed any record.",
         "Do not diagnose or prescribe.",
-        "Be concise and practical. Distinguish today's collections from total outstanding dues.",
+        "Keep answers concise, practical, and suitable for a clinic dashboard chat.",
       ].join(" "),
-      user: `Answer the question: How is my clinic doing today?\n\nCapDent aggregate context:\n${JSON.stringify(summary)}`,
-      maxOutputTokens: 220,
+      user: `Question: ${question}\n\nCapDent aggregate context:\n${JSON.stringify(summary)}`,
+      maxOutputTokens: 240,
     });
 
     return json({
@@ -141,6 +161,7 @@ Deno.serve(async (req: Request) => {
       provider: "xai",
       model,
       action: "today_summary",
+      question,
       answer: answer || "Today's clinic summary is available.",
       summary,
       privacy: "aggregate_only",
