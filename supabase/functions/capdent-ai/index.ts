@@ -1,4 +1,5 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -28,6 +29,32 @@ function extractText(payload: any): string {
   return "";
 }
 
+async function callGrok(input: { apiKey: string; model: string; system: string; user: string; maxOutputTokens: number }) {
+  const response = await fetch("https://api.x.ai/v1/responses", {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${input.apiKey}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      model: input.model,
+      input: [
+        { role: "system", content: input.system },
+        { role: "user", content: input.user },
+      ],
+      max_output_tokens: input.maxOutputTokens,
+    }),
+  });
+
+  const payload = await response.json().catch(() => null);
+  if (!response.ok) {
+    console.error("xAI request failed", response.status, payload);
+    throw new Error(`XAI_REQUEST_FAILED:${response.status}`);
+  }
+
+  return extractText(payload);
+}
+
 Deno.serve(async (req: Request) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
   if (req.method !== "POST") return json({ error: "Method not allowed" }, 405);
@@ -39,73 +66,88 @@ Deno.serve(async (req: Request) => {
     return json({ error: "Invalid JSON body" }, 400);
   }
 
-  if (body.action !== "ping") {
-    return json({ error: "Unsupported action. The first CapDent AI milestone only allows ping." }, 400);
+  if (!body.action || !["ping", "today_summary"].includes(body.action)) {
+    return json({ error: "Unsupported CapDent AI action." }, 400);
   }
 
   const apiKey = Deno.env.get("XAI_API_KEY")?.trim();
   if (!apiKey) {
-    return json({
-      connected: false,
-      provider: "xai",
-      code: "XAI_API_KEY_MISSING",
-      message: "CapDent AI backend is deployed. Add the XAI_API_KEY Edge Function secret to complete the Grok connection.",
-    }, 503);
+    return json({ connected: false, provider: "xai", code: "XAI_API_KEY_MISSING", message: "CapDent AI is not configured." }, 503);
   }
 
   const model = Deno.env.get("XAI_MODEL")?.trim() || "grok-4.20";
 
-  try {
-    const response = await fetch("https://api.x.ai/v1/responses", {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${apiKey}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
+  if (body.action === "ping") {
+    try {
+      const message = await callGrok({
+        apiKey,
         model,
-        input: [
-          {
-            role: "system",
-            content: "You are the connectivity check for CapDent AI. Do not request, infer, or discuss patient or clinic data. Return only the requested confirmation sentence.",
-          },
-          {
-            role: "user",
-            content: "Reply exactly: CapDent AI connected successfully.",
-          },
-        ],
-        max_output_tokens: 64,
-      }),
+        system: "You are the connectivity check for CapDent AI. Do not request, infer, or discuss patient or clinic data. Return only the requested confirmation sentence.",
+        user: "Reply exactly: CapDent AI connected successfully.",
+        maxOutputTokens: 64,
+      });
+      return json({ connected: true, provider: "xai", model, message: message || "CapDent AI connected successfully." });
+    } catch (error) {
+      console.error("CapDent AI ping failed", error);
+      return json({ connected: false, provider: "xai", model, code: "XAI_REQUEST_FAILED", message: "Grok connection test failed." }, 502);
+    }
+  }
+
+  const authorization = req.headers.get("Authorization") ?? "";
+  const supabaseUrl = Deno.env.get("SUPABASE_URL") ?? "";
+  const supabaseAnonKey = Deno.env.get("SUPABASE_ANON_KEY") ?? "";
+
+  if (!authorization || !supabaseUrl || !supabaseAnonKey) {
+    return json({ error: "Authenticated CapDent session required." }, 401);
+  }
+
+  const supabase = createClient(supabaseUrl, supabaseAnonKey, {
+    global: { headers: { Authorization: authorization } },
+    auth: { persistSession: false, autoRefreshToken: false },
+  });
+
+  const { data: userData, error: userError } = await supabase.auth.getUser();
+  if (userError || !userData.user) {
+    return json({ error: "Authenticated CapDent session required." }, 401);
+  }
+
+  const { data: summaryRows, error: summaryError } = await supabase.rpc("get_capdent_ai_today_summary");
+  if (summaryError) {
+    console.error("CapDent AI today summary RPC failed", summaryError);
+    return json({ error: "Unable to load today's clinic summary." }, 500);
+  }
+
+  const summary = Array.isArray(summaryRows) ? summaryRows[0] : null;
+  if (!summary) return json({ error: "No active clinic summary is available for this account." }, 404);
+
+  try {
+    const answer = await callGrok({
+      apiKey,
+      model,
+      system: [
+        "You are CapDent AI, a read-only dental clinic operations assistant.",
+        "Use only the aggregate clinic metrics supplied by CapDent.",
+        "Never invent patient, financial, clinical, staff, or appointment details.",
+        "Do not claim to have changed any record.",
+        "Do not diagnose or prescribe.",
+        "Be concise and practical. Distinguish today's collections from total outstanding dues.",
+      ].join(" "),
+      user: `Answer the question: How is my clinic doing today?\n\nCapDent aggregate context:\n${JSON.stringify(summary)}`,
+      maxOutputTokens: 220,
     });
 
-    const payload = await response.json().catch(() => null);
-    if (!response.ok) {
-      console.error("xAI ping failed", response.status, payload);
-      return json({
-        connected: false,
-        provider: "xai",
-        model,
-        code: "XAI_REQUEST_FAILED",
-        message: "Grok connection test failed.",
-        provider_status: response.status,
-      }, 502);
-    }
-
-    const message = extractText(payload);
     return json({
       connected: true,
       provider: "xai",
       model,
-      message: message || "CapDent AI connected successfully.",
+      action: "today_summary",
+      answer: answer || "Today's clinic summary is available.",
+      summary,
+      privacy: "aggregate_only",
+      read_only: true,
     });
   } catch (error) {
-    console.error("xAI ping exception", error);
-    return json({
-      connected: false,
-      provider: "xai",
-      model,
-      code: "XAI_NETWORK_ERROR",
-      message: "Unable to reach Grok from the CapDent AI backend.",
-    }, 502);
+    console.error("CapDent AI today summary generation failed", error);
+    return json({ error: "Grok could not generate the clinic summary." }, 502);
   }
 });
