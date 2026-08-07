@@ -46,10 +46,6 @@ begin
     raise exception 'Patient not available in current clinic';
   end if;
 
-  if not exists (select 1 from public.clinics c where c.id = v_clinic_id and c.active = true) then
-    raise exception 'Clinic is not active';
-  end if;
-
   select coalesce(c.tooth_chart_enabled, false)
     into v_chart_enabled
   from public.clinics c
