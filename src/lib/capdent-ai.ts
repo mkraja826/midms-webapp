@@ -53,6 +53,52 @@ export type CapDentAiAnalyticsResult = {
   read_only: true;
 };
 
+export type CapDentAiPatientVisit = {
+  id: string;
+  visit_date: string;
+  chief_complaint: string;
+  diagnosis: string;
+  visit_status: string | null;
+  next_appointment_date: string | null;
+};
+
+export type CapDentAiPatientTreatment = {
+  visit_id: string | null;
+  created_at: string;
+  treatment_name: string;
+  category: string;
+  status: string;
+};
+
+export type CapDentAiPatientContext = {
+  patient_id: string;
+  user_role: string;
+  visit_count_included: number;
+  treatment_count_included: number;
+  visits: CapDentAiPatientVisit[];
+  treatments: CapDentAiPatientTreatment[];
+  privacy: {
+    identifiers_included: false;
+    doctor_notes_included: false;
+    medical_history_included: false;
+    files_included: false;
+    max_visits: number;
+    max_treatments: number;
+  };
+};
+
+export type CapDentAiPatientHistoryResult = {
+  connected: boolean;
+  provider: "xai";
+  model: string;
+  action: "patient_history";
+  question: string;
+  answer: string;
+  context: CapDentAiPatientContext;
+  privacy: "minimal_clinical_timeline";
+  read_only: true;
+};
+
 async function invokeCapDentAi<T>(body: Record<string, unknown>): Promise<T> {
   const { data, error } = await supabase.functions.invoke<T>("capdent-ai", { body });
 
@@ -89,6 +135,20 @@ export async function askCapDentAiToday(
 ): Promise<CapDentAiTodayResult> {
   const cleaned = question.trim().slice(0, 300) || "How is my clinic doing today?";
   return invokeCapDentAi<CapDentAiTodayResult>({ action: "today_summary", question: cleaned });
+}
+
+export async function askCapDentAiPatientHistory(
+  patientId: string,
+  question = "Summarize this patient's recorded visit and treatment history."
+): Promise<CapDentAiPatientHistoryResult> {
+  const cleanedPatientId = patientId.trim();
+  if (!cleanedPatientId) throw new Error("A patient is required for the AI summary.");
+  const cleanedQuestion = question.trim().slice(0, 300) || "Summarize this patient's recorded visit and treatment history.";
+  return invokeCapDentAi<CapDentAiPatientHistoryResult>({
+    action: "patient_history",
+    patient_id: cleanedPatientId,
+    question: cleanedQuestion,
+  });
 }
 
 export async function getCapDentAiTodaySummary(): Promise<CapDentAiTodayResult> {
