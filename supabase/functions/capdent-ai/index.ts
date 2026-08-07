@@ -214,33 +214,23 @@ function analyticsFallback(period: AnalyticsPeriod, summary: Record<string, unkn
   const currency = String(summary.currency_code || "INR");
   if (period === "daily") {
     const parts = [
-      `From CapDent records today: ${numberValue(summary.patients_today)} patients`,
-      `${numberValue(summary.appointments_today)} appointments`,
-      `${numberValue(summary.waiting_count)} currently waiting`,
-      `${numberValue(summary.visits_today)} recorded visits`,
-      `${numberValue(summary.gallery_uploads_today)} gallery uploads`,
+      `Today: ${numberValue(summary.patients_today)} patients, ${numberValue(summary.appointments_today)} appointments and ${numberValue(summary.waiting_count)} waiting.`,
     ];
     if (summary.can_view_finance !== false && summary.net_collections_today != null) {
-      parts.push(`${money(summary.net_collections_today, currency)} net collections`);
-      parts.push(`${money(summary.outstanding_dues, currency)} current outstanding dues`);
+      parts.push(`Collections are ${money(summary.net_collections_today, currency)}; current outstanding dues are ${money(summary.outstanding_dues, currency)}.`);
     }
-    return `AI generation is temporarily unavailable. ${parts.join(", ")}.`;
+    return parts.join(" ");
   }
 
   const label = period === "tomorrow" ? "Tomorrow" : period === "weekly" ? "This week" : "This month";
-  const previousLabel = period === "tomorrow" ? "today" : period === "weekly" ? "the previous week" : "the previous month";
+  const previousLabel = period === "tomorrow" ? "today" : period === "weekly" ? "the same elapsed days last week" : "the same elapsed days last month";
   const parts = [
-    `${label}: ${numberValue(summary.patients_count)} patients vs ${numberValue(summary.previous_patients_count)} in ${previousLabel}`,
-    `${numberValue(summary.appointments_count)} appointments vs ${numberValue(summary.previous_appointments_count)}`,
-    `${numberValue(summary.visits_count)} visits vs ${numberValue(summary.previous_visits_count)}`,
-    `${numberValue(summary.treatments_count)} treatments vs ${numberValue(summary.previous_treatments_count)}`,
-    `${numberValue(summary.gallery_uploads_count)} gallery uploads vs ${numberValue(summary.previous_gallery_uploads_count)}`,
+    `${label}: ${numberValue(summary.patients_count)} patients versus ${numberValue(summary.previous_patients_count)} in ${previousLabel}; ${numberValue(summary.appointments_count)} appointments versus ${numberValue(summary.previous_appointments_count)}.`,
   ];
   if (summary.can_view_finance !== false && summary.net_collections != null) {
-    parts.push(`${money(summary.net_collections, currency)} net collections vs ${money(summary.previous_net_collections, currency)}`);
-    parts.push(`${money(summary.outstanding_dues_now, currency)} current outstanding dues`);
+    parts.push(`Collections are ${money(summary.net_collections, currency)} versus ${money(summary.previous_net_collections, currency)}.`);
   }
-  return `AI generation is temporarily unavailable. ${parts.join(", ")}.`;
+  return parts.join(" ");
 }
 
 Deno.serve(async (req: Request) => {
@@ -409,17 +399,22 @@ Deno.serve(async (req: Request) => {
   try {
     const result = await callAi(providers, {
       system: [
-        "You are CapDent AI, a read-only dental clinic operations assistant.",
-        "Use only the aggregate clinic metrics supplied by CapDent.",
-        "Never invent patient identities, financial details, diagnoses, treatment names, staff details, appointment details, or historical facts.",
-        "The context may contain a current period and its immediately previous comparable period. Compare them only when useful or requested.",
-        "If the requested information is not represented in the supplied aggregate metrics, say that capability is not available yet.",
+        "You are CapDent AI, a read-only clinic dashboard analyst speaking to a dental clinic owner or head doctor.",
+        "Answer the user's exact question first. Do not dump every available metric unless the user explicitly asks for all metrics.",
+        "Use only the aggregate clinic metrics supplied by CapDent. Never invent facts, patients, financial details, diagnoses, treatments, staff details, appointments, or history.",
+        "For weekly and monthly comparisons, period_start through period_end and previous_start through previous_end are already matched elapsed periods. Compare those exact date ranges only.",
+        "Never divide partial-period totals by the full number of calendar days. Do not show formulas, arithmetic steps, equations, or manual calculations.",
+        "Do not use Markdown tables, pipe characters, code blocks, or decorative headings. Do not use bold Markdown.",
+        "Use one short opening sentence followed by at most four short bullet points when bullets help. Keep the entire reply under about 120 words.",
+        "For a comparison, prioritize the biggest positive change, biggest negative change, patient/appointment activity, and collections when finance access exists. Omit low-value details.",
+        "Use natural Indian currency formatting such as ₹78,000 when currency_code is INR.",
         "If finance fields are null or can_view_finance is false, do not reveal, infer, estimate, or discuss collections or dues.",
         "Outstanding dues are a current lifetime balance, not a period-specific due amount.",
-        "Do not claim to have changed any record. Do not diagnose or prescribe. Keep answers concise and practical.",
+        "If the requested information is not represented in the supplied aggregate metrics, simply say that information is not available yet.",
+        "Do not claim to have changed any record. Do not diagnose or prescribe.",
       ].join(" "),
       user: `Question: ${question}\nAnalytics scope: ${period}\n\nCapDent aggregate context:\n${JSON.stringify(summary)}`,
-      maxOutputTokens: 280,
+      maxOutputTokens: 180,
     });
 
     return json({
@@ -430,7 +425,7 @@ Deno.serve(async (req: Request) => {
       action: "analytics",
       period,
       question,
-      answer: result.text || "The requested clinic analytics are available.",
+      answer: result.text || analyticsFallback(period, summary as Record<string, unknown>),
       summary,
       privacy: "aggregate_only",
       read_only: true,
