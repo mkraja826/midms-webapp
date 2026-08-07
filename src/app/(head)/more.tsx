@@ -5,12 +5,13 @@ export default function HeadMoreToolsScreen() {
   return (
     <MoreToolsScreen
       title="More"
-      subtitle="Owner tools, reports, staff, plans, and account."
+      subtitle="Owner tools, AI, reports, staff, plans, and account."
       navItems={headWorkflowNavItems}
       sections={[
         {
           title: "Owner Review",
           tools: [
+            { title: "CapDent AI", subtitle: "Ask Groq about your clinic with read-only access", icon: "sparkles-outline", target: "/(head)/ai" },
             { title: "Clinic Report", subtitle: "Daily closing summary and clinic activity", icon: "analytics-outline", target: "/reports/clinic" },
             { title: "Payments", subtitle: "Collections, dues, and pending balances", icon: "wallet-outline", target: "/billing" },
             { title: "Patients", subtitle: "Profiles, visits, files, and payment status", icon: "search-outline", target: "/patient" },
