@@ -99,6 +99,37 @@ export type CapDentAiPatientHistoryResult = {
   read_only: true;
 };
 
+export type CapDentAiDentalChartEntry = {
+  tooth_code: string;
+  dentition: string;
+  condition: string;
+  surfaces: string[];
+  treatment_name: string | null;
+  treatment_status: string;
+  recorded_at: string;
+};
+
+export type CapDentAiDentalChartContext = {
+  patient_id: string;
+  user_role: string;
+  tooth_chart_enabled: boolean;
+  total_entries: number;
+  included_entries: number;
+  chart_entries: CapDentAiDentalChartEntry[];
+};
+
+export type CapDentAiDentalChartResult = {
+  connected: boolean;
+  provider: "xai";
+  model: string;
+  action: "patient_dental_chart";
+  question: string;
+  answer: string;
+  context: CapDentAiDentalChartContext;
+  privacy: "structured_dental_chart_only";
+  read_only: true;
+};
+
 async function invokeCapDentAi<T>(body: Record<string, unknown>): Promise<T> {
   const { data, error } = await supabase.functions.invoke<T>("capdent-ai", { body });
 
@@ -146,6 +177,20 @@ export async function askCapDentAiPatientHistory(
   const cleanedQuestion = question.trim().slice(0, 300) || "Summarize this patient's recorded visit and treatment history.";
   return invokeCapDentAi<CapDentAiPatientHistoryResult>({
     action: "patient_history",
+    patient_id: cleanedPatientId,
+    question: cleanedQuestion,
+  });
+}
+
+export async function askCapDentAiDentalChart(
+  patientId: string,
+  question = "Summarize this patient's recorded dental chart."
+): Promise<CapDentAiDentalChartResult> {
+  const cleanedPatientId = patientId.trim();
+  if (!cleanedPatientId) throw new Error("A patient is required for the dental-chart AI summary.");
+  const cleanedQuestion = question.trim().slice(0, 300) || "Summarize this patient's recorded dental chart.";
+  return invokeCapDentAi<CapDentAiDentalChartResult>({
+    action: "patient_dental_chart",
     patient_id: cleanedPatientId,
     question: cleanedQuestion,
   });
