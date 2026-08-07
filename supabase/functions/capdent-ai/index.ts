@@ -8,8 +8,26 @@ const corsHeaders = {
 };
 
 type AnalyticsPeriod = "daily" | "tomorrow" | "weekly" | "monthly";
+type ProviderName = "groq" | "xai";
+type ProviderFailure = Error & {
+  status?: number;
+  code?: string;
+  provider?: ProviderName;
+  model?: string;
+};
+type ProviderConfig = {
+  name: ProviderName;
+  apiKey: string;
+  model: string;
+  endpoint: string;
+  requestIdHeader: string;
+};
 
-type ProviderFailure = Error & { status?: number; code?: string };
+type AiResult = {
+  text: string;
+  provider: ProviderName;
+  model: string;
+};
 
 function json(body: unknown, status = 200) {
   return new Response(JSON.stringify(body), {
@@ -60,10 +78,40 @@ function providerStatus(error: unknown) {
   return {
     status: typeof failure?.status === "number" ? failure.status : null,
     code: typeof failure?.code === "string" ? failure.code : null,
+    provider: failure?.provider || null,
+    model: failure?.model || null,
   };
 }
 
-async function inspectApiKey(apiKey: string) {
+function providersFromEnv(): ProviderConfig[] {
+  const providers: ProviderConfig[] = [];
+  const groqKey = Deno.env.get("GROQ_API_KEY")?.trim();
+  const xaiKey = Deno.env.get("XAI_API_KEY")?.trim();
+
+  if (groqKey) {
+    providers.push({
+      name: "groq",
+      apiKey: groqKey,
+      model: Deno.env.get("GROQ_MODEL")?.trim() || "openai/gpt-oss-20b",
+      endpoint: "https://api.groq.com/openai/v1/chat/completions",
+      requestIdHeader: "x-request-id",
+    });
+  }
+
+  if (xaiKey) {
+    providers.push({
+      name: "xai",
+      apiKey: xaiKey,
+      model: Deno.env.get("XAI_MODEL")?.trim() || "grok-4.20-non-reasoning",
+      endpoint: "https://api.x.ai/v1/chat/completions",
+      requestIdHeader: "x-request-id",
+    });
+  }
+
+  return providers;
+}
+
+async function inspectXaiKey(apiKey: string) {
   try {
     const response = await fetch("https://api.x.ai/v1/api-key", {
       headers: { Authorization: `Bearer ${apiKey}` },
@@ -80,25 +128,22 @@ async function inspectApiKey(apiKey: string) {
   }
 }
 
-async function callGrok(input: {
-  apiKey: string;
-  model: string;
-  system: string;
-  user: string;
-  maxOutputTokens: number;
-}) {
+async function callProvider(
+  provider: ProviderConfig,
+  input: { system: string; user: string; maxOutputTokens: number }
+): Promise<AiResult> {
   let lastStatus = 0;
   let lastCode = "unknown";
 
   for (let attempt = 0; attempt < 2; attempt += 1) {
-    const response = await fetch("https://api.x.ai/v1/chat/completions", {
+    const response = await fetch(provider.endpoint, {
       method: "POST",
       headers: {
-        Authorization: `Bearer ${input.apiKey}`,
+        Authorization: `Bearer ${provider.apiKey}`,
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        model: input.model,
+        model: provider.model,
         messages: [
           { role: "system", content: input.system },
           { role: "user", content: input.user },
@@ -112,16 +157,21 @@ async function callGrok(input: {
     const payload = await response.json().catch(() => null);
     if (response.ok) {
       const content = payload?.choices?.[0]?.message?.content;
-      return typeof content === "string" ? content.trim() : "";
+      return {
+        text: typeof content === "string" ? content.trim() : "",
+        provider: provider.name,
+        model: provider.model,
+      };
     }
 
     lastStatus = response.status;
     lastCode = String(payload?.error?.code || payload?.code || payload?.error?.type || "unknown").slice(0, 120);
-    console.error("xAI chat request failed", {
+    console.error("CapDent AI provider request failed", {
+      provider: provider.name,
       status: response.status,
       code: lastCode,
-      model: input.model,
-      requestId: response.headers.get("x-request-id"),
+      model: provider.model,
+      requestId: response.headers.get(provider.requestIdHeader),
       attempt: attempt + 1,
     });
 
@@ -130,14 +180,34 @@ async function callGrok(input: {
     await new Promise((resolve) => setTimeout(resolve, 350));
   }
 
-  if ([400, 401, 403, 404].includes(lastStatus)) {
-    await inspectApiKey(input.apiKey);
+  if (provider.name === "xai" && [400, 401, 403, 404].includes(lastStatus)) {
+    await inspectXaiKey(provider.apiKey);
   }
 
-  const error = new Error(`XAI_REQUEST_FAILED:${lastStatus}`) as ProviderFailure;
+  const error = new Error(`${provider.name.toUpperCase()}_REQUEST_FAILED:${lastStatus}`) as ProviderFailure;
   error.status = lastStatus;
   error.code = lastCode;
+  error.provider = provider.name;
+  error.model = provider.model;
   throw error;
+}
+
+async function callAi(
+  providers: ProviderConfig[],
+  input: { system: string; user: string; maxOutputTokens: number }
+): Promise<AiResult> {
+  let lastError: unknown = null;
+
+  for (const provider of providers) {
+    try {
+      return await callProvider(provider, input);
+    } catch (error) {
+      lastError = error;
+      console.error("CapDent AI provider unavailable; trying fallback", providerStatus(error));
+    }
+  }
+
+  throw lastError || new Error("NO_AI_PROVIDER_AVAILABLE");
 }
 
 function analyticsFallback(period: AnalyticsPeriod, summary: Record<string, unknown>) {
@@ -154,7 +224,7 @@ function analyticsFallback(period: AnalyticsPeriod, summary: Record<string, unkn
       parts.push(`${money(summary.net_collections_today, currency)} net collections`);
       parts.push(`${money(summary.outstanding_dues, currency)} current outstanding dues`);
     }
-    return `Grok is temporarily unavailable. ${parts.join(", ")}.`;
+    return `AI generation is temporarily unavailable. ${parts.join(", ")}.`;
   }
 
   const label = period === "tomorrow" ? "Tomorrow" : period === "weekly" ? "This week" : "This month";
@@ -170,7 +240,7 @@ function analyticsFallback(period: AnalyticsPeriod, summary: Record<string, unkn
     parts.push(`${money(summary.net_collections, currency)} net collections vs ${money(summary.previous_net_collections, currency)}`);
     parts.push(`${money(summary.outstanding_dues_now, currency)} current outstanding dues`);
   }
-  return `Grok is temporarily unavailable. ${parts.join(", ")}.`;
+  return `AI generation is temporarily unavailable. ${parts.join(", ")}.`;
 }
 
 Deno.serve(async (req: Request) => {
@@ -188,28 +258,40 @@ Deno.serve(async (req: Request) => {
     return json({ error: "Unsupported CapDent AI action." }, 400);
   }
 
-  const apiKey = Deno.env.get("XAI_API_KEY")?.trim();
-  if (!apiKey) {
-    return json({ connected: false, provider: "xai", code: "XAI_API_KEY_MISSING", message: "CapDent AI is not configured." }, 503);
+  const providers = providersFromEnv();
+  if (!providers.length) {
+    return json({
+      connected: false,
+      provider: null,
+      code: "AI_PROVIDER_KEY_MISSING",
+      message: "CapDent AI is not configured.",
+    }, 503);
   }
-
-  // Use the explicitly non-reasoning 4.20 model for short clinic chat unless an override is configured.
-  const model = Deno.env.get("XAI_MODEL")?.trim() || "grok-4.20-non-reasoning";
 
   if (body.action === "ping") {
     try {
-      const message = await callGrok({
-        apiKey,
-        model,
+      const result = await callAi(providers, {
         system: "You are the connectivity check for CapDent AI. Do not request, infer, or discuss patient or clinic data. Return only the requested confirmation sentence.",
         user: "Reply exactly: CapDent AI connected successfully.",
         maxOutputTokens: 64,
       });
-      return json({ connected: true, provider: "xai", model, message: message || "CapDent AI connected successfully." });
+      return json({
+        connected: true,
+        provider: result.provider,
+        model: result.model,
+        message: result.text || "CapDent AI connected successfully.",
+      });
     } catch (error) {
       const diagnostic = providerStatus(error);
       console.error("CapDent AI ping failed", diagnostic);
-      return json({ connected: false, provider: "xai", model, code: "XAI_REQUEST_FAILED", provider_status: diagnostic.status, message: "Grok connection test failed." }, 502);
+      return json({
+        connected: false,
+        provider: diagnostic.provider,
+        model: diagnostic.model,
+        code: "AI_PROVIDER_REQUEST_FAILED",
+        provider_status: diagnostic.status,
+        message: "CapDent AI connection test failed.",
+      }, 502);
     }
   }
 
@@ -242,9 +324,7 @@ Deno.serve(async (req: Request) => {
     const chartContext = Array.isArray(chartRows) ? chartRows[0] : null;
     if (!chartContext) return json({ error: "No dental-chart context is available for this patient." }, 404);
     try {
-      const answer = await callGrok({
-        apiKey,
-        model,
+      const result = await callAi(providers, {
         system: [
           "You are CapDent AI, a read-only summarizer of structured dental-chart records for authorized clinic doctors.",
           "Use only the structured tooth-chart entries supplied by CapDent.",
@@ -255,10 +335,20 @@ Deno.serve(async (req: Request) => {
         user: `Question: ${question}\n\nCapDent structured dental-chart context:\n${JSON.stringify(chartContext)}`,
         maxOutputTokens: 360,
       });
-      return json({ connected: true, provider: "xai", model, action: "patient_dental_chart", question, answer: answer || "No dental-chart summary could be generated from the available recorded entries.", context: chartContext, privacy: "structured_dental_chart_only", read_only: true });
+      return json({
+        connected: true,
+        provider: result.provider,
+        model: result.model,
+        action: "patient_dental_chart",
+        question,
+        answer: result.text || "No dental-chart summary could be generated from the available recorded entries.",
+        context: chartContext,
+        privacy: "structured_dental_chart_only",
+        read_only: true,
+      });
     } catch (error) {
       console.error("CapDent AI dental chart generation failed", providerStatus(error));
-      return json({ error: "Grok could not generate the dental-chart summary." }, 502);
+      return json({ error: "CapDent AI could not generate the dental-chart summary." }, 502);
     }
   }
 
@@ -274,9 +364,7 @@ Deno.serve(async (req: Request) => {
       return json({ error: "Unable to load this patient's AI-safe visit history." }, 500);
     }
     try {
-      const answer = await callGrok({
-        apiKey,
-        model,
+      const result = await callAi(providers, {
         system: [
           "You are CapDent AI, a read-only dental clinical-record summarizer for authorized clinic doctors.",
           "Use only the recorded visit and treatment timeline supplied by CapDent.",
@@ -287,10 +375,20 @@ Deno.serve(async (req: Request) => {
         user: `Question: ${question}\n\nCapDent minimal clinical timeline:\n${JSON.stringify(patientContext)}`,
         maxOutputTokens: 360,
       });
-      return json({ connected: true, provider: "xai", model, action: "patient_history", question, answer: answer || "No visit-history summary could be generated from the available records.", context: patientContext, privacy: "minimal_clinical_timeline", read_only: true });
+      return json({
+        connected: true,
+        provider: result.provider,
+        model: result.model,
+        action: "patient_history",
+        question,
+        answer: result.text || "No visit-history summary could be generated from the available records.",
+        context: patientContext,
+        privacy: "minimal_clinical_timeline",
+        read_only: true,
+      });
     } catch (error) {
       console.error("CapDent AI patient history generation failed", providerStatus(error));
-      return json({ error: "Grok could not generate the patient visit-history summary." }, 502);
+      return json({ error: "CapDent AI could not generate the patient visit-history summary." }, 502);
     }
   }
 
@@ -309,9 +407,7 @@ Deno.serve(async (req: Request) => {
   if (!summary) return json({ error: "No active clinic analytics are available for this account." }, 404);
 
   try {
-    const answer = await callGrok({
-      apiKey,
-      model,
+    const result = await callAi(providers, {
       system: [
         "You are CapDent AI, a read-only dental clinic operations assistant.",
         "Use only the aggregate clinic metrics supplied by CapDent.",
@@ -326,16 +422,29 @@ Deno.serve(async (req: Request) => {
       maxOutputTokens: 280,
     });
 
-    return json({ connected: true, provider: "xai", provider_status: "ok", model, action: "analytics", period, question, answer: answer || "The requested clinic analytics are available.", summary, privacy: "aggregate_only", read_only: true, fallback: false });
+    return json({
+      connected: true,
+      provider: result.provider,
+      provider_status: "ok",
+      model: result.model,
+      action: "analytics",
+      period,
+      question,
+      answer: result.text || "The requested clinic analytics are available.",
+      summary,
+      privacy: "aggregate_only",
+      read_only: true,
+      fallback: false,
+    });
   } catch (error) {
     const diagnostic = providerStatus(error);
     console.error("CapDent AI analytics generation degraded", diagnostic);
     return json({
       connected: false,
-      provider: "xai",
+      provider: diagnostic.provider,
       provider_status: diagnostic.status,
       provider_code: diagnostic.code,
-      model,
+      model: diagnostic.model,
       action: "analytics",
       period,
       question,
