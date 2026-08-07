@@ -14,7 +14,7 @@ import {
 } from "react-native";
 import { colors } from "@/constants/colors";
 import { useAuth } from "@/lib/auth";
-import { askCapDentAiToday } from "@/lib/capdent-ai";
+import { askCapDentAi } from "@/lib/capdent-ai";
 import { normalizeRole } from "@/lib/supabase";
 
 type ChatMessage = {
@@ -26,10 +26,17 @@ type ChatMessage = {
 const BASE_PROMPTS = [
   "How is my clinic doing today?",
   "How many patients are waiting?",
-  "How many visits were completed today?",
+  "How many appointments are tomorrow?",
+  "How are we doing this week?",
+  "Compare this month with last month.",
+  "How many treatments were recorded this week?",
 ];
 
-const FINANCE_PROMPTS = ["What are today's collections?", "How much is still due?"];
+const FINANCE_PROMPTS = [
+  "What are today's collections?",
+  "Compare this month's collections with last month.",
+  "How much is still due?",
+];
 
 function messageId() {
   return `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
@@ -45,7 +52,7 @@ export function CapDentAiLauncher() {
     {
       id: "welcome",
       role: "assistant",
-      text: "Ask me about today's clinic activity. I only use the clinic data your role is allowed to see.",
+      text: "Ask me about today's clinic activity, tomorrow's appointment workload, this week, or this month. I only use aggregate data your role is allowed to see.",
     },
   ]);
 
@@ -69,13 +76,13 @@ export function CapDentAiLauncher() {
     setLoading(true);
 
     try {
-      const result = await askCapDentAiToday(cleaned);
+      const result = await askCapDentAi(cleaned);
       setMessages((current) => [
         ...current,
         {
           id: messageId(),
           role: "assistant",
-          text: result.answer || "I couldn't prepare an answer from today's available clinic metrics.",
+          text: result.answer || "I couldn't prepare an answer from the available aggregate clinic metrics.",
         },
       ]);
     } catch (error) {
@@ -130,7 +137,7 @@ export function CapDentAiLauncher() {
             CapDent AI
           </Text>
           <Text numberOfLines={1} style={{ color: colors.muted, marginTop: 3, fontSize: 12 }}>
-            Ask about today's clinic activity · Read-only
+            Ask about clinic activity and trends · Read-only
           </Text>
         </View>
         <View
@@ -214,7 +221,7 @@ export function CapDentAiLauncher() {
                     CapDent AI
                   </Text>
                   <Text style={{ color: colors.muted, fontSize: 11, marginTop: 2 }}>
-                    Powered by Grok · Aggregate clinic data · Read-only
+                    Powered by Grok · Daily / weekly / monthly · Read-only
                   </Text>
                 </View>
                 <Pressable
@@ -310,7 +317,7 @@ export function CapDentAiLauncher() {
                     }}
                   >
                     <ActivityIndicator size="small" color={colors.primary} />
-                    <Text style={{ color: colors.muted, fontSize: 13 }}>Reviewing today's metrics…</Text>
+                    <Text style={{ color: colors.muted, fontSize: 13 }}>Reviewing clinic metrics…</Text>
                   </View>
                 ) : null}
               </ScrollView>
@@ -346,7 +353,7 @@ export function CapDentAiLauncher() {
                     editable={!loading}
                     multiline
                     maxLength={300}
-                    placeholder="Ask about today's clinic activity…"
+                    placeholder="Ask about today, tomorrow, this week, or this month…"
                     placeholderTextColor={colors.muted}
                     onSubmitEditing={() => void ask(input)}
                     style={{
@@ -377,7 +384,7 @@ export function CapDentAiLauncher() {
                   </Pressable>
                 </View>
                 <Text style={{ color: colors.muted, fontSize: 10, textAlign: "center" }}>
-                  Current scope: today's aggregate clinic metrics. AI cannot modify records.
+                  Aggregate clinic metrics only. AI cannot modify records or reveal data outside your role.
                 </Text>
               </View>
             </View>
