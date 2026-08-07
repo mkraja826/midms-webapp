@@ -161,7 +161,7 @@ export function CapDentAiLauncher() {
               flex: 1,
               backgroundColor: "rgba(15, 23, 42, 0.36)",
               alignItems: desktop ? "flex-end" : "stretch",
-              justifyContent: desktop ? "stretch" : "flex-end",
+              justifyContent: desktop ? "flex-start" : "flex-end",
             }}
           >
             <Pressable
